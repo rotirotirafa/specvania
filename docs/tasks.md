@@ -63,11 +63,11 @@ files: src/specvania/clock.py, src/specvania/run/events.py, src/specvania/run/bu
 `clock.py`: `Clock` protocol, `SystemClock`, `FakeClock`. Events are frozen Pydantic models in a discriminated union (`type` field), each with `ts`, `run_id` and `seq`. Minimum catalog: run_started, world_loaded, clarify_question, clarify_answer, spec_written, room_entered, attempt_started, model_call, cooldown, fallback, action, tool_refused, approval_requested, approval_answered, gate_result, review, respawn, room_cleared, room_failed, room_skipped, boss_started, boss_scenario, boss_result, bug_opened, bug_closed, run_paused, run_finished. The bus is thread-safe in-process pub/sub. `state.py` folds events into run state. `jsonl.py` encodes and decodes event streams for export and replay.
 
 Checklist:
-- [ ] Every event type round-trips through JSON without loss (parametrized test)
-- [ ] Folding the same event list twice produces identical state
-- [ ] A redaction guard rejects any event whose serialized form contains a registered secret (API key value, UI tokens), tested with fake secrets
-- [ ] Decoding a `.jsonl` stream with a truncated last line ignores that line with a warning
-- [ ] Bus subscribers on other threads receive events in `seq` order
+- [x] Every event type round-trips through JSON without loss (parametrized test)
+- [x] Folding the same event list twice produces identical state
+- [x] A redaction guard rejects any event whose serialized form contains a registered secret (API key value, UI tokens), tested with fake secrets
+- [x] Decoding a `.jsonl` stream with a truncated last line ignores that line with a warning
+- [x] Bus subscribers on other threads receive events in `seq` order
 
 ### T04 · Ledger: SQLite and Postgres
 depends_on: T02, T03

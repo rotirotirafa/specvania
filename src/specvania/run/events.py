@@ -1,0 +1,291 @@
+"""Immutable event catalog and an instance-owned secret rejection guard.
+
+Events carry summaries only. Sequence allocation belongs to the ledger; seq=0
+can represent an event awaiting append. Consumers receive assigned sequences.
+"""
+
+import json
+from enum import StrEnum
+from threading import RLock
+from typing import Annotated, Literal
+
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, TypeAdapter
+
+type ShortText = Annotated[str, Field(max_length=200)]
+type Thought = Annotated[str, Field(max_length=500)]
+type NonNegativeInt = Annotated[int, Field(ge=0)]
+type PositiveInt = Annotated[int, Field(ge=1)]
+type NonNegativeFloat = Annotated[float, Field(ge=0, allow_inf_nan=False)]
+
+
+class Role(StrEnum):
+    MAGE = "mage"
+    WARRIOR = "warrior"
+    PALADIN = "paladin"
+
+
+class FrozenModel(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid", hide_input_in_errors=True)
+
+
+class EventBase(FrozenModel):
+    ts: AwareDatetime
+    run_id: ShortText
+    seq: NonNegativeInt
+
+
+class RunStarted(EventBase):
+    type: Literal["run_started"] = "run_started"
+    feature: ShortText
+    branch: ShortText
+
+
+class RoomInfo(FrozenModel):
+    id: ShortText
+    area: ShortText
+    title: ShortText
+    depends_on: tuple[ShortText, ...] = ()
+
+
+class WorldLoaded(EventBase):
+    type: Literal["world_loaded"] = "world_loaded"
+    rooms: tuple[RoomInfo, ...]
+
+
+class ClarifyQuestion(EventBase):
+    type: Literal["clarify_question"] = "clarify_question"
+    question_id: ShortText
+    question: ShortText
+    options: tuple[ShortText, ...] = ()
+    default: ShortText
+
+
+class ClarifyAnswer(EventBase):
+    type: Literal["clarify_answer"] = "clarify_answer"
+    question_id: ShortText
+    answer: ShortText
+
+
+class SpecWritten(EventBase):
+    type: Literal["spec_written"] = "spec_written"
+    feature: ShortText
+    spec_version: ShortText
+
+
+class RoomEvent(EventBase):
+    room_id: ShortText
+
+
+class RoomEntered(RoomEvent):
+    type: Literal["room_entered"] = "room_entered"
+
+
+class AttemptStarted(RoomEvent):
+    type: Literal["attempt_started"] = "attempt_started"
+    attempt: PositiveInt
+
+
+class ModelCall(EventBase):
+    type: Literal["model_call"] = "model_call"
+    role: Role
+    model: ShortText
+    tokens_in: NonNegativeInt
+    tokens_out: NonNegativeInt
+    latency: NonNegativeFloat
+    status: Annotated[int, Field(ge=100, le=599)]
+
+
+class Cooldown(EventBase):
+    type: Literal["cooldown"] = "cooldown"
+    role: Role
+    model: ShortText
+    seconds: NonNegativeFloat
+    reason: ShortText
+
+
+class Fallback(EventBase):
+    type: Literal["fallback"] = "fallback"
+    role: Role
+    from_model: ShortText
+    to_model: ShortText
+    reason: ShortText
+
+
+class Action(RoomEvent):
+    type: Literal["action"] = "action"
+    thought: Thought
+    action: ShortText
+    args_summary: ShortText
+
+
+class ToolRefused(RoomEvent):
+    type: Literal["tool_refused"] = "tool_refused"
+    tool: ShortText
+    reason: ShortText
+
+
+class ApprovalRequested(EventBase):
+    type: Literal["approval_requested"] = "approval_requested"
+    request_id: ShortText
+    command: ShortText
+    cwd: ShortText
+
+
+class ApprovalAnswered(EventBase):
+    type: Literal["approval_answered"] = "approval_answered"
+    request_id: ShortText
+    answer: bool
+    responder: ShortText
+
+
+class GateResult(RoomEvent):
+    type: Literal["gate_result"] = "gate_result"
+    command: ShortText
+    exit_code: int
+    output_summary: ShortText
+
+
+class ChecklistResult(FrozenModel):
+    item: ShortText
+    ok: bool
+    note: ShortText
+
+
+class Review(RoomEvent):
+    type: Literal["review"] = "review"
+    verdict: Literal["pass", "fail"]
+    checklist: tuple[ChecklistResult, ...]
+    feedback: ShortText
+
+
+class Respawn(RoomEvent):
+    type: Literal["respawn"] = "respawn"
+    attempt: PositiveInt
+    feedback: ShortText
+
+
+class RoomCleared(RoomEvent):
+    type: Literal["room_cleared"] = "room_cleared"
+    commit: ShortText
+
+
+class RoomFailed(RoomEvent):
+    type: Literal["room_failed"] = "room_failed"
+    reason: ShortText
+
+
+class RoomSkipped(RoomEvent):
+    type: Literal["room_skipped"] = "room_skipped"
+    reason: ShortText
+
+
+class BossStarted(EventBase):
+    type: Literal["boss_started"] = "boss_started"
+    area_id: ShortText
+    scenarios: tuple[ShortText, ...]
+
+
+class BossScenario(EventBase):
+    type: Literal["boss_scenario"] = "boss_scenario"
+    area_id: ShortText
+    scenario: ShortText
+    passed: bool
+    reason: ShortText
+
+
+class BossResult(EventBase):
+    type: Literal["boss_result"] = "boss_result"
+    area_id: ShortText
+    passed: bool
+
+
+class BugOpened(EventBase):
+    type: Literal["bug_opened"] = "bug_opened"
+    bug_id: ShortText
+    title: ShortText
+    body: ShortText
+    feature: ShortText | None = None
+    room_id: ShortText | None = None
+    source: Literal["user", "room_skipped", "boss_scenario"]
+
+
+class BugClosed(EventBase):
+    type: Literal["bug_closed"] = "bug_closed"
+    bug_id: ShortText
+    status: Literal["fixed", "wontfix"]
+    fixed_by_run: ShortText | None = None
+
+
+class RunPaused(EventBase):
+    type: Literal["run_paused"] = "run_paused"
+    reason: ShortText
+    room_id: ShortText | None = None
+
+
+class RunFinished(EventBase):
+    type: Literal["run_finished"] = "run_finished"
+    status: Literal["finished", "aborted"]
+
+
+type Event = Annotated[
+    RunStarted
+    | WorldLoaded
+    | ClarifyQuestion
+    | ClarifyAnswer
+    | SpecWritten
+    | RoomEntered
+    | AttemptStarted
+    | ModelCall
+    | Cooldown
+    | Fallback
+    | Action
+    | ToolRefused
+    | ApprovalRequested
+    | ApprovalAnswered
+    | GateResult
+    | Review
+    | Respawn
+    | RoomCleared
+    | RoomFailed
+    | RoomSkipped
+    | BossStarted
+    | BossScenario
+    | BossResult
+    | BugOpened
+    | BugClosed
+    | RunPaused
+    | RunFinished,
+    Field(discriminator="type"),
+]
+
+# Schema adapter only; all per-run and registered-secret state is instance-owned.
+EVENT_ADAPTER: TypeAdapter[Event] = TypeAdapter(
+    Event, config=ConfigDict(hide_input_in_errors=True)
+)
+
+
+class SecretLeakError(ValueError):
+    """A registered secret was found; the exception never contains its value."""
+
+
+class RedactionGuard:
+    """Reject, rather than rewrite, events containing registered secrets."""
+
+    def __init__(self) -> None:
+        self._secrets: set[str] = set()
+        self._lock = RLock()
+
+    def register(self, secret: str) -> None:
+        if not secret:
+            raise ValueError("Registered secrets must not be empty")
+        with self._lock:
+            self._secrets.add(secret)
+            # Match JSON-escaped secrets as well as values appearing literally.
+            for ensure_ascii in (False, True):
+                self._secrets.add(json.dumps(secret, ensure_ascii=ensure_ascii)[1:-1])
+
+    def validate(self, event: Event) -> None:
+        serialized = event.model_dump_json()
+        with self._lock:
+            if any(secret in serialized for secret in self._secrets):
+                raise SecretLeakError("Event rejected: contains a registered secret")
