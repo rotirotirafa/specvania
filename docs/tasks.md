@@ -332,9 +332,9 @@ files: apps/desktop/main.js, apps/desktop/preload.js, src/specvania/ui/static/hu
 With the control token present, `approval_requested` opens an RPG choice box (Allow / Deny) showing the command and cwd. The answer travels over the WebSocket to a desktop responder registered in the `ApprovalBroker`; the first answer wins (D8) and the terminal prompt closes with "approved in desktop window" or "denied in desktop window". Native notifications fire for `approval_requested`, a failed `review` and `boss_result`, only when the window is not focused.
 
 Checklist:
-- [ ] Approving in the window runs the command and closes the terminal prompt with the right message
-- [ ] Answering in the terminal first closes the choice box in the window
-- [ ] A browser tab (view token only) shows the request but cannot answer it
+- [x] Approving in the window runs the command and closes the terminal prompt with the right message
+- [x] Answering in the terminal first closes the choice box in the window
+- [x] A browser tab (view token only) shows the request but cannot answer it
 - [ ] Notifications fire for the three events and only when the window is unfocused (manual check, screenshot in the report)
 
 ### T21 · Desktop packaging and releases

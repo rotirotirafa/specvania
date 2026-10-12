@@ -100,16 +100,6 @@ class ApprovalBroker:
         resolution: ApprovalResolution | None = None
         try:
             with ExitStack() as cleanup:
-                self._emit(
-                    ApprovalRequested(
-                        ts=self._clock.now(),
-                        run_id=self._run_id,
-                        seq=0,
-                        request_id=request.request_id,
-                        command=command[:200],
-                        cwd=str(cwd)[:200],
-                    )
-                )
                 for responder in self._responders:
                     started.append(responder)
                     cleanup.callback(
@@ -123,6 +113,16 @@ class ApprovalBroker:
                             request.request_id, name, answer
                         ),
                     )
+                self._emit(
+                    ApprovalRequested(
+                        ts=self._clock.now(),
+                        run_id=self._run_id,
+                        seq=0,
+                        request_id=request.request_id,
+                        command=command[:200],
+                        cwd=str(cwd)[:200],
+                    )
+                )
                 while True:
                     for responder in started:
                         with self._lock:
@@ -148,6 +148,57 @@ class ApprovalBroker:
             with self._lock:
                 self._active = None
                 self._resolution = None
+
+
+class DesktopResponder:
+    """Thread-safe bridge; register this instance alongside the terminal responder.
+
+    Requests and resolutions are displayed through the broker's existing events.
+    The UI server validates the control token before calling answer().
+    """
+
+    name = "desktop window"
+
+    def __init__(self) -> None:
+        self._lock = RLock()
+        self._request: ApprovalRequest | None = None
+        self._callback: Callable[[bool], None] | None = None
+
+    @property
+    def pending(self) -> ApprovalRequest | None:
+        with self._lock:
+            return self._request
+
+    def start(self, request: ApprovalRequest, answer: Callable[[bool], None]) -> None:
+        with self._lock:
+            if self._request is not None:
+                raise ApprovalError(
+                    "The desktop window already has an approval request."
+                )
+            self._request = request
+            self._callback = answer
+
+    def answer(self, request_id: str, answer: bool) -> bool:
+        with self._lock:
+            if (
+                self._request is None
+                or request_id != self._request.request_id
+                or self._callback is None
+            ):
+                return False
+            callback, self._callback = self._callback, None
+        # Do not hold the responder lock while acquiring the broker lock.
+        callback(answer)
+        return True
+
+    def poll(self) -> None:
+        pass
+
+    def cancel(self, request_id: str, resolution: ApprovalResolution | None) -> None:
+        with self._lock:
+            if self._request is not None and request_id == self._request.request_id:
+                self._callback = None
+                self._request = None
 
 
 class ScriptedResponder:

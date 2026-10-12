@@ -74,7 +74,7 @@ async function openWindow() {
         !message || typeof message.title !== "string" || typeof message.body !== "string" ||
         message.title.length > 200 || message.body.length > 500 ||
         (controlToken && (message.title.includes(controlToken) || message.body.includes(controlToken)))) return;
-    if (Notification.isSupported()) {
+    if (!window.isFocused() && Notification.isSupported()) {
       new Notification({ title: message.title, body: message.body }).show();
     }
   });

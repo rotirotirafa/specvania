@@ -22,10 +22,18 @@ from pydantic import Field, ValidationError
 from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocketDisconnect
 
+from specvania.agent.approval import ApprovalRequest, DesktopResponder
 from specvania.clock import Clock
 from specvania.ledger import Ledger, LedgerError
 from specvania.run.bus import EventBus, Subscription
-from specvania.run.events import Event, FrozenModel, RedactionGuard, ShortText
+from specvania.run.events import (
+    ApprovalRequested,
+    Event,
+    FrozenModel,
+    RedactionGuard,
+    SecretLeakError,
+    ShortText,
+)
 from specvania.run.jsonl import EventStreamError, decode_events
 from specvania.run.state import RunState, StateFoldError, fold_events
 from specvania.ui.launcher import open_browser
@@ -38,11 +46,13 @@ class UIServerError(Exception):
 class StateMessage(FrozenModel):
     kind: Literal["state"] = "state"
     state: RunState
+    approval_request: ApprovalRequest | None = None
 
 
 class EventMessage(FrozenModel):
     kind: Literal["event"] = "event"
     event: Event
+    approval_request: ApprovalRequest | None = None
 
 
 class ApprovalAnswer(FrozenModel):
@@ -50,6 +60,11 @@ class ApprovalAnswer(FrozenModel):
     request_id: ShortText
     answer: bool = Field(strict=True)
     control_token: str = Field(default="", repr=False, exclude=True)
+
+
+class ApprovalRejected(FrozenModel):
+    kind: Literal["approval_rejected"] = "approval_rejected"
+    reason: Literal["invalid message", "control unavailable", "request unavailable"]
 
 
 def _matches(candidate: str | None, expected: str) -> bool:
@@ -99,7 +114,7 @@ class UIServer:
         replay: Sequence[Event] | None = None,
         speed: Literal[1, 2, 4] = 1,
         port: int = 0,
-        approval_responder: Callable[[ApprovalAnswer], None] | None = None,
+        approval_responder: Callable[[ApprovalAnswer], bool | None] | None = None,
     ) -> None:
         if speed not in (1, 2, 4) or not 0 <= port <= 65535:
             raise UIServerError("Use replay speed 1, 2 or 4 and a valid local port.")
@@ -113,7 +128,10 @@ class UIServer:
         self.replay = tuple(replay) if replay is not None else None
         self.speed = speed
         self.port = port
-        self.approval_responder = approval_responder
+        # The live caller registers this instance in its ApprovalBroker alongside
+        # TerminalResponder; replay never accepts answers, even with a token.
+        self.desktop_responder = DesktopResponder()
+        self.approval_responder = approval_responder or self._answer_approval
         self.view_token = secrets.token_urlsafe(32)
         self.control_token = secrets.token_urlsafe(32)
         guard.register(self.view_token)
@@ -137,6 +155,42 @@ class UIServer:
     def origin(self) -> str:
         return f"http://127.0.0.1:{self.port}"
 
+    @property
+    def view_cookie_name(self) -> str:
+        return f"specvania_view_{self.port}"
+
+    def _answer_approval(self, message: ApprovalAnswer) -> bool:
+        return self.desktop_responder.answer(message.request_id, message.answer)
+
+    def _approval_prompt(self, event: ApprovalRequested) -> ApprovalRequest:
+        pending = self.desktop_responder.pending
+        if pending is not None and pending.request_id == event.request_id:
+            # Full command/cwd are transient prompt data, never ledger payloads.
+            # Validate the full transient text against all registered secrets
+            # without appending it to the bus/ledger or changing event limits.
+            self.guard.validate(
+                event.model_copy(
+                    update={"command": pending.command, "cwd": pending.cwd}
+                )
+            )
+            return pending
+        return ApprovalRequest(
+            request_id=event.request_id, command=event.command, cwd=event.cwd
+        )
+
+    def _event_message(self, event: Event) -> dict[str, object]:
+        message = EventMessage(
+            event=event,
+            approval_request=self._approval_prompt(event)
+            if isinstance(event, ApprovalRequested)
+            else None,
+        )
+        # Preserve T14's exact envelope for events with no approval prompt.
+        return message.model_dump(
+            mode="json",
+            exclude={"approval_request"} if message.approval_request is None else None,
+        )
+
     def _create_app(self) -> FastAPI:
         app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -146,7 +200,7 @@ class UIServer:
         ) -> Response:
             token = request.query_params.get("view_token")
             if token is None:
-                token = request.cookies.get("specvania_view")
+                token = request.cookies.get(self.view_cookie_name)
             if not _matches(token, self.view_token):
                 return JSONResponse({"detail": "View token required"}, status_code=401)
             if request.headers.get("host") != f"127.0.0.1:{self.port}":
@@ -157,7 +211,7 @@ class UIServer:
             # Relative ES modules and font requests carry the view token in a
             # same-site cookie; the control token is never persisted in a cookie.
             response.set_cookie(
-                "specvania_view", self.view_token, httponly=True, samesite="strict"
+                self.view_cookie_name, self.view_token, httponly=True, samesite="strict"
             )
             response.headers["referrer-policy"] = "no-referrer"
             response.headers["cache-control"] = "no-store"
@@ -198,12 +252,29 @@ class UIServer:
         sender: asyncio.Task[None] | None = None
         receiver: asyncio.Task[None] | None = None
         try:
+            pending: ApprovalRequested | None = None
             if subscription is not None and self.ledger is not None:
                 snapshot = await asyncio.to_thread(self.ledger.list_events, self.run_id)
                 state = fold_events(snapshot)
+                for event in snapshot:
+                    if event.type == "approval_requested":
+                        pending = event
+                    elif (
+                        event.type == "approval_answered"
+                        and pending is not None
+                        and event.request_id == pending.request_id
+                    ):
+                        pending = None
             else:
                 state = RunState()
-            await websocket.send_json(StateMessage(state=state).model_dump(mode="json"))
+            await websocket.send_json(
+                StateMessage(
+                    state=state,
+                    approval_request=self._approval_prompt(pending)
+                    if pending
+                    else None,
+                ).model_dump(mode="json")
+            )
             sender = asyncio.create_task(self._send(websocket, subscription, state.seq))
             receiver = asyncio.create_task(self._receive(websocket))
             # In replay, the receiver stays available after the last event; closing
@@ -216,7 +287,7 @@ class UIServer:
             await receiver
         except WebSocketDisconnect:
             pass
-        except (LedgerError, StateFoldError):
+        except (LedgerError, StateFoldError, SecretLeakError):
             logging.getLogger(__name__).warning("UI state unavailable")
             await websocket.close(code=1011)
         finally:
@@ -224,7 +295,11 @@ class UIServer:
                 if worker is not None:
                     worker.cancel()
                     with contextlib.suppress(
-                        asyncio.CancelledError, WebSocketDisconnect
+                        asyncio.CancelledError,
+                        WebSocketDisconnect,
+                        LedgerError,
+                        StateFoldError,
+                        SecretLeakError,
                     ):
                         await worker
             if subscription is not None:
@@ -242,9 +317,7 @@ class UIServer:
                     await asyncio.to_thread(
                         self.clock.sleep, min(gap, 2.0) / self.speed
                     )
-                await websocket.send_json(
-                    EventMessage(event=event).model_dump(mode="json")
-                )
+                await websocket.send_json(self._event_message(event))
                 previous = event
             return
         loop = asyncio.get_running_loop()
@@ -266,37 +339,41 @@ class UIServer:
                 event = await queue.get()
                 if event.seq <= seq:
                     continue
-                await websocket.send_json(
-                    EventMessage(event=event).model_dump(mode="json")
-                )
+                await websocket.send_json(self._event_message(event))
                 seq = event.seq
         finally:
             stopped.set()
             await asyncio.to_thread(thread.join)
 
     async def _receive(self, websocket: WebSocket) -> None:
+        async def reject(
+            reason: Literal[
+                "invalid message", "control unavailable", "request unavailable"
+            ],
+        ) -> None:
+            logging.getLogger(__name__).warning(
+                "UI approval message rejected: %s", reason
+            )
+            await websocket.send_json(ApprovalRejected(reason=reason).model_dump())
+
         while True:
             try:
                 message = ApprovalAnswer.model_validate(await websocket.receive_json())
             except (ValidationError, ValueError):
-                logging.getLogger(__name__).warning(
-                    "UI approval message rejected: invalid message"
-                )
-                await websocket.close(code=1008)
-                return
+                await reject("invalid message")
+                continue
             if (
                 not _matches(message.control_token, self.control_token)
                 or self.replay is not None
                 or self.approval_responder is None
             ):
-                logging.getLogger(__name__).warning(
-                    "UI approval message rejected: control unavailable"
-                )
-                await websocket.close(code=1008)
-                return
+                await reject("control unavailable")
+                continue
             # Pass only non-secret fields across the responder boundary (T20).
             answer = message.model_copy(update={"control_token": ""})
-            await asyncio.to_thread(self.approval_responder, answer)
+            accepted = await asyncio.to_thread(self.approval_responder, answer)
+            if accepted is False:
+                await reject("request unavailable")
 
     def serve(
         self,

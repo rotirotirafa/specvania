@@ -14,6 +14,12 @@ Every change to the spec's intent, logged before the commit that introduces it. 
 
 ## Entries
 
+### DEV-004 · 2026-10-12 · T20
+**What changed:** Rejected approval messages receive a non-secret `approval_rejected` WebSocket reply and leave the watching connection open. The view cookie is named `specvania_view_<port>` using the actual bound port. State/event transport envelopes optionally include a transient `approval_request` containing the full command and cwd; connecting during a pending approval restores its choice box without repeating a notification. Ledger events and their summary limits are unchanged.
+**Why:** The owner authorized the T14 rejection/cookie findings in T20. Desktop approval must display the command it authorizes, including text beyond the ledger's 200-character summaries, and must remain available when a window connects during a pending request. `tests/test_desktop_approval.py` proves rejection continuity, cookie isolation, broker execution/cancellation, full prompt delivery and reconnect behavior; `tests/desktop/approval.test.cjs` proves the matching UI behavior.
+**Impact:** T14/T20 UI transport, D8 and D16. Live callers register `UIServer.desktop_responder` in their ApprovalBroker alongside TerminalResponder; the existing explicit approval_responder hook remains supported. Tokens stay out of replies, prompts, ledger events and logs.
+**Approved by:** pending
+
 ### DEV-003 · 2026-10-12 · T07
 **What changed:** Plan executions are stored as runs with kind='plan' via migration 0002 adding runs.kind. Successful plan runs have an empty branch, status finished and finished_at set; failed plans leave drafts without ledger records. Mage outputs accept one JSON object inside fences or prose, and invalid Clarify output receives up to two validation-error repairs before a clean failure.
 **Why:** Events require a run and the glossary defines a run as an execution of run or plan. The T07 reviewer requested shared extraction and bounded Clarify repairs for real-model formatting robustness.

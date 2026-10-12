@@ -1,5 +1,6 @@
 // T14 transport; subsequent Map rooms project these state/event notifications.
 import { UI_COLORS } from "./pixel/palette.js";
+import { mountApproval } from "./hud/approval.js";
 
 if (window.specvaniaDesktop) {
   const font = document.createElement("style");
@@ -28,6 +29,7 @@ const socketUrl = new URL("/ws", window.location.href);
 socketUrl.protocol = "ws:";
 socketUrl.searchParams.set("view_token", viewToken || "");
 const socket = new WebSocket(socketUrl);
+mountApproval(socket);
 
 socket.addEventListener("open", () => {
   connection.textContent = "Watching the run";

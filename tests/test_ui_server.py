@@ -150,9 +150,9 @@ def test_approval_without_control_token_is_rejected_and_logged(
             if token is not None:
                 message["control_token"] = ui.view_token if token == "view" else token
             ws.send_json(message)
-            with pytest.raises(WebSocketDisconnect) as rejected:
-                ws.receive_json()
-            assert rejected.value.code == 1008
+            assert ws.receive_json()["kind"] == "approval_rejected"
+            emit(ui)
+            assert ws.receive_json()["event"]["type"] == "run_started"
     assert not answers
     assert "approval" in caplog.text.lower() and "rejected" in caplog.text.lower()
     assert ui.view_token not in caplog.text and ui.control_token not in caplog.text
@@ -175,11 +175,10 @@ def test_control_token_in_message_delivers_validated_answer(ui: UIServer) -> Non
                     "control_token": ui.control_token,
                 }
             )
-            # The following invalid message gives a deterministic barrier
-            # after the answer has been handled.
+            # Rejection replies give a deterministic barrier without dropping
+            # this watching connection after the answer has been handled.
             ws.send_json({"kind": "invalid"})
-            with pytest.raises(WebSocketDisconnect):
-                ws.receive_json()
+            assert ws.receive_json()["kind"] == "approval_rejected"
     assert len(answers) == 1
     assert answers[0].request_id == "request-1" and answers[0].answer is False
     assert ui.control_token not in repr(answers[0])
@@ -443,9 +442,9 @@ def test_invalid_approval_messages_do_not_reach_responder(
         ) as ws:
             ws.receive_json()
             ws.send_json(message | {"control_token": ui.control_token})
-            with pytest.raises(WebSocketDisconnect) as rejected:
-                ws.receive_json()
-            assert rejected.value.code == 1008
+            assert ws.receive_json()["kind"] == "approval_rejected"
+            emit(ui)
+            assert ws.receive_json()["event"]["type"] == "run_started"
     assert not answers
     assert "rejected" in caplog.text
     assert ui.view_token not in caplog.text and ui.control_token not in caplog.text
@@ -463,9 +462,9 @@ def test_control_token_in_url_cannot_authorize_approval(ui: UIServer) -> None:
             ws.send_json(
                 {"kind": "approval_answer", "request_id": "request-1", "answer": True}
             )
-            with pytest.raises(WebSocketDisconnect) as refused:
-                ws.receive_json()
-            assert refused.value.code == 1008
+            assert ws.receive_json()["kind"] == "approval_rejected"
+            emit(ui)
+            assert ws.receive_json()["event"]["type"] == "run_started"
     assert not answers
 
 
