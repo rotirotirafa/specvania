@@ -149,13 +149,13 @@ files: src/specvania/agent/tools.py, src/specvania/agent/sandbox.py, src/specvan
 Tools: `read_file(path, start?, end?)`, `list_dir(path)`, `search(pattern, glob?)`, `write_file(path, content)`, `edit_file(path, old, new)`, `run_shell(command)`. Paths resolve inside the repo root (symlinks resolved), and secret patterns from D12 are refused. `run_shell` goes through an `ApprovalBroker` that accepts several responders and resolves with the first answer (D8); this room ships the terminal responder (non-blocking stdin on POSIX so it can be cancelled) and a scripted test responder. Commands run with a timeout and return exit code plus truncated output.
 
 Checklist:
-- [ ] `../x`, absolute paths outside the root and symlinks escaping the root are refused and emit `tool_refused`
-- [ ] `.env`, `.env.local`, `*.pem`, `*.key` and `id_*` are refused for read and write
-- [ ] `edit_file` fails clearly when `old` matches zero or more than one time
-- [ ] Denying a shell command returns the observation `denied by user` and the command never runs
-- [ ] With two responders, the first answer wins and the other is cancelled and told who answered
-- [ ] Observations are truncated to `observation_kb` with a visible truncation marker
-- [ ] `approval_requested` and `approval_answered` (with the answering responder) are emitted
+- [x] `../x`, absolute paths outside the root and symlinks escaping the root are refused and emit `tool_refused`
+- [x] `.env`, `.env.local`, `*.pem`, `*.key` and `id_*` are refused for read and write
+- [x] `edit_file` fails clearly when `old` matches zero or more than one time
+- [x] Denying a shell command returns the observation `denied by user` and the command never runs
+- [x] With two responders, the first answer wins and the other is cancelled and told who answered
+- [x] Observations are truncated to `observation_kb` with a visible truncation marker
+- [x] `approval_requested` and `approval_answered` (with the answering responder) are emitted
 
 ### T09 · Warrior: JSON action protocol and executor loop
 depends_on: T05, T08
