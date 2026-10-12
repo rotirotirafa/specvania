@@ -1,0 +1,29 @@
+{
+  "name": "CI",
+  "on": {"push": {}, "pull_request": {}},
+  "permissions": {"contents": "read"},
+  "jobs": {
+    "checks": {
+      "runs-on": "${{ matrix.os }}",
+      "strategy": {
+        "fail-fast": false,
+        "matrix": {
+          "os": ["ubuntu-latest", "macos-latest"],
+          "python-version": ["3.12", "3.13"]
+        }
+      },
+      "steps": [
+        {"uses": "actions/checkout@v4"},
+        {
+          "uses": "astral-sh/setup-uv@v6",
+          "with": {"python-version": "${{ matrix.python-version }}"}
+        },
+        {"name": "Install", "run": "uv sync --locked"},
+        {"name": "G1 · Lint", "run": "uv run ruff check ."},
+        {"name": "G2 · Format", "run": "uv run ruff format --check ."},
+        {"name": "G3 · Types", "run": "uv run pyright"},
+        {"name": "G4 · Tests", "run": "uv run pytest -q"}
+      ]
+    }
+  }
+}

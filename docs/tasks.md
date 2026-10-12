@@ -34,11 +34,11 @@ files: pyproject.toml, src/specvania/__init__.py, src/specvania/__main__.py, src
 Create the `uv` project with the src layout from `docs/conventions.md`. The Typer app registers every command from spec §6 (`bug` as a sub-app with add / list / close); every command except `--version` and `--help` prints "not implemented yet" and exits with code 2 until its room is cleared. `tests/conftest.py` installs a socket guard so any test that opens a network connection fails, except to the host of `SPECVANIA_TEST_DATABASE_URL` when set.
 
 Checklist:
-- [ ] `uv run specvania --help` lists init, doctor, plan, lint, run, replay, status, history, bug, export
-- [ ] `uv run specvania --version` prints the version from package metadata
-- [ ] A test proves the socket guard fails a test that tries to connect to a real host
-- [ ] CI runs ruff check, ruff format --check, pyright and pytest on ubuntu-latest and macos-latest with Python 3.12 and 3.13
-- [ ] All gates G1–G4 pass locally
+- [x] `uv run specvania --help` lists init, doctor, plan, lint, run, replay, status, history, bug, export
+- [x] `uv run specvania --version` prints the version from package metadata
+- [x] A test proves the socket guard fails a test that tries to connect to a real host
+- [x] CI runs ruff check, ruff format --check, pyright and pytest on ubuntu-latest and macos-latest with Python 3.12 and 3.13
+- [x] All gates G1–G4 pass locally
 
 ### T02 · Config and `init`
 depends_on: T01
