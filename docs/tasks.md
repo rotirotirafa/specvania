@@ -114,11 +114,11 @@ files: src/specvania/sdd/world.py, src/specvania/sdd/lint.py, src/specvania/cli.
 Parse `spec.md` scenarios and `tasks.md` areas and rooms (spec §7) into typed models (World, Area, Room, Door, Scenario) with source line numbers. Implement lint rules L1–L6. `specvania lint <dir>` prints "OK" or one line per error: `path:line rule message`.
 
 Checklist:
-- [ ] Fixtures exist for a valid world and for at least one violation of each rule L1–L5
-- [ ] Each fixture produces the expected rule id and line number
-- [ ] Cycles are reported with the full cycle path (e.g. `T03 → T05 → T03`)
-- [ ] Headings inside fenced code blocks are ignored in both files (the format example in spec §7 and the map overview above must not create scenarios, areas or rooms)
-- [ ] `specvania lint docs/` on this repository prints OK
+- [x] Fixtures exist for a valid world and for at least one violation of each rule L1–L5
+- [x] Each fixture produces the expected rule id and line number
+- [x] Cycles are reported with the full cycle path (e.g. `T03 → T05 → T03`)
+- [x] Headings inside fenced code blocks are ignored in both files (the format example in spec §7 and the map overview above must not create scenarios, areas or rooms)
+- [x] `specvania lint docs/` on this repository prints OK
 
 ### T07 · Mage: Clarify and `plan`
 depends_on: T04, T05, T06

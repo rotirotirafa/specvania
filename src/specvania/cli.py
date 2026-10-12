@@ -8,6 +8,8 @@ import typer
 from rich.console import Console
 
 from specvania.config import ConfigError, initialize_config
+from specvania.sdd.lint import WorldLintError, validate_directory
+from specvania.sdd.world import WorldParseError
 
 
 def not_implemented() -> NoReturn:
@@ -52,7 +54,6 @@ def create_app() -> typer.Typer:
     for name in (
         "doctor",
         "plan",
-        "lint",
         "run",
         "replay",
         "status",
@@ -64,6 +65,30 @@ def create_app() -> typer.Typer:
             help="Not implemented yet.",
             context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
         )(not_implemented)
+
+    @app.command("lint", help="Validate a world's format, doors and coverage.")
+    def lint(
+        directory: Annotated[Path, typer.Argument(help="World directory.")],
+    ) -> None:
+        try:
+            validate_directory(directory)
+            errors = ()
+        except WorldParseError as error:
+            errors = (error.diagnostic,)
+        except WorldLintError as error:
+            errors = error.diagnostics
+        console = Console()
+        if errors:
+            for diagnostic in errors:
+                console.print(
+                    f"{diagnostic.path}:{diagnostic.line} "
+                    f"{diagnostic.rule} {diagnostic.message}",
+                    markup=False,
+                    highlight=False,
+                    soft_wrap=True,
+                )
+            raise typer.Exit(code=1)
+        console.print("OK")
 
     bug = typer.Typer(help="Manage bugs in the Bestiary.", invoke_without_command=True)
 

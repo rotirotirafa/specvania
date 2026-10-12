@@ -56,7 +56,6 @@ def test_version_matches_package_metadata(module: bool) -> None:
     [
         ("doctor",),
         ("plan",),
-        ("lint",),
         ("run",),
         ("replay",),
         ("status",),
