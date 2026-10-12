@@ -165,12 +165,12 @@ files: src/specvania/agent/actions.py, src/specvania/agent/executor.py, src/spec
 Each turn the Warrior returns one JSON object `{thought, action, args}` (D3). `thought` is capped at 500 characters and shown in the map's dialogue box. Invalid output gets up to 2 repair prompts with the validation error. Context per attempt: spec summary, the room block, conventions and domain docs, repo map, the room's `files`, and the Paladin's feedback from the previous attempt. The loop ends on `finish`, on `max_steps`, or on a router error.
 
 Checklist:
-- [ ] Every action shape validates with Pydantic; unknown actions are rejected with the list of valid ones
-- [ ] JSON wrapped in markdown fences or prose is still extracted when exactly one object is present
-- [ ] Two invalid outputs in a row are repaired; a third ends the attempt as failed with a clear reason
-- [ ] The loop stops at `max_steps` and records why
-- [ ] A scripted run (fake provider) reads a file, edits it, runs an approved command and finishes
-- [ ] Each action emits an `action` event with a short args summary (no file contents)
+- [x] Every action shape validates with Pydantic; unknown actions are rejected with the list of valid ones
+- [x] JSON wrapped in markdown fences or prose is still extracted when exactly one object is present
+- [x] Two invalid outputs in a row are repaired; a third ends the attempt as failed with a clear reason
+- [x] The loop stops at `max_steps` and records why
+- [x] A scripted run (fake provider) reads a file, edits it, runs an approved command and finishes
+- [x] Each action emits an `action` event with a short args summary (no file contents)
 
 ### T10 · Paladin: room review, gates and boss evaluation
 depends_on: T05, T06
