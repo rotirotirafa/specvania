@@ -77,13 +77,13 @@ files: src/specvania/ledger/, pyproject.toml, docker-compose.yml, tests/test_led
 Implement D14 and D15. One `Ledger` API over SQLAlchemy Core: projects (repo root + origin URL), features (slug, title, status), spec_versions (feature, sha256, spec_md, tasks_md, created_at; identical content returns the existing version), runs (feature, spec version, branch, status, timestamps, totals), events (run, seq, type, ts, JSON payload — JSONB on Postgres), bugs (feature, run, room, title, body, source, status, fixed_by_run). `append_event` assigns `seq` atomically. Alembic migrations run automatically on open. SQLite uses WAL mode. `docker-compose.yml` defines one `postgres` service (official image, pinned major version, local-only credentials documented as such). `psycopg` lives in the `postgres` extra.
 
 Checklist:
-- [ ] The ledger test suite is parametrized over SQLite and Postgres; the Postgres variant runs when `SPECVANIA_TEST_DATABASE_URL` is set and is skipped with a visible reason otherwise
-- [ ] A CI job starts Postgres from `docker-compose.yml` and runs the Postgres variant
-- [ ] Opening a new database applies all migrations; opening it again is a no-op
-- [ ] Two threads appending to the same run never produce duplicate or missing `seq` values
-- [ ] Adding the same spec content twice returns the same version id
-- [ ] Every append goes through the redaction guard from T03
-- [ ] `pip install specvania` without the extra works with SQLite and gives a clear message when a Postgres URL is configured
+- [x] The ledger test suite is parametrized over SQLite and Postgres; the Postgres variant runs when `SPECVANIA_TEST_DATABASE_URL` is set and is skipped with a visible reason otherwise
+- [x] A CI job starts Postgres from `docker-compose.yml` and runs the Postgres variant
+- [x] Opening a new database applies all migrations; opening it again is a no-op
+- [x] Two threads appending to the same run never produce duplicate or missing `seq` values
+- [x] Adding the same spec content twice returns the same version id
+- [x] Every append goes through the redaction guard from T03
+- [x] `pip install specvania` without the extra works with SQLite and gives a clear message when a Postgres URL is configured
 
 ### T05 · Provider, rate limiter, router and `doctor`
 depends_on: T02, T03, T04

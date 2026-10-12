@@ -10,7 +10,12 @@ dependencies = [
     "rich>=13",
     "pydantic>=2",
     "tomli-w",
+    "sqlalchemy>=2",
+    "alembic",
 ]
+
+[project.optional-dependencies]
+postgres = ["psycopg[binary]>=3"]
 
 [project.scripts]
 specvania = "specvania.cli:main"
@@ -35,4 +40,5 @@ typeCheckingMode = "standard"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-ra"
 markers = ["pg: requires the configured Postgres test ledger"]
