@@ -300,10 +300,10 @@ files: src/specvania/cli.py, src/specvania/examples/demo/events.jsonl, src/specv
 `specvania replay <run-id|file|demo> [--speed]` opens the map in replay mode. Ship a synthetic demo run (hand-built `events.jsonl`, clearly labeled as synthetic in its README) that exercises every room state, a cooldown, a fallback, a respawn, a boss fight and a monster. T23 adds a real recorded run.
 
 Checklist:
-- [ ] `specvania replay demo` works with no config, no API key, no ledger and the network disabled
-- [ ] The demo includes at least one cooldown, one fallback, one respawn, one boss fight and one bug
-- [ ] The demo's README states it is synthetic
-- [ ] `--speed` accepts 1, 2 and 4 and rejects other values
+- [x] `specvania replay demo` works with no config, no API key, no ledger and the network disabled
+- [x] The demo includes at least one cooldown, one fallback, one respawn, one boss fight and one bug
+- [x] The demo's README states it is synthetic
+- [x] `--speed` accepts 1, 2 and 4 and rejects other values
 
 ---
 

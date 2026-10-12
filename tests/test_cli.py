@@ -55,7 +55,6 @@ def test_version_matches_package_metadata(module: bool) -> None:
     "arguments",
     [
         ("run",),
-        ("replay",),
         ("status",),
         ("history",),
         ("export",),
@@ -64,7 +63,6 @@ def test_version_matches_package_metadata(module: bool) -> None:
         ("bug", "list"),
         ("bug", "close"),
         ("run", "docs/", "--allow-dirty"),
-        ("replay", "demo", "--speed", "4"),
         ("bug", "add", "a bug", "--feature", "invoices", "--room", "T01"),
         ("bug", "close", "1", "--wontfix"),
         ("export", "a-run"),

@@ -1,0 +1,45 @@
+{"ts":"2026-10-12T12:00:00Z","run_id":"20261012-120000-dead","seq":1,"type":"run_started","feature":"synthetic-demo","branch":"specvania/20261012-120000-dead"}
+{"ts":"2026-10-12T12:00:02Z","run_id":"20261012-120000-dead","seq":2,"type":"world_loaded","areas":[{"id":"A1","title":"Lantern Hall","boss_ids":["S1","S2"]},{"id":"A2","title":"Clockwork Garden","boss_ids":["S3"]}],"rooms":[{"id":"T01","area":"A1","area_title":"Lantern Hall","boss_ids":["S1","S2"],"title":"Light the entrance","depends_on":[],"state":"open"},{"id":"T02","area":"A1","area_title":"Lantern Hall","boss_ids":["S1","S2"],"title":"Open the bridge","depends_on":["T01"],"state":"locked"},{"id":"T03","area":"A2","area_title":"Clockwork Garden","boss_ids":["S3"],"title":"Repair the fountain","depends_on":["T02"],"state":"locked"},{"id":"T04","area":"A2","area_title":"Clockwork Garden","boss_ids":["S3"],"title":"Restore the bell","depends_on":["T03"],"state":"locked"},{"id":"T05","area":"A2","area_title":"Clockwork Garden","boss_ids":["S3"],"title":"Unlock the tower","depends_on":["T04"],"state":"locked"},{"id":"T06","area":"A2","area_title":"Clockwork Garden","boss_ids":["S3"],"title":"Explore the greenhouse","depends_on":[],"state":"open"}],"doors":[{"src":"T01","dst":"T02"},{"src":"T02","dst":"T03"},{"src":"T03","dst":"T04"},{"src":"T04","dst":"T05"}],"boss_ids":["S1","S2","S3"]}
+{"ts":"2026-10-12T12:00:04Z","run_id":"20261012-120000-dead","seq":3,"type":"model_call","role":"mage","model":"synthetic/mage","tokens_in":280,"tokens_out":140,"latency":2,"status":200}
+{"ts":"2026-10-12T12:00:06Z","run_id":"20261012-120000-dead","seq":4,"type":"room_entered","room_id":"T01"}
+{"ts":"2026-10-12T12:00:08Z","run_id":"20261012-120000-dead","seq":5,"type":"attempt_started","room_id":"T01","attempt":1}
+{"ts":"2026-10-12T12:00:11Z","run_id":"20261012-120000-dead","seq":6,"type":"model_call","role":"warrior","model":"synthetic/warrior","tokens_in":0,"tokens_out":0,"latency":3,"status":429}
+{"ts":"2026-10-12T12:00:12Z","run_id":"20261012-120000-dead","seq":7,"type":"cooldown","role":"warrior","model":"synthetic/warrior","seconds":5,"reason":"Synthetic 429; Retry-After: 5"}
+{"ts":"2026-10-12T12:00:18Z","run_id":"20261012-120000-dead","seq":8,"type":"model_call","role":"warrior","model":"synthetic/warrior","tokens_in":0,"tokens_out":0,"latency":1,"status":429}
+{"ts":"2026-10-12T12:00:19Z","run_id":"20261012-120000-dead","seq":9,"type":"cooldown","role":"warrior","model":"synthetic/warrior","seconds":10,"reason":"Synthetic repeated rate limit"}
+{"ts":"2026-10-12T12:00:30Z","run_id":"20261012-120000-dead","seq":10,"type":"model_call","role":"warrior","model":"synthetic/warrior","tokens_in":0,"tokens_out":0,"latency":1,"status":429}
+{"ts":"2026-10-12T12:00:31Z","run_id":"20261012-120000-dead","seq":11,"type":"fallback","role":"warrior","from_model":"synthetic/warrior","to_model":"synthetic/warrior-backup","reason":"Three consecutive synthetic failures"}
+{"ts":"2026-10-12T12:00:35Z","run_id":"20261012-120000-dead","seq":12,"type":"model_call","role":"warrior","model":"synthetic/warrior-backup","tokens_in":420,"tokens_out":95,"latency":4,"status":200}
+{"ts":"2026-10-12T12:00:37Z","run_id":"20261012-120000-dead","seq":13,"type":"action","room_id":"T01","thought":"The entrance needs a steady light before the bridge door can open.","action":"edit_file","args_summary":"Synthetic lantern adjustment"}
+{"ts":"2026-10-12T12:00:42Z","run_id":"20261012-120000-dead","seq":14,"type":"gate_result","room_id":"T01","command":"pytest -q","exit_code":0,"output_summary":"Synthetic gate passed"}
+{"ts":"2026-10-12T12:00:47Z","run_id":"20261012-120000-dead","seq":15,"type":"model_call","role":"paladin","model":"synthetic/paladin","tokens_in":320,"tokens_out":80,"latency":5,"status":200}
+{"ts":"2026-10-12T12:00:49Z","run_id":"20261012-120000-dead","seq":16,"type":"review","room_id":"T01","verdict":"pass","checklist":[{"item":"Entrance is lit","ok":true,"note":"Synthetic check"}],"feedback":"The entrance is ready."}
+{"ts":"2026-10-12T12:00:51Z","run_id":"20261012-120000-dead","seq":17,"type":"room_cleared","room_id":"T01","commit":"1111111111111111111111111111111111111111"}
+{"ts":"2026-10-12T12:00:55Z","run_id":"20261012-120000-dead","seq":18,"type":"room_entered","room_id":"T02"}
+{"ts":"2026-10-12T12:00:57Z","run_id":"20261012-120000-dead","seq":19,"type":"attempt_started","room_id":"T02","attempt":1}
+{"ts":"2026-10-12T12:01:04Z","run_id":"20261012-120000-dead","seq":20,"type":"action","room_id":"T02","thought":"Connect the bridge to the lit entrance.","action":"finish","args_summary":"Synthetic bridge completed"}
+{"ts":"2026-10-12T12:01:09Z","run_id":"20261012-120000-dead","seq":21,"type":"review","room_id":"T02","verdict":"pass","checklist":[{"item":"Bridge opens","ok":true,"note":"Synthetic check"}],"feedback":"The bridge is ready."}
+{"ts":"2026-10-12T12:01:11Z","run_id":"20261012-120000-dead","seq":22,"type":"room_cleared","room_id":"T02","commit":"2222222222222222222222222222222222222222"}
+{"ts":"2026-10-12T12:01:14Z","run_id":"20261012-120000-dead","seq":23,"type":"boss_started","area_id":"A1","scenarios":["S1","S2"]}
+{"ts":"2026-10-12T12:01:20Z","run_id":"20261012-120000-dead","seq":24,"type":"boss_scenario","area_id":"A1","scenario":"S1","passed":true,"reason":"Synthetic entrance remains lit"}
+{"ts":"2026-10-12T12:01:27Z","run_id":"20261012-120000-dead","seq":25,"type":"boss_scenario","area_id":"A1","scenario":"S2","passed":true,"reason":"Synthetic bridge connects the areas"}
+{"ts":"2026-10-12T12:01:29Z","run_id":"20261012-120000-dead","seq":26,"type":"boss_result","area_id":"A1","passed":true}
+{"ts":"2026-10-12T12:01:33Z","run_id":"20261012-120000-dead","seq":27,"type":"room_entered","room_id":"T03"}
+{"ts":"2026-10-12T12:01:35Z","run_id":"20261012-120000-dead","seq":28,"type":"attempt_started","room_id":"T03","attempt":1}
+{"ts":"2026-10-12T12:01:41Z","run_id":"20261012-120000-dead","seq":29,"type":"action","room_id":"T03","thought":"Check the fountain's dry channel.","action":"finish","args_summary":"Synthetic first fountain attempt"}
+{"ts":"2026-10-12T12:01:47Z","run_id":"20261012-120000-dead","seq":30,"type":"review","room_id":"T03","verdict":"fail","checklist":[{"item":"Water reaches the basin","ok":false,"note":"Channel still blocked"}],"feedback":"Clear the channel before finishing."}
+{"ts":"2026-10-12T12:01:49Z","run_id":"20261012-120000-dead","seq":31,"type":"room_failed","room_id":"T03","reason":"Synthetic fountain review failed"}
+{"ts":"2026-10-12T12:01:54Z","run_id":"20261012-120000-dead","seq":32,"type":"respawn","room_id":"T03","attempt":2,"feedback":"Clear the channel before finishing."}
+{"ts":"2026-10-12T12:01:56Z","run_id":"20261012-120000-dead","seq":33,"type":"attempt_started","room_id":"T03","attempt":2}
+{"ts":"2026-10-12T12:02:02Z","run_id":"20261012-120000-dead","seq":34,"type":"action","room_id":"T03","thought":"The Paladin found the obstruction; clear it and check the basin again.","action":"finish","args_summary":"Synthetic channel cleared"}
+{"ts":"2026-10-12T12:02:08Z","run_id":"20261012-120000-dead","seq":35,"type":"review","room_id":"T03","verdict":"pass","checklist":[{"item":"Water reaches the basin","ok":true,"note":"Channel clear"}],"feedback":"The fountain is ready."}
+{"ts":"2026-10-12T12:02:10Z","run_id":"20261012-120000-dead","seq":36,"type":"room_cleared","room_id":"T03","commit":"3333333333333333333333333333333333333333"}
+{"ts":"2026-10-12T12:02:14Z","run_id":"20261012-120000-dead","seq":37,"type":"room_entered","room_id":"T04"}
+{"ts":"2026-10-12T12:02:16Z","run_id":"20261012-120000-dead","seq":38,"type":"attempt_started","room_id":"T04","attempt":1}
+{"ts":"2026-10-12T12:02:23Z","run_id":"20261012-120000-dead","seq":39,"type":"review","room_id":"T04","verdict":"fail","checklist":[{"item":"Bell rings","ok":false,"note":"Missing bell wheel"}],"feedback":"The bell needs a replacement wheel."}
+{"ts":"2026-10-12T12:02:25Z","run_id":"20261012-120000-dead","seq":40,"type":"room_failed","room_id":"T04","reason":"Synthetic room has no lives remaining"}
+{"ts":"2026-10-12T12:02:27Z","run_id":"20261012-120000-dead","seq":41,"type":"run_paused","room_id":"T04","reason":"Choose retry, skip or abort for the bell room"}
+{"ts":"2026-10-12T12:02:35Z","run_id":"20261012-120000-dead","seq":42,"type":"room_skipped","room_id":"T04","reason":"Player skips the synthetic bell repair"}
+{"ts":"2026-10-12T12:02:37Z","run_id":"20261012-120000-dead","seq":43,"type":"bug_opened","bug_id":"demo-bell-wheel","title":"Bell wheel missing","body":"The synthetic bell room needs a replacement wheel.","feature":"synthetic-demo","room_id":"T04","source":"room_skipped"}
+{"ts":"2026-10-12T12:02:49Z","run_id":"20261012-120000-dead","seq":44,"type":"bug_closed","bug_id":"demo-bell-wheel","status":"wontfix"}
+{"ts":"2026-10-12T12:02:53Z","run_id":"20261012-120000-dead","seq":45,"type":"run_finished","status":"aborted"}

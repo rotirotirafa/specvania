@@ -2,8 +2,9 @@
 
 import os
 from importlib.metadata import version
+from importlib.resources import as_file, files
 from pathlib import Path
-from typing import Annotated, NoReturn
+from typing import Annotated, Literal, NoReturn
 
 import typer
 from rich.console import Console
@@ -24,6 +25,7 @@ from specvania.ui.launcher import (
     UIMode,
     open_ui,
 )
+from specvania.ui.server import UIServer, UIServerError, load_replay
 
 
 def launch_ui(
@@ -191,7 +193,6 @@ def create_app() -> typer.Typer:
 
     for name in (
         "run",
-        "replay",
         "status",
         "history",
         "export",
@@ -201,6 +202,55 @@ def create_app() -> typer.Typer:
             help="Not implemented yet.",
             context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
         )(not_implemented)
+
+    @app.command("replay", help="Open a recorded run or the synthetic demo in the map.")
+    def replay(
+        source: Annotated[
+            str, typer.Argument(help="Run id, path to events.jsonl, or demo.")
+        ],
+        speed: Annotated[
+            Literal["1", "2", "4"], typer.Option("--speed", help="Playback speed.")
+        ] = "1",
+    ) -> None:
+        guard = RedactionGuard()
+        clock = SystemClock()
+        config = Config()
+        try:
+            if source == "demo":
+                resource = files("specvania").joinpath("examples/demo/events.jsonl")
+                with as_file(resource) as path:
+                    events = load_replay(path, guard=guard)
+            elif source.endswith(".jsonl"):
+                events = load_replay(Path(source), guard=guard)
+            else:
+                root = Path.cwd()
+                config = load_config(root / ".specvania/config.toml")
+                with Ledger.from_config(
+                    root, config.ledger, clock=clock, guard=guard
+                ) as ledger:
+                    events = load_replay(source, guard=guard, ledger=ledger)
+            if not events:
+                raise UIServerError("Cannot replay an empty event stream.")
+            server = UIServer(
+                guard=guard,
+                clock=clock,
+                run_id=events[0].run_id,
+                replay=events,
+                speed=1 if speed == "1" else 2 if speed == "2" else 4,
+            )
+
+            def launch() -> None:
+                launch_ui(
+                    server.port,
+                    server.view_token,
+                    server.control_token,
+                    config=config,
+                )
+
+            server.serve(on_started=launch)
+        except (ConfigError, LedgerError, UIServerError) as error:
+            Console(stderr=True).print(str(error), markup=False)
+            raise typer.Exit(code=1) from None
 
     @app.command("lint", help="Validate a world's format, doors and coverage.")
     def lint(

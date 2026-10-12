@@ -298,9 +298,16 @@ class UIServer:
             answer = message.model_copy(update={"control_token": ""})
             await asyncio.to_thread(self.approval_responder, answer)
 
-    def serve(self, *, browser: bool = False) -> None:
+    def serve(
+        self,
+        *,
+        browser: bool = False,
+        on_started: Callable[[], None] | None = None,
+    ) -> None:
         """Bind only loopback, including OS-assigned ports, then run until stopped.
 
+        The optional callback runs after startup with the assigned port available,
+        so command rooms can choose a UI shell through the shared CLI launcher.
         Uvicorn access logging and INFO WebSocket logging are disabled because
         request targets contain the view token. The browser launches after
         uvicorn has started accepting.
@@ -310,8 +317,11 @@ class UIServer:
         class LocalServer(uvicorn.Server):
             async def startup(self, sockets: list[socket.socket] | None = None) -> None:
                 await super().startup(sockets=sockets)
-                if browser and self.started:
-                    open_browser(ui.port, ui.view_token)
+                if self.started:
+                    if on_started is not None:
+                        on_started()
+                    elif browser:
+                        open_browser(ui.port, ui.view_token)
 
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
