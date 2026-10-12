@@ -1,10 +1,13 @@
 """Thin CLI registration; commands remain stubs until their rooms are cleared."""
 
 from importlib.metadata import version
+from pathlib import Path
 from typing import Annotated, NoReturn
 
 import typer
 from rich.console import Console
+
+from specvania.config import ConfigError, initialize_config
 
 
 def not_implemented() -> NoReturn:
@@ -33,8 +36,20 @@ def create_app() -> typer.Typer:
             Console().print(version("specvania"))
             raise typer.Exit()
 
+    @app.command("init", help="Create config in the current git repository.")
+    def init(
+        force: Annotated[
+            bool, typer.Option("--force", help="Overwrite an existing config.")
+        ] = False,
+    ) -> None:
+        try:
+            path = initialize_config(Path.cwd(), force=force)
+        except ConfigError as error:
+            Console(stderr=True).print(str(error), markup=False)
+            raise typer.Exit(code=1) from None
+        Console().print(f"Created {path}", markup=False)
+
     for name in (
-        "init",
         "doctor",
         "plan",
         "lint",

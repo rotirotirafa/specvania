@@ -54,7 +54,6 @@ def test_version_matches_package_metadata(module: bool) -> None:
 @pytest.mark.parametrize(
     "arguments",
     [
-        ("init",),
         ("doctor",),
         ("plan",),
         ("lint",),

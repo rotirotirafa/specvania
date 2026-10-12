@@ -48,12 +48,12 @@ files: src/specvania/config.py, src/specvania/cli.py, tests/test_config.py
 Pydantic models for `.specvania/config.toml`: `provider` (base_url, api_key_env), `roles` (mage, warrior, paladin — each an ordered list of model ids), `limits` (rpm, lives, max_steps, observation_kb, failures_before_fallback), `gates` (list of shell commands), `ledger` (sqlite_path, database_url_env), `ui` (host, port, mode: auto / browser / desktop), `desktop` (optional app path). Defaults come from spec D2, D4, D5, D9, D13 and D14. `specvania init` writes the file in the current git repo and appends `.specvania/ledger.db*` and `.specvania/runs/` to `.gitignore`.
 
 Checklist:
-- [ ] Defaults match D2, D4, D5, D9, D13 and D14 exactly (asserted in a test)
-- [ ] Unknown keys and empty role chains are rejected with a readable error
-- [ ] `init` outside a git repository exits non-zero without writing anything
-- [ ] `init` refuses to overwrite an existing config unless `--force` is given
-- [ ] `init` adds both ignore lines to `.gitignore` once (idempotent)
-- [ ] Neither the API key nor the database URL value is ever stored in the config, only env var names
+- [x] Defaults match D2, D4, D5, D9, D13 and D14 exactly (asserted in a test)
+- [x] Unknown keys and empty role chains are rejected with a readable error
+- [x] `init` outside a git repository exits non-zero without writing anything
+- [x] `init` refuses to overwrite an existing config unless `--force` is given
+- [x] `init` adds both ignore lines to `.gitignore` once (idempotent)
+- [x] Neither the API key nor the database URL value is ever stored in the config, only env var names
 
 ### T03 · Events, bus and clock
 depends_on: T01
