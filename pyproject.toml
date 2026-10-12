@@ -13,6 +13,8 @@ dependencies = [
     "tomli-w",
     "sqlalchemy>=2",
     "alembic",
+    "fastapi",
+    "uvicorn[standard]",
 ]
 
 [project.optional-dependencies]
@@ -22,7 +24,7 @@ postgres = ["psycopg[binary]>=3"]
 specvania = "specvania.cli:main"
 
 [dependency-groups]
-dev = ["pytest>=8", "hypothesis>=6", "ruff>=0.6", "pyright>=1.1"]
+dev = ["pytest>=8", "hypothesis>=6", "ruff>=0.6", "pyright>=1.1", "httpx2"]
 
 [build-system]
 requires = ["uv_build>=0.9,<0.14"]

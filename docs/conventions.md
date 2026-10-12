@@ -7,7 +7,7 @@ Project rules for every room. Decisions with a "why" live in `docs/spec.md` §9;
 - Python ≥ 3.12, managed with `uv`. Package name `specvania`, CLI entry point `specvania`.
 - Runtime dependencies allowed: `typer`, `rich`, `pydantic` (v2), `openai`, `fastapi`, `uvicorn[standard]`, `sqlalchemy` (2.x, Core only), `alembic`, `tomli-w`, `pathspec`.
 - Optional extra `postgres`: `psycopg[binary]` (3.x).
-- Dev dependencies allowed: `pytest`, `hypothesis`, `ruff`, `pyright`.
+- Dev dependencies allowed: `pytest`, `hypothesis`, `ruff`, `pyright`, `httpx2`.
 - Web app: vanilla ES modules, vendored Phaser 3 (pinned), vendored pixel font. No npm, no bundler, no CDN.
 - Desktop app (`apps/desktop/` only): `electron` and `electron-builder` as dev dependencies; main and preload in plain JavaScript (CommonJS), no bundler, no other npm packages.
 - Infra: `docker-compose.yml` with one `postgres` service. Never a runtime requirement.

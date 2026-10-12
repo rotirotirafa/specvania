@@ -245,11 +245,11 @@ files: src/specvania/ui/server.py, src/specvania/ui/launcher.py, src/specvania/u
 FastAPI app serving `ui/static/` and one WebSocket `/ws`, bound to `127.0.0.1` (D16). On start it creates a view token and a control token and registers both with the redaction guard. Every page and WebSocket request needs the view token; approval answers need the control token; the WebSocket rejects foreign `Origin` headers. Protocol: server → client `{kind: "state"}` then `{kind: "event"}` messages; client → server `{kind: "approval_answer", request_id, answer}`. Live mode follows the bus; replay mode reads events from the ledger or a `.jsonl` file and plays them with original gaps divided by the speed (gaps capped at 2 s). `launcher.py` opens a browser tab with the view token for `--ui=browser`.
 
 Checklist:
-- [ ] Requests without the view token get 401; approval messages without the control token are rejected and logged
-- [ ] A WebSocket handshake with a foreign `Origin` is refused
-- [ ] A client connecting mid-run receives the current state, then live events, with no gaps or duplicates in `seq`
-- [ ] Replay at speed 4 is about 4× faster than speed 1 (fake clock test)
-- [ ] `index.html` and every static file load with no external URLs (asserted by scanning static files)
+- [x] Requests without the view token get 401; approval messages without the control token are rejected and logged
+- [x] A WebSocket handshake with a foreign `Origin` is refused
+- [x] A client connecting mid-run receives the current state, then live events, with no gaps or duplicates in `seq`
+- [x] Replay at speed 4 is about 4× faster than speed 1 (fake clock test)
+- [x] `index.html` and every static file load with no external URLs (asserted by scanning static files)
 
 ### T15 · Pixel kit: sprites, palette and vendored assets
 depends_on: T01
