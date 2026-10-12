@@ -93,12 +93,12 @@ files: src/specvania/provider/client.py, src/specvania/provider/ratelimit.py, sr
 OpenAI-compatible client (chat completions + list models) using the `openai` SDK with `base_url` from config. One token-bucket limiter per API key shared by all roles (D5). The router resolves a role to a model, retries 429/5xx with exponential backoff and jitter honoring `Retry-After`, and moves to the next model in the chain after `failures_before_fallback` consecutive failures; the chain resets when a new room starts. Every call emits `model_call`; waits emit `cooldown`; switches emit `fallback`. `fake.py` provides a scripted provider for tests. `specvania doctor` checks the env var, lists models from `/v1/models`, marks every configured model as found or missing, and checks the ledger connection and migration version.
 
 Checklist:
-- [ ] With a fake clock, 100 queued calls at rpm=40 never exceed 40 calls in any 60-second window
-- [ ] A 429 with `Retry-After: 5` waits at least 5 seconds (fake clock) and emits `cooldown`
-- [ ] 3 consecutive failures switch to the next model and emit `fallback` with from/to ids
-- [ ] When the whole chain fails, the router raises a typed error the engine can turn into `run_paused`
-- [ ] `model_call` events carry role, model, tokens in/out, latency and status
-- [ ] `doctor` exits non-zero when the env var is missing, a configured model is not in `/v1/models`, or the ledger is unreachable
+- [x] With a fake clock, 100 queued calls at rpm=40 never exceed 40 calls in any 60-second window
+- [x] A 429 with `Retry-After: 5` waits at least 5 seconds (fake clock) and emits `cooldown`
+- [x] 3 consecutive failures switch to the next model and emit `fallback` with from/to ids
+- [x] When the whole chain fails, the router raises a typed error the engine can turn into `run_paused`
+- [x] `model_call` events carry role, model, tokens in/out, latency and status
+- [x] `doctor` exits non-zero when the env var is missing, a configured model is not in `/v1/models`, or the ledger is unreachable
 - [ ] Default model ids from D4 are checked against the real catalog once (manually, by the owner) and the result is recorded in `.agent/deviations.md`
 
 ---
