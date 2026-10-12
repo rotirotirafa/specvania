@@ -1,20 +1,32 @@
 """Thin CLI registration; commands remain stubs until their rooms are cleared."""
 
 import os
+from collections.abc import Sequence
 from importlib.metadata import version
 from importlib.resources import as_file, files
 from pathlib import Path
-from typing import Annotated, Literal, NoReturn
+from queue import Empty, Queue
+from threading import Event as ThreadEvent
+from threading import Thread
+from typing import Annotated, Any, Literal, NoReturn, cast
 
 import typer
 from rich.console import Console
 from rich.prompt import Prompt
+from typer.core import TyperCommand
 
+from specvania.agent.approval import ApprovalError, ApprovalResponder, TerminalResponder
+from specvania.agent.gates import GateError
+from specvania.agent.sandbox import SandboxRefusal
+from specvania.agent.tools import ToolError
 from specvania.clock import SystemClock
 from specvania.config import Config, ConfigError, initialize_config, load_config
 from specvania.ledger.repo import Ledger, LedgerError
 from specvania.provider.client import OpenAIProvider, ProviderError
-from specvania.run.events import RedactionGuard, Role
+from specvania.run.bus import EventBus
+from specvania.run.engine import Engine, EngineError, PauseDecision
+from specvania.run.events import RedactionGuard, Role, RunPaused, SecretLeakError
+from specvania.run.gitops import GitError, GitOps
 from specvania.sdd.lint import WorldLintError, validate_directory
 from specvania.sdd.planner import PlanError, Question
 from specvania.sdd.planner import plan as plan_world
@@ -26,6 +38,61 @@ from specvania.ui.launcher import (
     open_ui,
 )
 from specvania.ui.server import UIServer, UIServerError, load_replay
+
+
+class RunCommand(TyperCommand):
+    """Normalize the spec's optional --ui value within the run command only."""
+
+    def parse_args(self, ctx: Any, args: list[str]) -> list[str]:
+        normalized = list(args)
+        for index, value in enumerate(normalized):
+            if value == "--":
+                break
+            if value == "--ui" and (
+                index + 1 == len(normalized)
+                or normalized[index + 1] not in ("auto", "browser", "desktop")
+            ):
+                normalized[index] = "--ui=auto"
+        return super().parse_args(ctx, normalized)
+
+
+def start_run_ui(server: UIServer, *, config: Config, mode: UIMode) -> Thread:
+    """One launcher seam for live runs; serving stays on a daemon thread."""
+    failures: Queue[Exception] = Queue()
+    ready = ThreadEvent()
+
+    def launch() -> None:
+        launch_ui(
+            server.port,
+            server.view_token,
+            server.control_token,
+            config=config,
+            mode=mode,
+        )
+        ready.set()
+
+    def serve() -> None:
+        try:
+            server.serve(on_started=launch)
+        except Exception as error:
+            failures.put(error)
+
+    worker = Thread(target=serve, name="specvania-ui", daemon=True)
+    worker.start()
+    deadline = server.clock.now().timestamp() + 10
+    while not ready.is_set():
+        try:
+            raise failures.get_nowait()
+        except Empty:
+            pass
+        if server.clock.now().timestamp() >= deadline:
+            raise UIServerError("The live UI did not start; check the local port.")
+        server.clock.sleep(0.01)
+    try:
+        raise failures.get_nowait()
+    except Empty:
+        pass
+    return worker
 
 
 def launch_ui(
@@ -191,8 +258,125 @@ def create_app() -> typer.Typer:
             f"Mage wrote {result.directory} (plan {result.run_id})", markup=False
         )
 
-    for name in (
+    @app.command(
         "run",
+        cls=RunCommand,
+        help="Clear rooms in door order, with reviews and bosses.",
+    )
+    def run(
+        directory: Annotated[Path, typer.Argument(help="World directory.")],
+        allow_dirty: Annotated[
+            bool, typer.Option("--allow-dirty", help="Allow an existing dirty tree.")
+        ] = False,
+        ui: Annotated[
+            str | None,
+            typer.Option("--ui", help="Open the live map: auto, browser or desktop."),
+        ] = None,
+    ) -> None:
+        console = Console()
+        clock = SystemClock()
+        guard = RedactionGuard()
+
+        def decide(pause: RunPaused) -> PauseDecision:
+            console.print(f"Run paused: {pause.reason}", markup=False)
+            return cast(
+                PauseDecision,
+                Prompt.ask(
+                    "Choose",
+                    choices=["retry", "skip", "abort"],
+                    default="abort",
+                    console=console,
+                ),
+            )
+
+        try:
+            if ui not in (None, "auto", "browser", "desktop"):
+                raise EngineError("Choose UI mode auto, browser or desktop.")
+            # Reject invalid worlds and dirty repositories before creating a client.
+            validate_directory(directory)
+            git = GitOps(Path.cwd())
+            git.check(allow_dirty=allow_dirty)
+            config = load_config(git.root / ".specvania/config.toml")
+            key = os.environ.get(config.provider.api_key_env, "")
+            if not key.strip():
+                raise EngineError(f"API key: {config.provider.api_key_env} missing")
+            guard.register(key)
+            ledger_url = os.environ.get(config.ledger.database_url_env, "")
+            if ledger_url:
+                guard.register(ledger_url)
+            bus = EventBus(guard)
+            responder = TerminalResponder(
+                0, lambda text: console.print(text, markup=False)
+            )
+            with OpenAIProvider(config.provider, api_key=key) as provider:
+                with Ledger.from_config(
+                    git.root, config.ledger, clock=clock, guard=guard
+                ) as ledger:
+
+                    def started(run_id: str) -> Sequence[ApprovalResponder] | None:
+                        if ui is not None:
+                            server = UIServer(
+                                guard=guard,
+                                clock=clock,
+                                run_id=run_id,
+                                ledger=ledger,
+                                bus=bus,
+                                port=config.ui.port,
+                            )
+                            start_run_ui(
+                                server,
+                                config=config,
+                                mode=cast(UIMode, ui),
+                            )
+                            return (server.desktop_responder,)
+                        return None
+
+                    state = Engine(
+                        root=git.root,
+                        config=config,
+                        provider=provider,
+                        ledger=ledger,
+                        bus=bus,
+                        clock=clock,
+                        responders=[responder],
+                        decide=decide,
+                    ).run(directory, allow_dirty=allow_dirty, on_started=started)
+        except WorldParseError as error:
+            diagnostic = error.diagnostic
+            Console(stderr=True).print(
+                f"{diagnostic.path}:{diagnostic.line} {diagnostic.rule} "
+                f"{diagnostic.message}",
+                markup=False,
+            )
+            raise typer.Exit(code=1) from None
+        except WorldLintError as error:
+            for diagnostic in error.diagnostics:
+                Console(stderr=True).print(
+                    f"{diagnostic.path}:{diagnostic.line} {diagnostic.rule} "
+                    f"{diagnostic.message}",
+                    markup=False,
+                )
+            raise typer.Exit(code=1) from None
+        except (
+            ConfigError,
+            LedgerError,
+            ProviderError,
+            EngineError,
+            GitError,
+            GateError,
+            ToolError,
+            ApprovalError,
+            SandboxRefusal,
+            UIServerError,
+            SecretLeakError,
+        ) as error:
+            Console(stderr=True).print(str(error), markup=False)
+            raise typer.Exit(code=1) from None
+        console.print(f"Run {state.run_id}: {state.status}", markup=False)
+        if state.status != "finished":
+            raise typer.Exit(code=1)
+
+    for name in (
         "status",
         "history",
         "export",

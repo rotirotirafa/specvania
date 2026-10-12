@@ -14,6 +14,18 @@ Every change to the spec's intent, logged before the commit that introduces it. 
 
 ## Entries
 
+### DEV-006 · 2026-10-12 · T11
+**What changed:** Skipping a room saves its uncommitted tracked edits, deletions and non-ignored untracked files in a named local Git stash before continuing. The stable stash id is included in `room_skipped.reason`. Abort leaves the working tree in place for inspection.
+**Why:** The T11 reviewer identified that skipped partial work contaminated the next room's Paladin diff and commit. Temporary-repository tests cover review failure and both Warrior and Paladin router errors, stash recovery and abort preservation.
+**Impact:** T11 engine/GitOps, D7, S4 and S7. No event types or fields change; stash metadata stays within the existing 200-character reason limit.
+**Approved by:** pending
+
+### DEV-005 · 2026-10-12 · T11
+**What changed:** A failed boss pause offers retry / skip / abort; skip continues to the next area with the boss recorded as failed, no new event type. Retry evaluates the same area diff with fresh gate results; abort finishes the run with status aborted.
+**Why:** S12/T11 say a failed scenario pauses the run but do not define the choices.
+**Impact:** Engine (T11), bugs (T13), map boss HP (T17).
+**Approved by:** owner, 2026-10-12.
+
 ### DEV-004 · 2026-10-12 · T20
 **What changed:** Rejected approval messages receive a non-secret `approval_rejected` WebSocket reply and leave the watching connection open. The view cookie is named `specvania_view_<port>` using the actual bound port. State/event transport envelopes optionally include a transient `approval_request` containing the full command and cwd; connecting during a pending approval restores its choice box without repeating a notification. Ledger events and their summary limits are unchanged.
 **Why:** The owner authorized the T14 rejection/cookie findings in T20. Desktop approval must display the command it authorizes, including text beyond the ledger's 200-character summaries, and must remain available when a window connects during a pending request. `tests/test_desktop_approval.py` proves rejection continuity, cookie isolation, broker execution/cancellation, full prompt delivery and reconnect behavior; `tests/desktop/approval.test.cjs` proves the matching UI behavior.

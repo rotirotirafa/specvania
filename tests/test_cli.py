@@ -54,7 +54,6 @@ def test_version_matches_package_metadata(module: bool) -> None:
 @pytest.mark.parametrize(
     "arguments",
     [
-        ("run",),
         ("status",),
         ("history",),
         ("export",),
@@ -62,7 +61,6 @@ def test_version_matches_package_metadata(module: bool) -> None:
         ("bug", "add"),
         ("bug", "list"),
         ("bug", "close"),
-        ("run", "docs/", "--allow-dirty"),
         ("bug", "add", "a bug", "--feature", "invoices", "--room", "T01"),
         ("bug", "close", "1", "--wontfix"),
         ("export", "a-run"),

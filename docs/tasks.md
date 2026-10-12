@@ -194,14 +194,14 @@ files: src/specvania/run/engine.py, src/specvania/run/gitops.py, src/specvania/c
 `specvania run <dir>` lints the world, checks git (D7), snapshots the spec into the ledger as a spec version, opens a run, creates branch `specvania/<run-id>`, emits `world_loaded`, then clears rooms in topological order (ties by room id). Per room: attempt → gates → review; pass → commit `specvania(Txx): <title>` and `room_cleared`; fail → `respawn` with feedback until lives run out → `run_paused` with retry / skip / abort. When every room of an area is cleared, run the boss; a failed scenario pauses the run. Every event goes to the bus and the ledger.
 
 Checklist:
-- [ ] A room never starts before all rooms in its `depends_on` are cleared
-- [ ] Each cleared room creates exactly one commit whose message starts with `specvania(Txx)`
-- [ ] Dirty tree without `--allow-dirty` exits non-zero before any model call
-- [ ] No push is ever executed (asserted by inspecting git commands in tests)
-- [ ] Out of lives → paused; retry resets lives, skip emits `room_skipped` and keeps doors closed for its dependents, abort ends the run with status `aborted`
-- [ ] A failed boss scenario pauses the run and names the scenario and reason
-- [ ] The run row references the spec version it executed; editing the spec and running again creates a new version
-- [ ] A killed run's state is rebuilt from the ledger's events (end-to-end test with the fake provider)
+- [x] A room never starts before all rooms in its `depends_on` are cleared
+- [x] Each cleared room creates exactly one commit whose message starts with `specvania(Txx)`
+- [x] Dirty tree without `--allow-dirty` exits non-zero before any model call
+- [x] No push is ever executed (asserted by inspecting git commands in tests)
+- [x] Out of lives → paused; retry resets lives, skip emits `room_skipped` and keeps doors closed for its dependents, abort ends the run with status `aborted`
+- [x] A failed boss scenario pauses the run and names the scenario and reason
+- [x] The run row references the spec version it executed; editing the spec and running again creates a new version
+- [x] A killed run's state is rebuilt from the ledger's events (end-to-end test with the fake provider)
 
 ### T12 · Summary, `status`, `history` and `export`
 depends_on: T04, T11
