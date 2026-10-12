@@ -180,11 +180,11 @@ files: src/specvania/agent/reviewer.py, src/specvania/agent/gates.py, src/specva
 Gates are the `gates` commands from config, run without a prompt (D8), each emitting `gate_result`. Room review input: room block, attempt diff, gate results. Output JSON `{verdict, checklist[{item, ok, note}], feedback}`; the verdict is forced to `fail` if any checklist item is not ok or any gate failed. Boss evaluation input: the area's boss scenarios, the area diff and gate results; output one `{scenario, passed, reason}` per scenario.
 
 Checklist:
-- [ ] A failing gate forces `fail` even if the model answers `pass`
-- [ ] A checklist item marked not ok forces `fail`
-- [ ] The review verdict, per-item results and feedback are emitted as one `review` event
-- [ ] Boss evaluation emits one `boss_scenario` per scenario and one `boss_result`
-- [ ] The Paladin never receives file contents outside the diff and the room's `files`
+- [x] A failing gate forces `fail` even if the model answers `pass`
+- [x] A checklist item marked not ok forces `fail`
+- [x] The review verdict, per-item results and feedback are emitted as one `review` event
+- [x] Boss evaluation emits one `boss_scenario` per scenario and one `boss_result`
+- [x] The Paladin never receives file contents outside the diff and the room's `files`
 
 ### T11 · Engine: doors, commits, lives and bosses
 depends_on: T04, T06, T09, T10
