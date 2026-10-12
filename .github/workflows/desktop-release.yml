@@ -1,0 +1,54 @@
+{
+  "name": "Desktop release",
+  "on": {"push": {"tags": ["desktop-v*"]}},
+  "permissions": {"contents": "read"},
+  "jobs": {
+    "build": {
+      "runs-on": "${{ matrix.os }}",
+      "strategy": {
+        "fail-fast": false,
+        "matrix": {
+          "include": [
+            {"os": "macos-latest", "platform": "mac", "arch": "arm64", "extension": "dmg"},
+            {"os": "macos-latest", "platform": "mac", "arch": "x64", "extension": "dmg"},
+            {"os": "ubuntu-latest", "platform": "linux", "arch": "x64", "extension": "AppImage"}
+          ]
+        }
+      },
+      "defaults": {"run": {"working-directory": "apps/desktop"}},
+      "env": {"CSC_IDENTITY_AUTO_DISCOVERY": "false"},
+      "steps": [
+        {"uses": "actions/checkout@v4"},
+        {"uses": "actions/setup-node@v4", "with": {"node-version": "22", "cache": "npm", "cache-dependency-path": "apps/desktop/package-lock.json"}},
+        {"name": "Install pinned desktop dependencies", "run": "npm ci"},
+        {"name": "G10 · Desktop checks", "run": "npm run check"},
+        {"name": "Generate original pixel-kit icon", "run": "npm run make-icon"},
+        {"name": "Build unsigned installer", "run": "npm run dist:${{ matrix.platform }} -- --${{ matrix.arch }}"},
+        {
+          "uses": "actions/upload-artifact@v4",
+          "with": {
+            "name": "desktop-${{ matrix.platform }}-${{ matrix.arch }}",
+            "path": "apps/desktop/dist/specvania-*-${{ matrix.arch }}.${{ matrix.extension }}",
+            "if-no-files-found": "error"
+          }
+        }
+      ]
+    },
+    "release": {
+      "needs": "build",
+      "runs-on": "ubuntu-latest",
+      "permissions": {"contents": "write"},
+      "steps": [
+        {"uses": "actions/download-artifact@v4", "with": {"pattern": "desktop-*", "path": "artifacts", "merge-multiple": true}},
+        {
+          "uses": "softprops/action-gh-release@v2",
+          "with": {
+            "files": "artifacts/specvania-*.dmg\nartifacts/specvania-*.AppImage",
+            "fail_on_unmatched_files": true,
+            "body": "Unsigned desktop builds (macOS builds are not notarized). See apps/desktop/README.md in the tagged source for Gatekeeper and AppImage installation instructions."
+          }
+        }
+      ]
+    }
+  }
+}

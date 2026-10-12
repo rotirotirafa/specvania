@@ -1,0 +1,18 @@
+{
+  "appId": "specvania",
+  "productName": "specvania",
+  "directories": {"output": "dist", "buildResources": "build"},
+  "files": ["main.js", "preload.js", "build/icon.png"],
+  "artifactName": "specvania-${version}-${arch}.${ext}",
+  "mac": {
+    "target": [{"target": "dmg", "arch": ["arm64", "x64"]}],
+    "identity": null,
+    "icon": "build/icon.png"
+  },
+  "linux": {
+    "target": [{"target": "AppImage", "arch": ["x64"]}],
+    "icon": "build/icon.png",
+    "executableName": "specvania-desktop",
+    "category": "Development"
+  }
+}

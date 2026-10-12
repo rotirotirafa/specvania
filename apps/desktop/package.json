@@ -6,9 +6,13 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "check": "node --check main.js && node --check preload.js && node --test ../../tests/desktop/*.test.cjs"
+    "check": "node --check main.js && node --check preload.js && node --test ../../tests/desktop/*.test.cjs",
+    "make-icon": "node scripts/make-icon.mjs",
+    "dist:mac": "npm run make-icon && electron-builder --mac --publish never",
+    "dist:linux": "npm run make-icon && electron-builder --linux --publish never"
   },
   "devDependencies": {
-    "electron": "44.7.0"
+    "electron": "44.7.0",
+    "electron-builder": "26.15.3"
   }
 }

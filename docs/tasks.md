@@ -318,7 +318,7 @@ files: apps/desktop/package.json, apps/desktop/main.js, apps/desktop/preload.js,
 Electron app that opens one frameless 16:9 window (minimum 960×540) and loads the URL passed with `--url`; the control token arrives as a separate `--control-token` argument, never in the URL. The preload exposes a minimal `window.specvaniaDesktop` (`isDesktop`, `controlToken()`, `notify(title, body)`); the web app draws a pixel title bar when it is present. Navigation is locked to the server origin; external links open in the system browser. `launcher.py` finds the app (config `desktop.path`, env `SPECVANIA_DESKTOP`, `specvania-desktop` on PATH, `/Applications/specvania.app` on macOS) for `--ui=desktop`, and `--ui=auto` prefers it and falls back to the browser with a one-line notice.
 
 Checklist:
-- [ ] `npm --prefix apps/desktop start -- --url <url>` opens the map from a running `specvania replay demo`
+- [x] `npm --prefix apps/desktop start -- --url <url>` opens the map from a running `specvania replay demo`
 - [x] `contextIsolation: true`, `nodeIntegration: false` and `sandbox: true` are set and asserted in a test of the window options
 - [x] Navigating to another origin is blocked; `window.open` to http(s) opens the system browser
 - [x] `--ui=auto` without the app opens the browser and prints the notice; `--ui=desktop` without the app exits non-zero with install instructions
@@ -346,10 +346,10 @@ Package with `electron-builder`: macOS dmg for arm64 and x64 (unsigned, document
 
 Checklist:
 - [ ] The workflow produces a dmg for each macOS architecture and an AppImage
-- [ ] The icon is generated from the pixel kit, not a hand-drawn image file
-- [ ] The installed app is found by `launcher.py` on macOS and Linux
-- [ ] The unsigned-build warning and how to open the app are documented in `apps/desktop/README.md`
-- [ ] Electron's license and its bundled third-party notices are referenced in `THIRD_PARTY_NOTICES.md`
+- [x] The icon is generated from the pixel kit, not a hand-drawn image file
+- [x] The installed app is found by `launcher.py` on macOS and Linux
+- [x] The unsigned-build warning and how to open the app are documented in `apps/desktop/README.md`
+- [x] Electron's license and its bundled third-party notices are referenced in `THIRD_PARTY_NOTICES.md`
 
 ---
 

@@ -202,7 +202,7 @@ test("notification_bridge_rejects_foreign_senders_and_secrets", async () => {
 test("desktop_package_uses_only_the_allowed_pinned_electron_dependency", () => {
   const metadata = JSON.parse(readFileSync(path.join(desktop, "package.json"), "utf8"));
   assert.deepEqual(metadata.dependencies || {}, {});
-  assert.deepEqual(metadata.devDependencies, { electron: "44.7.0" });
+  assert.deepEqual(metadata.devDependencies, { electron: "44.7.0", "electron-builder": "26.15.3" });
   assert.equal(metadata.main, "main.js");
   assert.equal(metadata.scripts.start, "electron .");
 });

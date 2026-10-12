@@ -39,7 +39,7 @@ def _usable_app(path: Path) -> bool:
 
 
 def find_desktop(config_path: str | None = None) -> Path | None:
-    """Find the first usable configured, environment, PATH or macOS app."""
+    """Find configured, environment, PATH executable, AppImage or macOS app."""
     for value in (config_path, os.environ.get("SPECVANIA_DESKTOP")):
         if value:
             path = Path(value).expanduser()
@@ -52,6 +52,11 @@ def find_desktop(config_path: str | None = None) -> Path | None:
             return path.resolve()
     if sys.platform == "darwin" and _usable_app(MACOS_APP):
         return MACOS_APP
+    if sys.platform == "linux":
+        for directory in os.get_exec_path():
+            for path in sorted(Path(directory).glob("specvania-*.AppImage")):
+                if _usable_app(path):
+                    return path.resolve()
     return None
 
 
@@ -114,7 +119,8 @@ def open_ui(
         raise DesktopLaunchError(
             "Install specvania desktop, then set desktop.path or SPECVANIA_DESKTOP "
             "to the app, or put specvania-desktop on PATH "
-            "(macOS: /Applications/specvania.app)."
+            "(macOS: /Applications/specvania.app; "
+            "Linux: executable specvania-*.AppImage on PATH)."
         )
     open_browser(port, view_token)
     return LaunchResult(

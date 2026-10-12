@@ -52,3 +52,26 @@ SOFTWARE.
   Reserved Font Name "Press Start 2P".
 
 The font and its OFL notice are distributed together without modification.
+
+## Electron desktop runtime
+
+- Name: Electron
+- Version: **44.7.0**, pinned in `apps/desktop/package.json`
+- License: **MIT**; upstream license:
+  https://github.com/electron/electron/blob/v44.7.0/LICENSE
+- Electron also bundles Chromium, Node.js and other third-party components with
+  their own licenses. Their complete bundled notices are shipped in the app as
+  `LICENSES.chromium.html`, alongside the Electron `LICENSE` supplied with the
+  runtime. On macOS, inspect the app bundle's runtime files;
+  on Linux, extract the AppImage and inspect its runtime files. These notices
+  remain in the packaged Electron distribution.
+
+## electron-builder (build tool)
+
+- Name: electron-builder
+- Version: **26.15.3**, pinned as a desktop dev dependency; not application code
+- License: **MIT**; upstream license:
+  https://github.com/electron-userland/electron-builder/blob/v26.15.3/LICENSE
+
+The desktop icon is generated from the original specvania pixel kit described
+above and introduces no third-party art.
