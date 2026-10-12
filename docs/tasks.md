@@ -128,13 +128,13 @@ files: src/specvania/sdd/planner.py, src/specvania/sdd/prompts/clarify.md, src/s
 The Mage receives the idea, a repo map (tree truncated to 300 entries) and, when present, README, `docs/conventions.md` and `docs/domain.md`. Step 1 returns JSON `{needs_clarification, questions[{id, question, options?, default}]}` with at most 5 questions; triggers: unclear scope, missing acceptance signal, several valid architectures, destructive or irreversible change. Step 2 writes `spec.md` and `tasks.md` in world format v0. If lint fails, the errors are sent back for up to 2 repair attempts; after that `plan` exits non-zero and keeps the last draft. `--no-clarify` skips step 1. On success the ledger records the feature and the spec version.
 
 Checklist:
-- [ ] With the fake provider, an ambiguous idea yields 1–5 questions and Enter accepts each default
-- [ ] With `--no-clarify` no question is printed
-- [ ] The written world passes lint; a lint failure triggers a repair call that includes the lint output
-- [ ] After 2 failed repairs the command exits non-zero and leaves `spec.draft.md` / `tasks.draft.md`
-- [ ] Clarify questions and answers are recorded as events and copied to the spec's Clarify log section
-- [ ] The feature and its spec version exist in the ledger after a successful `plan`
-- [ ] Prompts live in `prompts/*.md`, not inline in Python
+- [x] With the fake provider, an ambiguous idea yields 1–5 questions and Enter accepts each default
+- [x] With `--no-clarify` no question is printed
+- [x] The written world passes lint; a lint failure triggers a repair call that includes the lint output
+- [x] After 2 failed repairs the command exits non-zero and leaves `spec.draft.md` / `tasks.draft.md`
+- [x] Clarify questions and answers are recorded as events and copied to the spec's Clarify log section
+- [x] The feature and its spec version exist in the ledger after a successful `plan`
+- [x] Prompts live in `prompts/*.md`, not inline in Python
 
 ---
 

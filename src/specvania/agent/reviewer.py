@@ -14,6 +14,7 @@ from specvania.agent.gates import GateExecution
 from specvania.agent.sandbox import Sandbox, SandboxRefusal
 from specvania.clock import Clock
 from specvania.provider.client import ChatMessage
+from specvania.provider.jsonout import ModelOutputError, extract_json_value
 from specvania.provider.router import Router
 from specvania.run.events import (
     BossResult,
@@ -62,48 +63,6 @@ def _prompt(name: str) -> str:
     return (
         files("specvania.agent").joinpath("prompts", name).read_text(encoding="utf-8")
     )
-
-
-def _extract_json(output: str, shape: Literal["{", "["]) -> str:
-    """Find one complete top-level value, never its nested objects or arrays."""
-    candidates: list[str] = []
-    stack: list[str] = []
-    start = 0
-    quoted = escaped = False
-    for index, character in enumerate(output):
-        if not stack:
-            if character in "{[":
-                start = index
-                stack.append(character)
-                quoted = escaped = False
-            continue
-        if quoted:
-            if escaped:
-                escaped = False
-            elif character == "\\":
-                escaped = True
-            elif character == '"':
-                quoted = False
-        elif character == '"':
-            quoted = True
-        elif character in "{[":
-            stack.append(character)
-        elif character in "}]":
-            if stack.pop() != ("{" if character == "}" else "["):
-                raise ReviewError("Invalid JSON: mismatched brackets.")
-            if not stack:
-                candidate = output[start : index + 1]
-                try:
-                    json.loads(candidate)
-                except ValueError:
-                    continue
-                candidates.append(candidate)
-    if stack:
-        raise ReviewError("Invalid JSON: incomplete top-level value.")
-    if len(candidates) != 1 or not candidates[0].startswith(shape):
-        kind = "object" if shape == "{" else "array"
-        raise ReviewError(f"Expected exactly one top-level JSON {kind}.")
-    return candidates[0]
 
 
 def _normalize_item(text: str) -> str:
@@ -240,11 +199,11 @@ class Reviewer:
         for attempt in range(3):
             output = self._router.complete(Role.PALADIN, messages).content
             try:
-                result = model.model_validate_json(_extract_json(output, shape))
+                result = model.model_validate_json(extract_json_value(output, shape))
                 if validate is not None:
                     validate(result)
                 return result
-            except (ReviewError, ValidationError) as error:
+            except (ReviewError, ModelOutputError, ValidationError) as error:
                 validation_error = str(error)
                 if attempt == 2:
                     raise ReviewError(

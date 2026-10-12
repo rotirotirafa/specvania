@@ -47,7 +47,7 @@ def test_doctor_loads_config_marks_every_model_and_reports_migration(
         "paladin: c found",
     ]:
         assert line in result.output
-    assert "migration 0001" in result.output
+    assert "migration 0002" in result.output
     assert (tmp_path / ".specvania/ledger.db").is_file()
     assert "doctor-fake-secret" not in result.output
 
@@ -140,6 +140,6 @@ def test_doctor_uses_configured_ledger_url_without_printing_it(
     assert result.exit_code == 0, result.output
     assert path.is_file()
     assert not (tmp_path / ".specvania/ledger.db").exists()
-    assert "migration 0001" in result.output
+    assert "migration 0002" in result.output
     assert url not in result.output and str(path) not in result.output
     assert "doctor-fake-secret" not in result.output

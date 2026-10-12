@@ -91,7 +91,7 @@ def test_open_applies_migrations_and_reopen_is_noop(
         original = action(run_id)
         stored = ledger.append_event(original)
         assert original.seq == 999 and stored.seq == 1
-        assert ledger.migration_version == "0001"
+        assert ledger.migration_version == "0002"
     engine = create_engine(ledger_url)
     try:
         assert set(inspect(engine).get_table_names()) == {
@@ -423,7 +423,7 @@ from specvania.run.events import RedactionGuard
 with Ledger.open(
     'sqlite:///portable.db', clock=FakeClock(), guard=RedactionGuard()
 ) as ledger:
-    assert ledger.migration_version == '0001'
+    assert ledger.migration_version == '0002'
 """,
         ],
         cwd=tmp_path,

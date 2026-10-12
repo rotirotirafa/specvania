@@ -28,7 +28,7 @@ from specvania.clock import Clock
 from specvania.config import LedgerConfig
 from specvania.ledger.schema import (
     Schema,
-    build_initial_schema,
+    build_schema,
     configure_sqlite,
     lock_migrations,
 )
@@ -69,6 +69,7 @@ class SpecVersion(Record):
 
 
 class Run(Record):
+    kind: Literal["run", "plan"]
     feature_id: str
     spec_version_id: str
     branch: str
@@ -123,7 +124,7 @@ class Ledger:
             engine = create_engine(parsed)
             if engine.dialect.name == "sqlite":
                 configure_sqlite(engine)
-            ledger = cls(engine, build_initial_schema(), clock, guard)
+            ledger = cls(engine, build_schema(), clock, guard)
             ledger._migrate()
             return ledger
         except (ImportError, ModuleNotFoundError):
@@ -334,7 +335,13 @@ class Ledger:
         branch: str,
         *,
         run_id: str | None = None,
+        kind: Literal["run", "plan"] = "run",
     ) -> Run:
+        """Plan rows represent validated plans, with an empty branch by convention.
+
+        Planning buffers events before creating this finished row; unsuccessful
+        plans have no ledger records. Execution rows still start as running.
+        """
         now = self._clock.now()
         identifier = run_id or f"{now:%Y%m%d-%H%M%S}-{secrets.token_hex(2)}"
         return self._add(
@@ -344,9 +351,10 @@ class Ledger:
                 "feature_id": feature_id,
                 "spec_version_id": spec_version_id,
                 "branch": branch,
-                "status": "running",
+                "kind": kind,
+                "status": "finished" if kind == "plan" else "running",
                 "started_at": now,
-                "finished_at": None,
+                "finished_at": now if kind == "plan" else None,
             },
             Run,
         )

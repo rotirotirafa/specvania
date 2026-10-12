@@ -7,6 +7,7 @@ from typing import Annotated, NoReturn
 
 import typer
 from rich.console import Console
+from rich.prompt import Prompt
 
 from specvania.clock import SystemClock
 from specvania.config import Config, ConfigError, initialize_config, load_config
@@ -14,6 +15,8 @@ from specvania.ledger.repo import Ledger, LedgerError
 from specvania.provider.client import OpenAIProvider, ProviderError
 from specvania.run.events import RedactionGuard, Role
 from specvania.sdd.lint import WorldLintError, validate_directory
+from specvania.sdd.planner import PlanError, Question
+from specvania.sdd.planner import plan as plan_world
 from specvania.sdd.world import WorldParseError
 from specvania.ui.launcher import (
     BrowserLaunchError,
@@ -137,8 +140,56 @@ def create_app() -> typer.Typer:
         if failed:
             raise typer.Exit(code=1)
 
+    @app.command("plan", help="Mage: Clarify an idea and write a verifiable world.")
+    def plan(
+        idea: Annotated[str, typer.Argument(help="Feature idea for the Mage.")],
+        no_clarify: Annotated[
+            bool, typer.Option("--no-clarify", help="Skip Clarify.")
+        ] = False,
+    ) -> None:
+        console = Console()
+        root = Path.cwd()
+        clock = SystemClock()
+        guard = RedactionGuard()
+
+        def answer(question: Question) -> str:
+            console.print(f"Mage · {question.question}", markup=False)
+            if question.options:
+                console.print("Options: " + ", ".join(question.options), markup=False)
+            return Prompt.ask("Answer", default=question.default, console=console)
+
+        try:
+            config = load_config(root / ".specvania/config.toml")
+            key = os.environ.get(config.provider.api_key_env, "")
+            if not key.strip():
+                raise PlanError(f"API key: {config.provider.api_key_env} missing")
+            guard.register(key)
+            ledger_url = os.environ.get(config.ledger.database_url_env, "")
+            if ledger_url:
+                guard.register(ledger_url)
+            with OpenAIProvider(config.provider, api_key=key) as provider:
+                with Ledger.from_config(
+                    root, config.ledger, clock=clock, guard=guard
+                ) as ledger:
+                    result = plan_world(
+                        root=root,
+                        idea=idea,
+                        config=config,
+                        provider=provider,
+                        ledger=ledger,
+                        clock=clock,
+                        guard=guard,
+                        answer=answer,
+                        no_clarify=no_clarify,
+                    )
+        except (ConfigError, LedgerError, ProviderError, PlanError) as error:
+            Console(stderr=True).print(str(error), markup=False)
+            raise typer.Exit(code=1) from None
+        console.print(
+            f"Mage wrote {result.directory} (plan {result.run_id})", markup=False
+        )
+
     for name in (
-        "plan",
         "run",
         "replay",
         "status",

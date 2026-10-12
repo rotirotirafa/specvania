@@ -160,6 +160,18 @@ def build_initial_schema() -> Schema:
     return Schema(metadata, projects, features, spec_versions, runs, events, bugs)
 
 
+def build_schema() -> Schema:
+    """Current schema; the builder used by revision 0001 remains unchanged."""
+    schema = build_initial_schema()
+    schema.runs.append_column(
+        Column("kind", Text, nullable=False, server_default="run")
+    )
+    schema.runs.append_constraint(
+        CheckConstraint("kind IN ('run', 'plan')", name="ck_run_kind")
+    )
+    return schema
+
+
 def configure_sqlite(engine: Engine) -> None:
     """Set connection-local safety and persistent WAL before any migrations."""
 
