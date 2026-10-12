@@ -54,16 +54,12 @@ def test_version_matches_package_metadata(module: bool) -> None:
 @pytest.mark.parametrize(
     "arguments",
     [
-        ("status",),
-        ("history",),
-        ("export",),
         ("bug",),
         ("bug", "add"),
         ("bug", "list"),
         ("bug", "close"),
         ("bug", "add", "a bug", "--feature", "invoices", "--room", "T01"),
         ("bug", "close", "1", "--wontfix"),
-        ("export", "a-run"),
     ],
 )
 def test_commands_are_explicit_stubs(

@@ -36,6 +36,7 @@ from specvania.run.events import (
 )
 from specvania.run.gitops import GitOps
 from specvania.run.state import RunState, fold_events
+from specvania.run.summary import write_summary
 from specvania.sdd.lint import validate_directory
 from specvania.sdd.world import Area, Room, World
 
@@ -104,6 +105,7 @@ class Engine:
     def _pause(self, reason: str, room_id: str | None = None) -> PauseDecision | None:
         pause = RunPaused(**self._fields(), reason=reason[:200], room_id=room_id)
         self.emit(pause)
+        write_summary(self.git.root, self.ledger, self.run_id, config=self.config)
         choice = self.decide(pause)
         if choice not in (None, "retry", "skip", "abort"):
             raise EngineError("Choose retry, skip or abort for a paused run.")
@@ -114,6 +116,7 @@ class Engine:
 
     def _finish(self, status: Literal["finished", "aborted"]) -> None:
         self.emit(RunFinished(**self._fields(), status=status))
+        write_summary(self.git.root, self.ledger, self.run_id, config=self.config)
 
     def _reset_router(self) -> None:
         # Explicit player retry restores an exhausted chain, preserving stamina.

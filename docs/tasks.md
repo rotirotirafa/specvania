@@ -211,12 +211,12 @@ files: src/specvania/run/summary.py, src/specvania/pricing.py, src/specvania/cli
 Fold a run's events into `summary.md`: per model (calls, tokens in/out, 429s, fallbacks, total latency) and per room (attempts, result, commit). `pricing.toml` entries are `model`, `input_per_mtok`, `output_per_mtok`, `currency`, `source_url`, `checked_on`; cost-equivalent appears only for priced models, with source and date. `status` prints a run with Rich. `history` lists features (status, versions, runs, open bugs) and, for one feature, its spec versions and runs. `export <run-id>` writes `events.jsonl`.
 
 Checklist:
-- [ ] Summary is generated for finished, aborted and paused runs
-- [ ] With no `pricing.toml`, no currency value appears anywhere in the output
-- [ ] Priced models show cost with source URL and check date; unpriced models show "not priced"
-- [ ] Token and call totals equal the sums over `model_call` events (property test)
-- [ ] `history <feature>` shows two runs with different spec versions after the scenario in S13
-- [ ] `export` followed by decoding returns exactly the events stored in the ledger
+- [x] Summary is generated for finished, aborted and paused runs
+- [x] With no `pricing.toml`, no currency value appears anywhere in the output
+- [x] Priced models show cost with source URL and check date; unpriced models show "not priced"
+- [x] Token and call totals equal the sums over `model_call` events (property test)
+- [x] `history <feature>` shows two runs with different spec versions after the scenario in S13
+- [x] `export` followed by decoding returns exactly the events stored in the ledger
 
 ### T13 · Bugs and the Bestiary
 depends_on: T07, T11

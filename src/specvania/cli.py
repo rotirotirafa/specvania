@@ -1,7 +1,8 @@
 """Thin CLI registration; commands remain stubs until their rooms are cleared."""
 
 import os
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from importlib.metadata import version
 from importlib.resources import as_file, files
 from pathlib import Path
@@ -22,11 +23,22 @@ from specvania.agent.tools import ToolError
 from specvania.clock import SystemClock
 from specvania.config import Config, ConfigError, initialize_config, load_config
 from specvania.ledger.repo import Ledger, LedgerError
+from specvania.pricing import PricingError, load_pricing
 from specvania.provider.client import OpenAIProvider, ProviderError
 from specvania.run.bus import EventBus
 from specvania.run.engine import Engine, EngineError, PauseDecision
 from specvania.run.events import RedactionGuard, Role, RunPaused, SecretLeakError
 from specvania.run.gitops import GitError, GitOps
+from specvania.run.summary import (
+    SummaryError,
+    export_run,
+    history_report,
+    latest_run,
+    ledger_summary,
+    render_summary,
+    report_secrets,
+    validate_report,
+)
 from specvania.sdd.lint import WorldLintError, validate_directory
 from specvania.sdd.planner import PlanError, Question
 from specvania.sdd.planner import plan as plan_world
@@ -124,6 +136,42 @@ def not_implemented() -> NoReturn:
     """Make the scaffold's unavailable behavior explicit."""
     Console().print("not implemented yet")
     raise typer.Exit(code=2)
+
+
+@contextmanager
+def report_ledger() -> Iterator[
+    tuple[Path, Config, Ledger, RedactionGuard, tuple[str, ...]]
+]:
+    """Read-only commands need local config and a ledger, with no provider client."""
+    registered = report_secrets(Config())
+    try:
+        root = GitOps(Path.cwd()).root
+        config = load_config(root / ".specvania/config.toml")
+        registered = report_secrets(config)
+        guard = RedactionGuard()
+        for secret in registered:
+            guard.register(secret)
+        with Ledger.from_config(
+            root, config.ledger, clock=SystemClock(), guard=guard
+        ) as ledger:
+            yield root, config, ledger, guard, registered
+    except (
+        ConfigError,
+        GitError,
+        LedgerError,
+        SummaryError,
+        PricingError,
+        SecretLeakError,
+    ) as error:
+        message = str(error)
+        try:
+            validate_report(message, registered)
+        except SecretLeakError:
+            message = "Report rejected: contains a registered secret"
+        Console(stderr=True).print(
+            message, markup=False, highlight=False, soft_wrap=True
+        )
+        raise typer.Exit(code=1) from None
 
 
 def create_app() -> typer.Typer:
@@ -369,6 +417,8 @@ def create_app() -> typer.Typer:
             SandboxRefusal,
             UIServerError,
             SecretLeakError,
+            PricingError,
+            SummaryError,
         ) as error:
             Console(stderr=True).print(str(error), markup=False)
             raise typer.Exit(code=1) from None
@@ -376,16 +426,47 @@ def create_app() -> typer.Typer:
         if state.status != "finished":
             raise typer.Exit(code=1)
 
-    for name in (
-        "status",
-        "history",
-        "export",
-    ):
-        app.command(
-            name,
-            help="Not implemented yet.",
-            context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-        )(not_implemented)
+    @app.command("status", help="Show rooms, attempts and per-model metrics of a run.")
+    def status(
+        run_id: Annotated[
+            str | None, typer.Argument(help="Run id; latest when omitted.")
+        ] = None,
+    ) -> None:
+        with report_ledger() as (root, _, ledger, _, secrets):
+            if run_id is None:
+                git = GitOps(root)
+                project = ledger.add_project(root, git.origin_url())
+                run_id = latest_run(ledger, project.id).id
+            output = render_summary(
+                ledger_summary(ledger, run_id),
+                load_pricing(root / ".specvania/pricing.toml"),
+                secrets=secrets,
+            )
+            Console().print(
+                output, markup=False, highlight=False, soft_wrap=True, end=""
+            )
+
+    @app.command("history", help="Show features, spec versions, runs and open bugs.")
+    def history(
+        feature: Annotated[str | None, typer.Argument(help="Feature slug.")] = None,
+    ) -> None:
+        with report_ledger() as (root, _, ledger, _, secrets):
+            project = ledger.add_project(root, GitOps(root).origin_url())
+            output = history_report(ledger, project.id, feature)
+            validate_report(output, secrets)
+            Console().print(output, markup=False, highlight=False, soft_wrap=True)
+
+    @app.command(
+        "export", help="Write a run's events to .specvania/runs/<run-id>/events.jsonl."
+    )
+    def export(
+        run_id: Annotated[str, typer.Argument(help="Run id to export.")],
+    ) -> None:
+        with report_ledger() as (root, _, ledger, guard, secrets):
+            path = export_run(root, ledger, run_id, guard, secrets=secrets)
+            Console().print(
+                f"Exported {path}", markup=False, highlight=False, soft_wrap=True
+            )
 
     @app.command("replay", help="Open a recorded run or the synthetic demo in the map.")
     def replay(
