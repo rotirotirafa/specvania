@@ -319,10 +319,10 @@ Electron app that opens one frameless 16:9 window (minimum 960×540) and loads t
 
 Checklist:
 - [ ] `npm --prefix apps/desktop start -- --url <url>` opens the map from a running `specvania replay demo`
-- [ ] `contextIsolation: true`, `nodeIntegration: false` and `sandbox: true` are set and asserted in a test of the window options
-- [ ] Navigating to another origin is blocked; `window.open` to http(s) opens the system browser
-- [ ] `--ui=auto` without the app opens the browser and prints the notice; `--ui=desktop` without the app exits non-zero with install instructions
-- [ ] The control token never appears in a URL, the ledger or logs
+- [x] `contextIsolation: true`, `nodeIntegration: false` and `sandbox: true` are set and asserted in a test of the window options
+- [x] Navigating to another origin is blocked; `window.open` to http(s) opens the system browser
+- [x] `--ui=auto` without the app opens the browser and prints the notice; `--ui=desktop` without the app exits non-zero with install instructions
+- [x] The control token never appears in a URL, the ledger or logs
 
 ### T20 · Approvals and notifications in the desktop window
 depends_on: T08, T19

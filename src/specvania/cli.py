@@ -9,12 +9,43 @@ import typer
 from rich.console import Console
 
 from specvania.clock import SystemClock
-from specvania.config import ConfigError, initialize_config, load_config
+from specvania.config import Config, ConfigError, initialize_config, load_config
 from specvania.ledger.repo import Ledger, LedgerError
 from specvania.provider.client import OpenAIProvider, ProviderError
 from specvania.run.events import RedactionGuard, Role
 from specvania.sdd.lint import WorldLintError, validate_directory
 from specvania.sdd.world import WorldParseError
+from specvania.ui.launcher import (
+    BrowserLaunchError,
+    DesktopLaunchError,
+    UIMode,
+    open_ui,
+)
+
+
+def launch_ui(
+    port: int,
+    view_token: str,
+    control_token: str,
+    *,
+    config: Config,
+    mode: UIMode | None = None,
+) -> str:
+    """Shared CLI wiring for command rooms, once their UI server is listening."""
+    try:
+        result = open_ui(
+            port,
+            view_token,
+            control_token,
+            mode=mode if mode is not None else config.ui.mode,
+            desktop_path=config.desktop.path,
+        )
+    except (BrowserLaunchError, DesktopLaunchError) as error:
+        Console(stderr=True).print(str(error), markup=False)
+        raise typer.Exit(code=1) from None
+    if result.notice is not None:
+        Console().print(result.notice, markup=False, highlight=False, soft_wrap=True)
+    return result.mode
 
 
 def not_implemented() -> NoReturn:

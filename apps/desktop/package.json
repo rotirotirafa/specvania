@@ -1,0 +1,14 @@
+{
+  "name": "specvania-desktop",
+  "version": "0.1.0",
+  "description": "The optional desktop window for the specvania web app",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "check": "node --check main.js && node --check preload.js && node --test ../../tests/desktop/*.test.cjs"
+  },
+  "devDependencies": {
+    "electron": "44.7.0"
+  }
+}
