@@ -350,6 +350,33 @@ def test_static_files_are_local_and_all_served_with_view_token(ui: UIServer) -> 
         assert ui.view_token not in page.text and ui.control_token not in page.text
 
 
+@pytest.mark.parametrize("path", ["/", "/map/scene.js", "/vendor/phaser.min.js"])
+def test_served_csp_allows_phaser_images_and_keeps_other_sources_local(
+    ui: UIServer, path: str
+) -> None:
+    with TestClient(ui.app, base_url=ORIGIN) as client:
+        response = client.get(path, params={"view_token": ui.view_token})
+        assert response.status_code == 200
+        directives = [
+            directive.split()
+            for directive in response.headers["content-security-policy"].split(";")
+            if directive.strip()
+        ]
+        policy = {name: sources for name, *sources in directives}
+        assert len(policy) == len(directives), "CSP directives must not be duplicated"
+        # Phaser boots with data PNGs and may use blob images for local textures.
+        # Exact source lists also reject wildcard or remote-origin regressions.
+        assert policy == {
+            "default-src": ["'self'"],
+            "img-src": ["'self'", "data:", "blob:"],
+            "script-src": ["'self'", "'unsafe-inline'"],
+            "style-src": ["'self'", "'unsafe-inline'"],
+            "object-src": ["'none'"],
+            "frame-ancestors": ["'none'"],
+            "connect-src": ["'self'", f"ws://127.0.0.1:{ui.port}"],
+        }
+
+
 def test_browser_launcher_opens_only_loopback_with_view_token(
     ui: UIServer,
     monkeypatch: pytest.MonkeyPatch,

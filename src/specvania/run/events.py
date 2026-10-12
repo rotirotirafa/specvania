@@ -11,6 +11,8 @@ from typing import Annotated, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, TypeAdapter
 
+from specvania.sdd.world import World
+
 type ShortText = Annotated[str, Field(max_length=200)]
 type Thought = Annotated[str, Field(max_length=500)]
 type NonNegativeInt = Annotated[int, Field(ge=0)]
@@ -45,11 +47,77 @@ class RoomInfo(FrozenModel):
     area: ShortText
     title: ShortText
     depends_on: tuple[ShortText, ...] = ()
+    area_title: ShortText = Field(default="", exclude_if=lambda value: not value)
+    boss_ids: tuple[ShortText, ...] = Field(
+        default=(), exclude_if=lambda value: not value
+    )
+
+
+class WorldRoomInfo(RoomInfo):
+    """Initial map state without altering T03's RoomProgress state enum."""
+
+    state: Literal["locked", "open", "active", "cleared", "failed", "skipped"] = (
+        "locked"
+    )
+
+
+class AreaInfo(FrozenModel):
+    id: ShortText
+    title: ShortText
+    boss_ids: tuple[ShortText, ...] = ()
+
+
+class DoorInfo(FrozenModel):
+    src: ShortText
+    dst: ShortText
+
+
+class WorldPayload(FrozenModel):
+    areas: tuple[AreaInfo, ...] = ()
+    rooms: tuple[WorldRoomInfo, ...]
+    doors: tuple[DoorInfo, ...] = ()
+    boss_ids: tuple[ShortText, ...] = ()
+
+
+def build_world_payload(world: World) -> WorldPayload:
+    """Pure initial topology for WorldLoaded; execution events own progress.
+
+    Boss ids are scenario ids listed on each area's boss line. Checklist ticks
+    describe the spec, not commits in this run, so they do not clear rooms.
+    Area metadata on rooms also survives the T03 mid-run state projection.
+    """
+    areas = {area.id: area for area in world.areas}
+    return WorldPayload(
+        areas=tuple(
+            AreaInfo(id=area.id, title=area.title, boss_ids=area.boss)
+            for area in world.areas
+        ),
+        rooms=tuple(
+            WorldRoomInfo(
+                id=room.id,
+                area=room.area_id,
+                title=room.title,
+                depends_on=room.depends_on,
+                area_title=areas[room.area_id].title,
+                boss_ids=areas[room.area_id].boss,
+                state="locked" if room.depends_on else "open",
+            )
+            for room in world.rooms
+        ),
+        doors=tuple(DoorInfo(src=door.src, dst=door.dst) for door in world.doors),
+        boss_ids=tuple(boss for area in world.areas for boss in area.boss),
+    )
 
 
 class WorldLoaded(EventBase):
     type: Literal["world_loaded"] = "world_loaded"
-    rooms: tuple[RoomInfo, ...]
+    # Accept legacy RoomInfo instances and JSON alongside the richer payload.
+    rooms: tuple[RoomInfo | WorldRoomInfo, ...]
+    areas: tuple[AreaInfo, ...] = Field(default=(), exclude_if=lambda value: not value)
+    doors: tuple[DoorInfo, ...] = Field(default=(), exclude_if=lambda value: not value)
+    boss_ids: tuple[ShortText, ...] = Field(
+        default=(), exclude_if=lambda value: not value
+    )
 
 
 class ClarifyQuestion(EventBase):

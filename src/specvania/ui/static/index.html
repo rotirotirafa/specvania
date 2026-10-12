@@ -5,13 +5,40 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
   <title>specvania</title>
+  <style>
+    @font-face {
+      font-family: "Press Start 2P";
+      src: url("./vendor/fonts/PressStart2P-Regular.ttf") format("truetype");
+      font-display: swap;
+    }
+    body { margin: 16px; background: var(--background); color: var(--text);
+      font: 10px/1.8 "Press Start 2P", monospace; }
+    h1 { font-size: 16px; color: var(--accent); }
+    #world-map { overflow: auto; min-height: 180px; }
+    canvas { image-rendering: pixelated; display: block; }
+    #map-rooms { white-space: pre-wrap; }
+  </style>
 </head>
 <body>
   <main aria-live="polite">
     <h1>specvania</h1>
     <p id="connection">Connecting to the run…</p>
     <p id="run-state"></p>
+    <p>World map · M: whole map / follow party</p>
+    <div id="world-map" role="img" aria-label="World map. Press M for the whole map."></div>
+    <details><summary>Rooms and states</summary><p id="map-rooms"></p></details>
   </main>
-  <script type="module" src="./main.js"></script>
+  <script src="./vendor/phaser.min.js" data-version="3.90.0"
+    integrity="sha256-6S3e8RG6QuktMWl5xzIxF1cJNojqGBBZHLeqKFjrp6c="></script>
+  <script type="module">
+    import { UI_COLORS } from "./pixel/palette.js";
+    import { mountMap } from "./map/scene.js";
+    for (const [name, color] of Object.entries(UI_COLORS)) {
+      document.documentElement.style.setProperty(`--${name}`, color);
+    }
+    mountMap(Phaser, document.getElementById("world-map"));
+    // Connect only after map listeners exist, including before Phaser create().
+    await import("./main.js");
+  </script>
 </body>
 </html>

@@ -163,7 +163,8 @@ class UIServer:
             response.headers["cache-control"] = "no-store"
             response.headers["x-content-type-options"] = "nosniff"
             response.headers["content-security-policy"] = (
-                "default-src 'self'; script-src 'self' 'unsafe-inline'; "
+                "default-src 'self'; img-src 'self' data: blob:; "
+                "script-src 'self' 'unsafe-inline'; "
                 "style-src 'self' 'unsafe-inline'; object-src 'none'; "
                 "frame-ancestors 'none'; connect-src 'self' "
                 f"ws://127.0.0.1:{self.port}"

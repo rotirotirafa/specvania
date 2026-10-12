@@ -272,10 +272,10 @@ files: src/specvania/ui/static/map/layout.js, src/specvania/ui/static/map/scene.
 Render the world from `world_loaded`: areas left to right, rooms placed by door depth within the area, doors as corridors. Room states: locked (dark, fog), open, active (party inside), cleared (lit), failed, skipped. Camera follows the party; the whole map is visible with a zoom-out key.
 
 Checklist:
-- [ ] `world_loaded` carries areas, rooms, doors and boss ids (test on the payload)
-- [ ] This repository's own world (23 rooms, 6 areas) renders without overlapping rooms
-- [ ] Each room state has a distinct look, also distinguishable in grayscale
-- [ ] A room changes state within 1 second of its event (manual check, logged in the report)
+- [x] `world_loaded` carries areas, rooms, doors and boss ids (test on the payload)
+- [x] This repository's own world (23 rooms, 6 areas) renders without overlapping rooms
+- [x] Each room state has a distinct look, also distinguishable in grayscale
+- [x] A room changes state within 1 second of its event (manual check, logged in the report)
 
 ### T17 · Party HUD, dialogue, monsters and animations
 depends_on: T13, T16
