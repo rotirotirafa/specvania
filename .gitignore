@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Tooling
+.pytest_cache/
+.ruff_cache/
+.pyright/
+.coverage
+htmlcov/
+.hypothesis/
+
+# specvania (when dogfooding on this repo)
+.specvania/runs/
+.specvania/ledger.db*
+
+# Desktop app
+apps/desktop/node_modules/
+apps/desktop/dist/
+
+# Secrets
+.env
+.env.*
+*.pem
+*.key
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
