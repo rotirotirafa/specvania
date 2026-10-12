@@ -259,10 +259,10 @@ files: src/specvania/ui/static/pixel/palette.js, src/specvania/ui/static/pixel/s
 Original 16×16 sprites defined as palette + pixel strings (D10): Mage, Warrior, Paladin (idle, walk, act, rest frames), boss, monster (idle, defeated), door (locked/open), room tiles per area color, heart, coin, stamina pip. `textures.js` turns them into Phaser textures at startup. Vendor a pinned Phaser 3 build and a pixel font under OFL; record both in `THIRD_PARTY_NOTICES.md`.
 
 Checklist:
-- [ ] No image or sprite is copied from an existing game or asset pack
-- [ ] Every sprite has the frames listed above and renders at 1×, 2× and 4× without blur (`pixelArt: true`)
-- [ ] Phaser version and font license are recorded in `THIRD_PARTY_NOTICES.md`
-- [ ] `sprites.html` shows every sprite for visual review
+- [x] No image or sprite is copied from an existing game or asset pack
+- [x] Every sprite has the frames listed above and renders at 1×, 2× and 4× without blur (`pixelArt: true`)
+- [x] Phaser version and font license are recorded in `THIRD_PARTY_NOTICES.md`
+- [x] `sprites.html` shows every sprite for visual review
 
 ### T16 · World map
 depends_on: T06, T14, T15

@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>specvania · Pixel kit</title>
+    <style>
+      @font-face {
+        font-family: "Press Start 2P";
+        src: url("./vendor/fonts/PressStart2P-Regular.ttf") format("truetype");
+        font-display: swap;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: var(--background);
+        color: var(--text);
+        font: 10px/1.8 "Press Start 2P", monospace;
+      }
+      main { max-width: 1200px; margin: auto; }
+      h1 { font-size: 18px; color: var(--accent); }
+      h2 { font-size: 12px; margin-top: 32px; }
+      h3 { font-size: 9px; color: var(--muted); margin: 0 0 12px; }
+      p { max-width: 900px; }
+      #texture-stage { width: 320px; height: 180px; }
+      canvas { image-rendering: pixelated; display: block; }
+      .frames { display: flex; flex-wrap: wrap; gap: 12px; }
+      .frame {
+        padding: 12px;
+        border: 2px solid var(--border);
+        background: var(--surface);
+      }
+      .scales { display: flex; align-items: end; gap: 16px; }
+      figure { margin: 0; }
+      figcaption { font-size: 8px; margin-top: 8px; color: var(--accent); }
+      #status { color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>specvania · Pixel kit</h1>
+      <p>Original 16×16 pixels. Every pose is shown at 1×, 2× and 4×.
+        Frames stay still, including when reduced motion is preferred.</p>
+      <p id="status" role="status">Preparing Phaser textures…</p>
+      <div id="texture-stage" aria-label="Phaser preview of every sprite at 2×"></div>
+      <section data-sprite="mage"><h2>Mage</h2><div class="frames"></div></section>
+      <section data-sprite="warrior"><h2>Warrior</h2><div class="frames"></div></section>
+      <section data-sprite="paladin"><h2>Paladin</h2><div class="frames"></div></section>
+      <section data-sprite="boss"><h2>Boss</h2><div class="frames"></div></section>
+      <section data-sprite="monster"><h2>Monster</h2><div class="frames"></div></section>
+      <section data-sprite="door"><h2>Door</h2><div class="frames"></div></section>
+      <section data-sprite="room_a1"><h2>A1 · Foundations room tile</h2><div class="frames"></div></section>
+      <section data-sprite="room_a2"><h2>A2 · Spellbook room tile</h2><div class="frames"></div></section>
+      <section data-sprite="room_a3"><h2>A3 · Dungeon room tile</h2><div class="frames"></div></section>
+      <section data-sprite="room_a4"><h2>A4 · Map room tile</h2><div class="frames"></div></section>
+      <section data-sprite="room_a5"><h2>A5 · Desktop room tile</h2><div class="frames"></div></section>
+      <section data-sprite="room_a6"><h2>A6 · Ship room tile</h2><div class="frames"></div></section>
+      <section data-sprite="heart"><h2>Heart · Lives</h2><div class="frames"></div></section>
+      <section data-sprite="coin"><h2>Coin</h2><div class="frames"></div></section>
+      <section data-sprite="stamina_pip"><h2>Stamina pip</h2><div class="frames"></div></section>
+    </main>
+    <template id="frame-card">
+      <article class="frame">
+        <h3></h3>
+        <div class="scales">
+          <figure><canvas data-scale="1" width="16" height="16"></canvas><figcaption>1×</figcaption></figure>
+          <figure><canvas data-scale="2" width="32" height="32"></canvas><figcaption>2×</figcaption></figure>
+          <figure><canvas data-scale="4" width="64" height="64"></canvas><figcaption>4×</figcaption></figure>
+        </div>
+      </article>
+    </template>
+    <!-- Pinned npm build; integrity must match the vendored 3.90.0 bytes. -->
+    <script src="./vendor/phaser.min.js" data-version="3.90.0"
+      integrity="sha256-6S3e8RG6QuktMWl5xzIxF1cJNojqGBBZHLeqKFjrp6c="></script>
+    <script type="module">
+      import { UI_COLORS } from "./pixel/palette.js";
+      import { SPRITES } from "./pixel/sprites.js";
+      import { registerTextures, textureKey } from "./pixel/textures.js";
+
+      for (const [name, color] of Object.entries(UI_COLORS)) {
+        document.documentElement.style.setProperty(`--${name}`, color);
+      }
+
+      const status = document.getElementById("status");
+      if (!window.Phaser || Phaser.VERSION !== "3.90.0") {
+        status.textContent = "Pixel kit requires the vendored Phaser 3.90.0 build.";
+        throw new Error(status.textContent);
+      }
+
+      new Phaser.Game({
+        type: Phaser.CANVAS,
+        parent: "texture-stage",
+        width: 320,
+        height: 180,
+        pixelArt: true,
+        roundPixels: true,
+        backgroundColor: UI_COLORS.background,
+        scale: { mode: Phaser.Scale.NONE, zoom: 1 },
+        audio: { noAudio: true },
+        banner: false,
+        scene: {
+          create() {
+            registerTextures(this);
+            const template = document.getElementById("frame-card");
+            let frameCount = 0;
+            let spriteIndex = 0;
+            for (const section of document.querySelectorAll("[data-sprite]")) {
+              const name = section.dataset.sprite;
+              const states = Object.entries(SPRITES[name]);
+              this.add.image((spriteIndex % 5) * 64 + 16, Math.floor(spriteIndex / 5) * 60 + 14,
+                textureKey(name, states[0][0], 0)).setOrigin(0).setScale(2);
+              spriteIndex += 1;
+              for (const [state, frames] of Object.entries(SPRITES[name])) {
+                frames.forEach((frame, index) => {
+                  const card = template.content.firstElementChild.cloneNode(true);
+                  card.querySelector("h3").textContent = `${state} · frame ${index + 1}`;
+                  const texture = this.textures.get(textureKey(name, state, index));
+                  for (const canvas of card.querySelectorAll("canvas")) {
+                    const context = canvas.getContext("2d");
+                    context.imageSmoothingEnabled = false;
+                    context.drawImage(texture.getSourceImage(), 0, 0,
+                      canvas.width, canvas.height);
+                    canvas.setAttribute("role", "img");
+                    canvas.setAttribute("aria-label",
+                      `${name} ${state} frame ${index + 1}, ${canvas.dataset.scale}×`);
+                  }
+                  section.querySelector(".frames").appendChild(card);
+                  frameCount += 1;
+                });
+              }
+            }
+            status.textContent = `${spriteIndex} sprites · ${frameCount} frames · Phaser ${Phaser.VERSION}`;
+          },
+        },
+      });
+    </script>
+  </body>
+</html>
