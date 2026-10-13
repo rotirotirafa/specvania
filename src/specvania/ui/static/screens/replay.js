@@ -65,6 +65,32 @@ export function mountReplay(socket, {browser = window, back = () => {}} = {}) {
   bar.append(toggle, exit); document.body.append(bar);
   // The bar uses the shared palette even when Phaser is unavailable.
   Object.assign(bar.style, {color: UI_COLORS.text, backgroundColor: UI_COLORS.surface, borderColor: UI_COLORS.border});
+  const panels = () => Array.from(document.body.children)
+    .filter(node => !node.hidden && node.getAttribute("role") === "dialog" && (node === pending || node.dataset.screen));
+  const placements = new Map();
+  function restoreLayout() {
+    for (const [panel, {top, maxHeight, modal}] of placements) {
+      Object.assign(panel.style, {top, maxHeight});
+      if (modal == null) panel.removeAttribute("aria-modal"); else panel.setAttribute("aria-modal", modal);
+    }
+    placements.clear();
+  }
+  function layoutDialogs() {
+    restoreLayout();
+    if (!replay || bar.hidden) return;
+    const top = Math.ceil(bar.getBoundingClientRect?.().bottom || 0) + 8;
+    for (const panel of panels()) {
+      // The Mage stays bottom-aligned; the expedition panels keep their
+      // scrollable content and bottom actions in the remaining viewport.
+      placements.set(panel, {top: panel.style.top || "", maxHeight: panel.style.maxHeight || "", modal: panel.getAttribute("aria-modal")});
+      if (panel === pending) panel.style.maxHeight = `${Math.max(0, browser.innerHeight - top - 16)}px`;
+      else panel.style.top = `${top}px`;
+      panel.setAttribute("aria-modal", "false"); // Playback controls remain part of the watch view.
+    }
+  }
+  const resizeObserver = browser.ResizeObserver ? new browser.ResizeObserver(layoutDialogs) : null;
+  resizeObserver?.observe(bar);
+  browser.addEventListener("resize", layoutDialogs);
   function readonlyHints() {
     if (!replay) return;
     for (const [id, key] of [["approval-choice", "approval.watch"], ["pause", "pause.watch"]]) {
@@ -90,6 +116,7 @@ export function mountReplay(socket, {browser = window, back = () => {}} = {}) {
     exit.textContent = t("replay.back"); exit.disabled = !canControl();
     for (const fn of bindings) fn();
     readonlyHints();
+    layoutDialogs();
   }
   function closeMage() {pending?.remove(); pending = null; bindings = []; mageMode = "";}
   function mage(event) {
@@ -157,6 +184,7 @@ export function mountReplay(socket, {browser = window, back = () => {}} = {}) {
     } else if (replay && value.kind === "event") recorded(value.event);
     if (!replay || value.kind !== "studio_state") forward("message", {data});
     readonlyHints();
+    layoutDialogs();
   };
   // Register before the expedition listeners so readonly mode is set first.
   // mounts are reset on the first replay snapshot, before any replay event.
@@ -165,12 +193,24 @@ export function mountReplay(socket, {browser = window, back = () => {}} = {}) {
   socket.addEventListener("close", disconnected);
   const keydown = event => {
     if (!replay || event.repeat || /^(INPUT|TEXTAREA|SELECT)$/i.test(event.target?.tagName) || event.target?.isContentEditable) return;
-    if (["1", "2", "4"].includes(event.key)) {event.preventDefault(); send("replay_speed", {speed: Number(event.key)});}
+    if (event.key === "Tab" && panels().length) {
+      const walk = node => Array.from(node.children || []).filter(child => !child.hidden)
+        .flatMap(child => [child, ...walk(child)]);
+      const controls = [...panels().flatMap(walk), ...walk(bar)].filter(node => !node.disabled &&
+        (node.tagName.toLowerCase() === "button" || node.tabIndex === 0));
+      if (!controls.length) return;
+      event.preventDefault(); event.stopPropagation();
+      const index = controls.indexOf(document.activeElement);
+      controls[(index + (event.shiftKey ? -1 : 1) + controls.length) % controls.length].focus();
+    }
+    else if (["1", "2", "4"].includes(event.key)) {event.preventDefault(); send("replay_speed", {speed: Number(event.key)});}
     else if (event.key.toLowerCase() === "p" || event.key.codePointAt(0) === 32 && event.target?.tagName?.toLowerCase() !== "button") {event.preventDefault(); send("replay_pause", {paused: !replay.paused});}
     else if (event.key === "Escape") {event.preventDefault(); send("close_replay");}
   };
-  browser.addEventListener("keydown", keydown);
+  // Capture Tab before the expedition dialog's local focus trap.
+  browser.addEventListener("keydown", keydown, true);
   const unsubscribe = onLanguageChange(render);
-  return {destroy() {for (const mount of mounts) mount.destroy(); closeMage(); bar.remove(); unsubscribe();
-    socket.removeEventListener?.("message", message); socket.removeEventListener?.("close", disconnected); browser.removeEventListener("keydown", keydown);}};
+  return {destroy() {resizeObserver?.disconnect(); browser.removeEventListener("resize", layoutDialogs); restoreLayout();
+    for (const mount of mounts) mount.destroy(); closeMage(); bar.remove(); unsubscribe();
+    socket.removeEventListener?.("message", message); socket.removeEventListener?.("close", disconnected); browser.removeEventListener("keydown", keydown, true);}};
 }

@@ -31,6 +31,13 @@ async function harness(desktop = true, studio = true) {
   const ids = Object.fromEntries(["world-map", "castle-hud", "screen-host"].map(id => [id, new Element("section", document)]));
   document.body.append(...Object.values(ids)); document.getElementById = id => ids[id] || flat(document.body).find(node => node.id === id);
   const browser = new EventEmitter(); browser.document = document;
+  browser.innerWidth = 960; browser.innerHeight = 540;
+  const observers = [];
+  browser.ResizeObserver = class {
+    constructor(callback) {this.callback = callback; observers.push(this);}
+    observe(node) {this.node = node;}
+    disconnect() {this.node = null;}
+  };
   browser.addEventListener = browser.on.bind(browser); browser.removeEventListener = browser.off.bind(browser);
   browser.CustomEvent = class {constructor(type, options) {Object.assign(this, {type, ...options});}};
   browser.dispatchEvent = event => browser.emit(event.type, event);
@@ -49,11 +56,14 @@ async function harness(desktop = true, studio = true) {
   const message = value => socket.emit("message", {data:JSON.stringify(value)});
   if (studio) message({kind:"state", phase:"idle", state:{rooms:[]}});
   const button = label => flat(document.body).find(node => node.tagName === "button" && node.textContent === label);
-  const key = (key, target = document.activeElement) => {
-    browser.emit("keydown", {key, target, preventDefault(){}});
-    if (key === "Enter" && target?.tagName === "button") target.click();
+  const key = (key, target = document.activeElement, shiftKey = false) => {
+    const event = {key, target, shiftKey, prevented: false, stopped: false,
+      preventDefault() {this.prevented = true;}, stopPropagation() {this.stopped = true;}};
+    browser.emit("keydown", event);
+    for (let node = target; node && !event.stopped; node = node.parent) node.dispatch("keydown", event);
+    if (!event.prevented && key === "Enter" && target?.tagName === "button") target.click();
   };
-  return {browser, document, ids, socket, sent, notifications, message, button, key, destroy() {replay.destroy(); screens.destroy();}};
+  return {browser, document, ids, socket, sent, notifications, observers, message, button, key, destroy() {replay.destroy(); screens.destroy();}};
 }
 const status = {name:"demo", feature:"synthetic-lantern", speed:1, paused:false, finished:false, stream:"plan"};
 const begin = h => h.message({kind:"state", phase:"replaying", replay:status, state:{rooms:[],status:"pending"}});
@@ -146,6 +156,96 @@ test("reconnect_restores_recorded_answers_and_language_changes_without_reload", 
     assert.ok(h.button("Pausar reprodução")); assert.ok(h.button("Voltar ao título"));
     assert.equal(h.sent.filter(message => message.kind === "clarify_answer").length, 0);
     setLanguage("en");
+  } finally {h.destroy();}
+});
+
+test("end_heading_bounds_clear_measured_replay_bar_at_960x540_and_controls_are_keyboard_reachable", async () => {
+  const h = await harness();
+  try {
+    const {setLanguage} = await load("i18n/index.js"); setLanguage("pt-BR");
+    const bar = h.document.getElementById("replay-bar");
+    let barBottom = 118;
+    bar.getBoundingClientRect = () => ({left: 12, right: 940, top: 32, bottom: barBottom});
+    // The code panel stays mounted offscreen, but is outside the replay dialogs.
+    const codePanel = h.document.createElement("section"), codeButton = h.document.createElement("button");
+    codePanel.setAttribute("role", "dialog"); codePanel.style.top = "0px"; codePanel.style.visibility = "hidden";
+    codePanel.append(codeButton); h.document.body.append(codePanel);
+    begin(h);
+    for (const event of fixture("run")) h.message({kind:"event", event});
+    const end = h.document.getElementById("end");
+    const heading = flat(end).find(node => node.tagName === "h2");
+    assert.equal(heading.textContent, "Resumo da expedição");
+    // The DOM harness has no CSS engine. Model the heading's box using the
+    // shipped end inset, panel padding/border and heading margin/font size.
+    const css = fs.readFileSync(path.join(root, "index.html"), "utf8");
+    const inset = Number(css.match(/\.expedition-dialog\[data-screen=end\] \{ inset: (\d+)px/)[1]);
+    const padding = Number(css.match(/\.expedition-dialog \{[^}]*padding: (\d+)px/)[1]);
+    const headingMargin = Number(css.match(/\.expedition-content h2 \{[^}]*margin: (\d+)px/)[1]);
+    const headingSize = Number(css.match(/\.expedition-content h2 \{ font-size: (\d+)px/)[1]);
+    heading.getBoundingClientRect = () => {
+      const top = (parseFloat(end.style.top) || inset) + padding + parseFloat(end.style.border) + headingMargin;
+      return {left: 44, right: 916, top, bottom: top + headingSize * parseFloat(end.style.lineHeight)};
+    };
+    const assertBounds = () => {
+      const a = heading.getBoundingClientRect(), b = bar.getBoundingClientRect();
+      assert.ok(a.bottom <= b.top || a.top >= b.bottom || a.right <= b.left || a.left >= b.right);
+      assert.ok(a.bottom < h.browser.innerHeight, "Heading remains inside the viewport");
+      assert.equal(bar.hidden, false);
+      assert.equal(end.getAttribute("aria-modal"), "false", "The watch view also exposes playback controls");
+    };
+    assertBounds();
+    const observer = h.observers.find(value => value.node === bar); assert.ok(observer);
+    barBottom = 164; observer.callback(); assertBounds(); // Wrapped receipt or translated controls.
+    barBottom = 142; h.browser.emit("resize"); assertBounds();
+    const controls = bar.children.filter(node => node.tagName === "button");
+    const reached = new Set();
+    for (let i = 0; i < 12; i++) {h.key("Tab"); reached.add(h.document.activeElement);}
+    assert.equal(reached.has(codeButton), false); assert.equal(codePanel.style.top, "0px");
+    for (const button of controls) {
+      assert.ok(reached.has(button), `${button.textContent} is reachable from the end dialog with Tab`);
+      assert.equal(button.disabled, false);
+    }
+    const endBack = flat(end).filter(node => node.tagName === "button").at(-1);
+    controls[0].focus(); h.key("Tab", controls[0], true); assert.equal(h.document.activeElement, endBack);
+    endBack.focus(); h.key("Tab"); assert.equal(h.document.activeElement, controls[0]);
+    h.key("Enter"); assert.equal(h.sent.at(-1).kind, "replay_speed");
+    controls[3].focus(); h.key("Enter"); assert.equal(h.sent.at(-1).kind, "replay_pause");
+    h.message({kind:"studio_state", phase:"replaying", replay:{...status, finished:true}});
+    assert.equal(controls[3].disabled, true);
+    controls[2].focus(); h.key("Tab"); assert.equal(h.document.activeElement, controls[4]);
+    h.key("Enter"); assert.equal(h.sent.at(-1).kind, "close_replay");
+    h.message({kind:"state", phase:"idle", state:{rooms:[]}});
+    assert.equal(bar.hidden, true);
+    assert.equal(end.style.top, "");
+    assert.equal(end.getAttribute("aria-modal"), "true");
+  } finally {h.destroy();}
+  assert.ok(h.observers.every(observer => observer.node === null));
+  assert.equal(h.browser.listenerCount("resize"), 0);
+});
+
+test("recorded_dialogs_reserve_bar_space_after_open_resize_and_language_change", async () => {
+  const h = await harness();
+  try {
+    const bar = h.document.getElementById("replay-bar");
+    let bottom = 120;
+    bar.getBoundingClientRect = () => ({bottom});
+    begin(h);
+    const mage = h.document.getElementById("replay-dialogue");
+    assert.equal(mage.style.maxHeight, "396px");
+    const cases = [
+      ["approval-choice", {type:"approval_requested", request_id:"request", command:"echo demo", cwd:"/demo"}],
+      ["pause", {type:"run_paused", reason:"out of lives"}],
+      ["boss", {type:"boss_started", area_id:"A1", scenarios:["S1"]}],
+    ];
+    for (const [id, event] of cases) {
+      h.message({kind:"event", event});
+      const panel = h.document.getElementById(id); assert.ok(panel);
+      assert.ok(parseFloat(panel.style.top) > bottom);
+      bottom += 20;
+      h.browser.emit("resize"); assert.ok(parseFloat(panel.style.top) > bottom);
+      const {setLanguage} = await load("i18n/index.js");
+      bottom += 20; setLanguage("pt-BR"); assert.ok(parseFloat(panel.style.top) > bottom); setLanguage("en");
+    }
   } finally {h.destroy();}
 });
 
