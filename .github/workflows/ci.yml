@@ -10,7 +10,7 @@
         {"uses": "astral-sh/setup-uv@v6", "with": {"python-version": "3.12"}},
         {"name": "Install test tools", "run": "uv sync --locked"},
         {"name": "Build wheel", "run": "uv build"},
-        {"name": "Inspect bundled resources", "run": "uv run pytest -q tests/test_e2e.py -k built_wheel"},
+        {"name": "Inspect bundled resources", "run": "uv run pytest -q tests/test_e2e.py tests/test_wheel.py -k built_wheel"},
         {"name": "Wheel CLI smoke test", "run": "uvx --from dist/*.whl specvania replay demo --help"}
       ]
     },
@@ -40,6 +40,14 @@
         {"name": "Start optional ledger", "run": "docker compose up -d --wait postgres"},
         {"name": "G9 · Ledger contract", "run": "uv run pytest -q -rs tests/test_ledger.py"},
         {"name": "Stop ledger", "if": "always()", "run": "docker compose down"}
+      ]
+    },
+    "desktop-check": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {"uses": "actions/checkout@v4"},
+        {"uses": "actions/setup-node@v4", "with": {"node-version": "22"}},
+        {"name": "G10 · Desktop check", "run": "npm --prefix apps/desktop run check"}
       ]
     },
     "checks": {

@@ -126,7 +126,7 @@ test("control_websocket_upgrade_checks_origin_and_sends_masked_shutdown_frame", 
   assert.deepEqual(JSON.parse(payload.toString()), { kind: "shutdown", control_token: "control-secret" });
 });
 
-for (const failure of ["exit", "timeout"]) test(`main_starting_screen_replaced_by_game_or_${failure}_and_shown_again_on_restart`, async () => {
+for (const failure of ["exit", "timeout", "missing_cli", "command_not_found"]) test(`main_starting_screen_replaced_by_game_or_${failure}_and_shown_again_on_restart`, async () => {
   const vm = require("node:vm");
   const fs = require("node:fs");
   const path = require("node:path");
@@ -177,13 +177,28 @@ for (const failure of ["exit", "timeout"]) test(`main_starting_screen_replaced_b
       child.stdout.emit("data", JSON.stringify(handshake) + "\n");
       assert.equal(pages[1], "http://127.0.0.1:8765/?view_token=view-secret");
       h.timer.advance(60000); assert.equal(pages.length, 2); // Handshake cancelled the deadline.
-    } else {
+    } else if (failure === "timeout") {
       h.timer.advance(59000); assert.equal(pages.length, 1);
       assert.equal(handlers.get("specvania:studio")(startingFrame).kind, "starting");
       h.timer.advance(1000); assert.equal(pages.length, 2);
       assert.match(decodeURIComponent(pages[1]), /Studio did not respond within 60 seconds\./);
       child.stdout.emit("data", JSON.stringify(handshake) + "\n");
       assert.equal(pages.length, 2); // A late handshake cannot open the game.
+    } else {
+      if (failure === "command_not_found") {
+        child.stderr.emit("data", "/unrelated/profile: command not ");
+        child.stderr.emit("data", "found: /private/other\n");
+      }
+      child.emit("exit", failure === "missing_cli" ? 127 : 1);
+      assert.equal(pages.length, 2);
+      const errorFrame = {sender: window.webContents, senderFrame: {url: pages[1]}};
+      assert.equal(handlers.get("specvania:studio")(errorFrame).reasonKey, "error.startCliMissing");
+      const firstRun = decodeURIComponent(pages[1]);
+      assert.match(firstRun, /uv tool install --compile-bytecode specvania/);
+      assert.match(firstRun, /uv tool install --compile-bytecode \./);
+      assert.doesNotMatch(firstRun, /\/unrelated\/profile|\/private\/other/);
+      h.timer.advance(HANDSHAKE_TIMEOUT_MS);
+      assert.equal(pages.length, 2); // Exit cancelled the deadline.
     }
     assert.equal(window.options.webPreferences.additionalArguments, undefined);
     const trusted = { sender: window.webContents, senderFrame: { url: pages.at(-1) } };

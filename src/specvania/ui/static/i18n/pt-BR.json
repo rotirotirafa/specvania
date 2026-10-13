@@ -290,5 +290,10 @@
   "replay.answer": "Resposta gravada: {answer}",
   "replay.choice": "Escolha gravada: {choice} · {reason}",
   "replay.feature": "Mundo gravado: {feature}",
-  "replay.keys": "1/2/4: velocidade · P: pausar · Esc: título"
+  "replay.keys": "1/2/4: velocidade · P: pausar · Esc: título",
+  "error.startCliMissing": "O jogo precisa da CLI specvania. Ela não foi encontrada ou não pôde executar; confira o caminho em Configurações.",
+  "error.cliInstall": "Após o lançamento no PyPI: uv tool install --compile-bytecode specvania",
+  "error.cliClone": "Até lá, a partir de um clone: uv tool install --compile-bytecode .",
+  "error.cliKey": "Para jogar uma expedição, exporte NVIDIA_API_KEY no perfil lido pelo seu shell de login (por exemplo, ~/.zshrc). Depois escolha Reiniciar estúdio.",
+  "error.cliDemo": "Ver demo precisa da CLI instalada com o comando acima; depois escolha Reiniciar estúdio. A demo não precisa de chave de API."
 }

@@ -1,6 +1,6 @@
 {
   "name": "specvania-desktop",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "The optional desktop window for the specvania web app",
   "private": true,
   "main": "main.js",

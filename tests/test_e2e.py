@@ -302,7 +302,7 @@ def test_ci_builds_wheel_and_runs_postgres_end_to_end() -> None:
     assert commands == [
         "uv sync --locked",
         "uv build",
-        "uv run pytest -q tests/test_e2e.py -k built_wheel",
+        "uv run pytest -q tests/test_e2e.py tests/test_wheel.py -k built_wheel",
         "uvx --from dist/*.whl specvania replay demo --help",
     ]
     assert not any(
@@ -337,8 +337,8 @@ def test_readme_covers_quickstart_roles_team_mode_safety_and_prices() -> None:
     for command in (
         "uv sync --locked",
         "uv run specvania replay demo",
-        "uv tool install .",
-        "uvx --from specvania specvania replay demo",
+        "uv tool install --compile-bytecode .",
+        "uvx specvania replay demo",
         "specvania init",
         'specvania plan "add greeting"',
         "git add .specvania/specs/add-greeting",
@@ -378,7 +378,9 @@ def test_readme_covers_quickstart_roles_team_mode_safety_and_prices() -> None:
             f"`{model}`" for model in getattr(Config().roles, role.value)
         )
         assert chain in row
-    assert "unverified" in roles and "O1/T23" in roles
+    assert (
+        "unverified" in roles and "may still be unavailable or fail to respond" in roles
+    )
     desktop = section(readme, "Optional desktop app")
     assert "apps/desktop/README.md" in desktop and "unsigned" in desktop
     assert "not notarized" in desktop and "--ui=auto" in desktop
@@ -388,10 +390,10 @@ def test_readme_covers_quickstart_roles_team_mode_safety_and_prices() -> None:
     assert "SPECVANIA_DATABASE_URL='postgresql+psycopg://" in team
     safety = section(readme, "Safety")
     for requirement in (
-        "D7",
-        "D8",
-        "D12",
-        "D16",
+        "**Git:**",
+        "**Commands:**",
+        "**Files:**",
+        "**Local UI:**",
         "never pushes",
         "first answer wins",
         "without an approval prompt",
@@ -409,7 +411,7 @@ def test_readme_covers_quickstart_roles_team_mode_safety_and_prices() -> None:
     ):
         assert requirement in safety
     prices = section(readme, "Add reference prices")
-    assert "No prices are shipped (D11)" in prices
+    assert "No prices are shipped." in prices
     assert "per million tokens" in prices and "not priced" in prices
     for field in (
         "model",
@@ -421,7 +423,7 @@ def test_readme_covers_quickstart_roles_team_mode_safety_and_prices() -> None:
     ):
         assert f"{field} = " in prices
     gif = section(readme, "Real-run GIF")
-    assert "placeholder" in gif and "T23" in gif and "real plan → run" in gif
+    assert "placeholder" in gif and "recording" in gif and "real plan → run" in gif
 
 
 def test_contributing_records_sdd_contract_and_all_gates() -> None:

@@ -107,7 +107,10 @@ test("builder_packages_only_shell_and_generated_icon_for_unsigned_dmg_and_appima
   assert.equal(config.appId, "specvania");
   assert.equal(config.productName, "specvania");
   assert.deepEqual(config.directories, { output: "dist", buildResources: "build" });
-  assert.deepEqual(config.files, ["main.js", "preload.js", "studio.cjs", "build/icon.png"]);
+  assert.deepEqual(config.files, ["main.js", "preload.js", "studio.cjs", "build/icon.png", {
+    from: "../../src/specvania/ui/static", to: "static",
+    filter: ["i18n/**", "pixel/palette.js", "pixel/cast.js", "screens/**", "vendor/fonts/**", "vendor/kenney-tiny-dungeon/**"],
+  }]);
   assert.deepEqual(config.mac.target, [{ target: "dmg", arch: ["arm64", "x64"] }]);
   assert.equal(config.mac.identity, null);
   assert.equal(config.mac.icon, "build/icon.png");

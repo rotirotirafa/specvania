@@ -1,6 +1,6 @@
 "use strict";
 
-const { readFileSync, mkdirSync, writeFileSync, renameSync } = require("node:fs");
+const { readFileSync, mkdirSync, writeFileSync, renameSync, existsSync } = require("node:fs");
 const path = require("node:path");
 const HANDSHAKE_TIMEOUT_MS = 60000;
 
@@ -35,11 +35,12 @@ function readSettings(userData) { return readAppSettings(userData).specvaniaPath
 function errorPage(reasonKey, logPath) { return localPage({reasonKey, logPath}); }
 function startingPage() { return localPage({kind: "starting"}); }
 /** Local startup UI uses the same dictionaries/screens even when Python cannot start.
- * T38 packaging must include this static tree next to the desktop resources.
+ * T38 packages the required static files inside the desktop app.
  */
 function localPage(startup) {
   const {reasonKey = "starting.title", logPath = ""} = startup;
-  const root = path.resolve(__dirname, "../../src/specvania/ui/static");
+  const bundled = path.join(__dirname, "static");
+  const root = existsSync(bundled) ? bundled : path.resolve(__dirname, "../../src/specvania/ui/static");
   const read = file => readFileSync(path.join(root, file), "utf8");
   const nonce = require("node:crypto").randomBytes(16).toString("hex");
   const json = value => JSON.stringify(value).replaceAll("<", "\\u003c");
@@ -70,13 +71,23 @@ function launchStudio({ spawn, env = process.env, platform = process.platform, e
   } catch { fail("error.startFailed"); return lifecycle; }
   const child = lifecycle.child;
   timeout = timer.setTimeout(() => fail("error.startTimeout"), HANDSHAKE_TIMEOUT_MS);
-  child.stderr.on("data", log);
+  // Keep only enough text to detect a split shell diagnostic; never reflect
+  // stderr (which may contain unrelated paths) into the error page or status.
+  let diagnostic = "", commandMissing = false;
+  child.stderr.on("data", data => {
+    if (!settled) {
+      const text = diagnostic + data.toString();
+      commandMissing ||= /command not found/i.test(text);
+      diagnostic = text.slice(-32);
+    }
+    log(data);
+  });
   child.on("error", () => fail("error.startFailed"));
-  child.on("exit", () => {
+  child.on("exit", code => {
     lifecycle.exited = true;
     if (lifecycle.quitting) return;
     if (lifecycle.handshake) error(errorPage("error.stopped", logPath), {kind: "failed", reasonKey: "error.stopped", logPath});
-    else fail("error.startExited");
+    else fail(code === 127 || code === 126 || commandMissing ? "error.startCliMissing" : "error.startExited");
   });
   child.stdout.on("data", (data) => {
     if (settled) return;

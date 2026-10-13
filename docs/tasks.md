@@ -599,10 +599,10 @@ files: apps/desktop/package.json, apps/desktop/electron-builder.yml, README.md, 
 The dmg opens the title screen; a first-run screen explains that the game needs `specvania` installed (`uv tool install`) and the API key in the shell. README in English and Brazilian Portuguese with the same sections: what it is, a GIF slot, install (uv tool and dmg), play, the SDD ↔ castle table, safety notes (D7, D8, D12, D16, D19), credits (Kenney, Press Start 2P, Phaser, Monaco, Electron). The wheel includes the i18n files and the vendored Kenney and Monaco assets.
 
 Checklist:
-- [ ] The wheel contains the i18n files and the vendored Kenney and Monaco assets
-- [ ] `README.md` and `README.pt-BR.md` have the same section headings (test)
+- [x] The wheel contains the i18n files and the vendored Kenney and Monaco assets
+- [x] `README.md` and `README.pt-BR.md` have the same section headings (test)
 - [ ] The installed dmg opens the title screen and Watch demo works without an API key (owner check)
-- [ ] `THIRD_PARTY_NOTICES.md` lists Kenney Tiny Dungeon, Monaco, Phaser, Press Start 2P and Electron with their licenses
+- [x] `THIRD_PARTY_NOTICES.md` lists Kenney Tiny Dungeon, Monaco, Phaser, Press Start 2P and Electron with their licenses
 
 ### T23 · Dogfood run in the game and real demo
 depends_on: T38
@@ -660,4 +660,3 @@ Checklist:
 - [ ] Both LinkedIn drafts exist, have the same structure, stay under 3,000 characters and link the repository (test)
 - [ ] Every number in the drafts and the demo script matches the real run's `summary.md` (test)
 - [ ] The launch checklist lists each owner step in order, with where to click or what to run
-

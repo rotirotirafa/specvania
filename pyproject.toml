@@ -1,6 +1,6 @@
 [project]
 name = "specvania"
-version = "0.1.0"
+version = "0.3.0"
 description = "A spec-driven coding agent where your spec becomes a metroidvania map."
 readme = "README.md"
 requires-python = ">=3.12"

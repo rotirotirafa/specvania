@@ -2,7 +2,11 @@
   "appId": "specvania",
   "productName": "specvania",
   "directories": {"output": "dist", "buildResources": "build"},
-  "files": ["main.js", "preload.js", "studio.cjs", "build/icon.png"],
+  "files": ["main.js", "preload.js", "studio.cjs", "build/icon.png", {
+    "from": "../../src/specvania/ui/static",
+    "to": "static",
+    "filter": ["i18n/**", "pixel/palette.js", "pixel/cast.js", "screens/**", "vendor/fonts/**", "vendor/kenney-tiny-dungeon/**"]
+  }],
   "artifactName": "specvania-${version}-${arch}.${ext}",
   "mac": {
     "target": [{"target": "dmg", "arch": ["arm64", "x64"]}],

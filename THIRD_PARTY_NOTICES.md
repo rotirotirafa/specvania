@@ -1,11 +1,11 @@
 # Third-party notices
 
-Art is vendored from Kenney Tiny Dungeon (CC0). Transitional HUD and area
-pixel strings in `src/specvania/ui/static/pixel/sprites.js` are original
-specvania art from T15, retained until their replacing rooms. The pack,
+Art is vendored from Kenney Tiny Dungeon (CC0). The pack,
 Phaser runtime and pixel font below are vendored, unmodified and loaded locally.
 Monaco is trimmed as described below.
 Source URLs describe provenance; the web app does not request them.
+The desktop first-run screen also ships the pack and font with their licenses;
+it works before the separately installed Python CLI can start.
 
 ## Kenney Tiny Dungeon
 

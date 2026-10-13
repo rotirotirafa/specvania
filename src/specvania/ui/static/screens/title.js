@@ -24,6 +24,12 @@ export function mountScreens({host, browser = window, socket, startup, watchDemo
     #screen-host label { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 16px; text-align: left; margin: 12px 0; }
     #screen-host input, #screen-host select { width: 100%; min-width: 0; } #screen-host input[type=checkbox] { width: 24px; height: 24px; }
     #screen-host h1 { color: ${UI_COLORS.accent}; font-size: 28px; line-height: 1.4; margin: 0 0 16px; }
+    #screen-host[data-screen=error] { overflow: hidden; }
+    #screen-host[data-screen=error] .screen-panel { box-sizing: border-box; display: flex; flex-direction: column; min-height: 0; max-height: calc(100vh - 64px); overflow: hidden; }
+    #screen-host[data-screen=error] h1 { font-size: 20px; flex-shrink: 0; }
+    #screen-host .error-content { flex: 1 1 auto; min-height: 0; overflow: auto; text-align: left; padding: 4px; }
+    #screen-host .error-content:focus-visible { outline-offset: -3px; }
+    #screen-host .error-actions { display: flex; flex-wrap: wrap; justify-content: center; flex-shrink: 0; padding-top: 8px; }
     #screen-host[data-screen=title] h1 { font-size: 36px; margin-bottom: 8px; }
     #screen-host h2 { font-size: 16px; } #screen-host p { overflow-wrap: anywhere; }
     #screen-host .title-castle { position: relative; margin: 0 auto 12px; }
@@ -42,7 +48,7 @@ export function mountScreens({host, browser = window, socket, startup, watchDemo
   };
   const label = (node, key, params = {}) => { labels.push([node, key, params]); node.textContent = t(key, params); };
   let container = host;
-  const element = tag => { const node = document.createElement(tag); container.append(node); return node; };
+  const element = (tag, parent = container) => { const node = document.createElement(tag); parent.append(node); return node; };
   const underlying = new Map();
   function isolate(active) {
     for (const id of ["world-map", "castle-hud"]) {
@@ -93,9 +99,9 @@ export function mountScreens({host, browser = window, socket, startup, watchDemo
     tile("door_closed", 8, 1); tile("banner", 2, 0);
     for (const [index, role] of ["mage", "warrior", "paladin"].entries()) tile(role, 3 + index * 2, 1);
   }
-  const text = (tag, key, params) => { const node = element(tag); label(node, key, params); return node; };
-  const button = (key, action, disabled = false) => {
-    const node = text("button", key); node.type = "button"; node.disabled = disabled; node.addEventListener("click", action); return node;
+  const text = (tag, key, params, parent) => { const node = element(tag, parent); label(node, key, params); return node; };
+  const button = (key, action, disabled = false, parent) => {
+    const node = text("button", key, {}, parent); node.type = "button"; node.disabled = disabled; node.addEventListener("click", action); return node;
   };
   const applySettings = patch => {
     pending = pending.catch(() => {}).then(async () => {
@@ -115,16 +121,16 @@ export function mountScreens({host, browser = window, socket, startup, watchDemo
     try { const path = await desktop?.pickFolder?.(); if (path) send("open_project", {path}); }
     catch { show("project", t("project.pickerFailed")); }
   };
-  const demo = () => {
+  const demo = parent => {
     const available = !unavailable && socket?.readyState === 1 && Boolean(desktop?.controlToken?.());
     const node = button("title.demo", () => {
       if (watchDemo) {close(); watchDemo();}
       else if (send("open_replay")) close();
-    }, !available);
+    }, !available, parent);
     return node;
   };
   const ui = {document, t, restoreGame, dialogueLayout, palette: PALETTE, label, element, text, button, send, chooseFolder, demo,
-    heading: (key, tag = "h1") => text(tag, key), back: () => button("screen.back", back), show, applySettings,
+    heading: (key, tag = "h1") => text(tag, key), back: parent => button("screen.back", back, false, parent), show, applySettings,
     restart: desktop?.studio?.restart ? () => desktop.studio.restart() : null,
     startRun: (slug, allowDirty = false) => send("start_run", {slug, allow_dirty: allowDirty, token_budget: settings.tokenBudget}),
     get savedSlug() {return savedSlug;},
@@ -164,7 +170,7 @@ export function mountScreens({host, browser = window, socket, startup, watchDemo
       text("p", "title.credit", {credit: CREDIT});
       view = {};
     }
-    const first = controls()[0];
+    const first = next === "error" ? controls().find(node => node.tagName.toLowerCase() === "button") : controls()[0];
     if (!["settings", "idea"].includes(next)) first?.focus();
   }
   function showError(error) {

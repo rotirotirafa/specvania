@@ -71,6 +71,8 @@ const technical = new Set(`en pt-BR specvania.language specvania.settings text/j
 technical.add("waiting for player");
 // T33 DOM/input identifiers, screen names and control protocol values only.
 for (const value of `error.start starting screen-host missingKey inert aria-hidden screen-panel title-castle title-menu title-footer footer absolute true Tab settings init_project probe_party project_open world_ready ok timeout number select option checkbox text title specvania string project open_project probe_result start_run Escape keydown`.split(/\s+/)) technical.add(value);
+// T38 error layout classes and the scroll region's accessible association.
+for (const value of `error-heading error-content error-actions region aria-labelledby`.split(/\s+/)) technical.add(value);
 
 // T34 DOM identifiers, input keys, screen modes and studio message kinds only.
 for (const value of `dirty dialogue-content dialogue-actions dialogue-speaker mage-dialogue aria-modal block aria-selected textarea auto world working idea start_plan clarify listbox save_world planning Enter ArrowDown ArrowUp door_double_left door_double_right`.split(/\s+/)) technical.add(value);
@@ -92,6 +94,12 @@ exact.add(`#screen-host { position: fixed; inset: 32px 0 0; z-index: 3; overflow
     #screen-host label { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 16px; text-align: left; margin: 12px 0; }
     #screen-host input, #screen-host select { width: 100%; min-width: 0; } #screen-host input[type=checkbox] { width: 24px; height: 24px; }
     #screen-host h1 { color: \${}; font-size: 28px; line-height: 1.4; margin: 0 0 16px; }
+    #screen-host[data-screen=error] { overflow: hidden; }
+    #screen-host[data-screen=error] .screen-panel { box-sizing: border-box; display: flex; flex-direction: column; min-height: 0; max-height: calc(100vh - 64px); overflow: hidden; }
+    #screen-host[data-screen=error] h1 { font-size: 20px; flex-shrink: 0; }
+    #screen-host .error-content { flex: 1 1 auto; min-height: 0; overflow: auto; text-align: left; padding: 4px; }
+    #screen-host .error-content:focus-visible { outline-offset: -3px; }
+    #screen-host .error-actions { display: flex; flex-wrap: wrap; justify-content: center; flex-shrink: 0; padding-top: 8px; }
     #screen-host[data-screen=title] h1 { font-size: 36px; margin-bottom: 8px; }
     #screen-host h2 { font-size: 16px; } #screen-host p { overflow-wrap: anywhere; }
     #screen-host .title-castle { position: relative; margin: 0 auto 12px; }
