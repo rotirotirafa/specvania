@@ -4,6 +4,27 @@ import { UI_COLORS } from "./pixel/palette.js";
 import { mountScreens } from "./screens/title.js";
 import { mountApproval } from "./hud/approval.js";
 
+import { mountMap } from "./map/scene.js";
+import { mountParty } from "./hud/party.js";
+import { mountBestiary } from "./hud/bestiary.js";
+import { mountDialogue } from "./hud/dialogue.js";
+import { mountRoomPanel } from "./hud/room-panel.js";
+
+// External module boot keeps the game compatible with script-src 'self'.
+const hudHost = document.getElementById("castle-hud");
+// Keep transport and desktop controls available if the canvas library fails.
+if (window.Phaser) {
+  for (const [name, color] of Object.entries(UI_COLORS)) {
+    document.documentElement.style.setProperty(`--${name}`, color);
+  }
+
+  mountParty(hudHost);
+  mountMap(window.Phaser, document.getElementById("world-map"));
+  mountBestiary(hudHost);
+  mountDialogue(hudHost);
+  mountRoomPanel(hudHost);
+}
+
 i18n.initialize(window);
 bindDocument(document);
 

@@ -3,7 +3,8 @@
 Art is vendored from Kenney Tiny Dungeon (CC0). Transitional HUD and area
 pixel strings in `src/specvania/ui/static/pixel/sprites.js` are original
 specvania art from T15, retained until their replacing rooms. The pack,
-third-party runtime and font below are vendored, unmodified and loaded locally.
+Phaser runtime and pixel font below are vendored, unmodified and loaded locally.
+Monaco is trimmed as described below.
 Source URLs describe provenance; the web app does not request them.
 
 ## Kenney Tiny Dungeon
@@ -90,3 +91,23 @@ The font and its OFL notice are distributed together without modification.
 
 The desktop icon is generated from the Mage tile (84) of the Kenney Tiny
 Dungeon sheet above using only Node built-ins; no additional art is included.
+
+## Monaco editor
+
+- Version: **0.57.0**
+- Source: https://registry.npmjs.org/monaco-editor/-/monaco-editor-0.57.0.tgz
+- Tarball SHA-256: `3ea1712fbacd3290cf4751007e3a5b57cc279767607812d4c3e57925fb0b05c2`
+- License: **MIT**; full upstream `LICENSE` and `ThirdPartyNotices.txt` are in
+  `src/specvania/ui/static/vendor/monaco/`.
+- Offline reproduction: `.venv/bin/python apps/desktop/scripts/trim-monaco.py`
+  from the pinned package's unpacked `min/vs`, `LICENSE` and
+  `ThirdPartyNotices.txt` in `.monaco-src/`.
+- Trimmed: language services, LSP facade, css/html/json/ts worker modules and
+  assets, unused basic languages, non-English NLS and development files.
+  The AMD entry point retains core exports and editor contributions, without
+  service registration or the upstream blob-worker override. Basic languages:
+  Python, JavaScript, TypeScript, Markdown, YAML, HTML, CSS, shell and `ini`
+  (TOML fallback). JSON uses a small Monarch tokenizer without a service.
+  English NLS remains embedded in the core. The codicon font is extracted
+  unchanged from the CSS to a same-origin file. The plain diff editor worker
+  is unchanged and started by a same-origin wrapper with its ready handshake.

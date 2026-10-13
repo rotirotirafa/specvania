@@ -37,22 +37,6 @@
   </main>
   <script src="./vendor/phaser.min.js" data-version="3.90.0"
     integrity="sha256-6S3e8RG6QuktMWl5xzIxF1cJNojqGBBZHLeqKFjrp6c="></script>
-  <script type="module">
-    import { UI_COLORS } from "./pixel/palette.js";
-    import { mountMap } from "./map/scene.js";
-    import { mountParty } from "./hud/party.js";
-    import { mountBestiary } from "./hud/bestiary.js";
-    import { mountDialogue } from "./hud/dialogue.js";
-    for (const [name, color] of Object.entries(UI_COLORS)) {
-      document.documentElement.style.setProperty(`--${name}`, color);
-    }
-    const hudHost = document.querySelector("main");
-    mountParty(hudHost);
-    mountMap(Phaser, document.getElementById("world-map"));
-    mountBestiary(hudHost);
-    mountDialogue(hudHost);
-    // Connect only after map listeners exist, including before Phaser create().
-    await import("./main.js");
-  </script>
+  <script type="module" src="./main.js"></script>
 </body>
 </html>

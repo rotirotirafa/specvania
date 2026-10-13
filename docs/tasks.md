@@ -551,11 +551,11 @@ files: src/specvania/ui/static/vendor/monaco/, src/specvania/ui/static/hud/room-
 D20: vendor a pinned Monaco min build trimmed to the editor core and the Python, JavaScript, TypeScript, JSON, Markdown, TOML, YAML, HTML, CSS and shell languages, within 8 MB. Read-only, no language services. Clicking a chamber slides a panel over 60% of the window with tabs Mission (checklist and item states), Code (file list and editor), Diff (side-by-side diff editor) and Review (Paladin verdict and gate results). Esc closes it. It also works in a browser tab.
 
 Checklist:
-- [ ] Monaco loads with the network disabled in the browser tab and in the desktop window
-- [ ] The vendored size is within 8 MB; version and license are in `THIRD_PARTY_NOTICES.md`
-- [ ] The four tabs show data for a cleared, an active and a locked room
-- [ ] The editor is read-only: typing changes nothing
-- [ ] The CSP has no remote sources and no `'unsafe-eval'` (test on the response headers)
+- [x] Monaco loads with the network disabled in the browser tab and in the desktop window
+- [x] The vendored size is within 8 MB; version and license are in `THIRD_PARTY_NOTICES.md`
+- [x] The four tabs show data for a cleared, an active and a locked room
+- [x] The editor is read-only: typing changes nothing
+- [x] The CSP has no remote sources and no `'unsafe-eval'` (test on the response headers)
 
 ### T36 · Expedition screens
 depends_on: T31, T32, T34

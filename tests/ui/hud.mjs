@@ -27,7 +27,8 @@ function browser(reduced = false) {
   const host = new Element("main"); body.append(host);
   const description = new Element("p");
   const document = { body, head, createElement: tag => new Element(tag),
-    getElementById: id => id === "map-rooms" ? description : new Element("p"), querySelector: () => host };
+    getElementById: id => id === "map-rooms" ? description : id === "castle-hud" ? host : new Element("p"), querySelector: () => host,
+    addEventListener() {}, removeEventListener() {} };
   const media = { matches: reduced, addEventListener(_, fn) { this.change = fn; }, removeEventListener() {} };
   const win = { document, location:{href:"http://127.0.0.1:8765/?view_token=view",search:"?view_token=view"}, innerHeight: 720, matchMedia: () => media,
     addEventListener(name, fn) { const list = handlers.get(name) || []; list.push(fn); handlers.set(name, list); },
@@ -290,11 +291,10 @@ if (["boss", "bugs", "motion", "integration"].includes(check)) {
     ui.document.getElementById = id => id === "world-map" ? mapHost : originalGet(id);
     ui.document.documentElement = {style:{setProperty() {}}};
     globalThis.Phaser = Phaser;
+    ui.win.Phaser = Phaser;
     const html = fs.readFileSync(new URL("index.html",base),"utf8");
-    const script = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1]
-      .replace(/from "(\.\/[^"]+)"/g, (_,path) => `from "${new URL(path,base)}"`)
-      .replace(/import\("(\.\/[^"]+)"\)/g, (_,path) => `import("${new URL(path,base)}")`);
-    await import(`data:text/javascript,${encodeURIComponent(script)}`);
+    const modulePath = html.match(/<script type="module" src="([^"]+)"><\/script>/)[1];
+    await import(new URL(modulePath, base));
     socket.message({kind:"state",state:{rooms:[],party:[],bugs:[],bosses:[]}}); config.scene.create.call(fake.scene);
     for (const event of events) {
       socket.message({kind:"event",event});

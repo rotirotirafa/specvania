@@ -374,6 +374,11 @@ def test_static_files_are_local_and_all_served_with_view_token(ui: UIServer) -> 
             assert response.status_code == 200, route
             assert response.content == path.read_bytes()
             assert response.headers["referrer-policy"] == "no-referrer"
+            policy = response.headers["content-security-policy"]
+            assert "'unsafe-eval'" not in policy
+            assert "http:" not in policy and "https:" not in policy
+            assert "worker-src 'self'" in policy
+            assert "font-src 'self'" in policy
             # Upstream comments/license strings contain URLs, not requests.
             if path.suffix in (".html", ".js"):
                 source = path.read_text()
@@ -410,6 +415,9 @@ def test_served_csp_allows_phaser_images_and_keeps_other_sources_local(
             "img-src": ["'self'", "data:", "blob:"],
             "script-src": ["'self'", "'unsafe-inline'"],
             "style-src": ["'self'", "'unsafe-inline'"],
+            "font-src": ["'self'"],
+            "worker-src": ["'self'"],
+            "base-uri": ["'none'"],
             "object-src": ["'none'"],
             "frame-ancestors": ["'none'"],
             "connect-src": ["'self'", f"ws://127.0.0.1:{ui.port}"],
@@ -629,3 +637,137 @@ def test_serve_binds_loopback_and_launches_browser_after_startup(
     assert configs[0].log_level == "warning"
     assert opened == [f"http://127.0.0.1:43210/?view_token={ui.view_token}"]
     assert ui.control_token not in opened[0]
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/",
+        "/index.html",
+        "/sprites.html",
+        "/vendor/monaco/vs/loader.js",
+        "/vendor/monaco/worker.js",
+        "/missing.html",
+    ],
+)
+def test_csp_on_html_static_missing_and_denied_responses(
+    ui: UIServer, path: str
+) -> None:
+    with TestClient(ui.app, base_url=ORIGIN) as client:
+        for token in ("wrong", ui.view_token):
+            response = client.get(path, params={"view_token": token})
+            policy = response.headers["content-security-policy"]
+            assert "'unsafe-eval'" not in policy
+            assert "https:" not in policy and "http:" not in policy
+            assert "font-src 'self'" in policy and "worker-src 'self'" in policy
+            assert "base-uri 'none'" in policy
+            assert "ws://127.0.0.1:8765" in policy
+            assert "blob:" not in policy.split("worker-src", 1)[1].split(";", 1)[0]
+
+
+def test_room_panel_restores_world_checklist_review_and_gates_on_reopen(
+    tmp_path: Path,
+) -> None:
+    from test_gitops import initialize_repo
+    from test_room_code import server
+
+    from specvania.run.events import ChecklistResult, GateResult, Review
+
+    initialize_repo(tmp_path)
+    ui = server(tmp_path, active=True)
+    assert ui.live_snapshot is not None
+    events = list(ui.live_snapshot())
+    fields = {"ts": ui.clock.now(), "run_id": ui.run_id, "room_id": "T01"}
+    events += [
+        GateResult(
+            **fields, seq=4, command="pytest", exit_code=1, output_summary="failed"
+        ),
+        Review(
+            **fields,
+            seq=5,
+            verdict="fail",
+            feedback="Fix the room",
+            checklist=(ChecklistResult(item="Read files", ok=False, note="Missing"),),
+        ),
+    ]
+    ui.live_snapshot = lambda: tuple(events)
+    with TestClient(ui.app, base_url=ORIGIN) as client:
+        for _ in range(2):
+            result = client.get(
+                "/api/rooms/T01/code", params={"view_token": ui.view_token}
+            ).json()
+            assert result["checklist"] == [
+                {"item": "Read files", "ok": False, "note": "Missing"}
+            ]
+            assert result["review"]["feedback"] == "Fix the room"
+            assert result["gates"][0]["exit_code"] == 1
+
+
+def test_studio_room_panel_collects_reviews_before_viewer_connects_and_resets_attempt(
+    tmp_path: Path,
+) -> None:
+    from test_gitops import initialize_repo
+    from test_room_code import server
+
+    from specvania.run.events import AttemptStarted, ChecklistResult, GateResult, Review
+    from specvania.run.state import fold_events
+    from specvania.ui.server import StateMessage
+
+    initialize_repo(tmp_path)
+    original = server(tmp_path, active=True)
+    assert original.live_snapshot is not None
+    events = list(original.live_snapshot())
+    guard = RedactionGuard()
+    bus = EventBus(guard)
+    ui = UIServer(
+        guard=guard,
+        clock=original.clock,
+        run_id="code",
+        bus=bus,
+        studio_snapshot=lambda: StateMessage(state=fold_events(events)),
+        repository_root=tmp_path,
+        world_directory=tmp_path / "world",
+        port=8765,
+    )
+    fields = {"ts": ui.clock.now(), "run_id": "code", "room_id": "T01"}
+    for event in (
+        GateResult(
+            **fields, seq=4, command="node", exit_code=0, output_summary="passed"
+        ),
+        Review(
+            **fields,
+            seq=5,
+            verdict="pass",
+            feedback="Covered",
+            checklist=(ChecklistResult(item="Read files", ok=True, note="Verified"),),
+        ),
+    ):
+        events.append(event)
+        bus.publish(event)
+    with TestClient(ui.app, base_url=ORIGIN) as client:
+        result = client.get(
+            "/api/rooms/T01/code", params={"view_token": ui.view_token}
+        ).json()
+        assert result["review"]["verdict"] == "pass"
+        assert result["gates"][0]["command"] == "node"
+        event = AttemptStarted(**fields, seq=6, attempt=2)
+        events.append(event)
+        bus.publish(event)
+        result = client.get(
+            "/api/rooms/T01/code", params={"view_token": ui.view_token}
+        ).json()
+        assert result["review"] is None and result["gates"] == []
+        assert result["checklist"][0]["ok"] is None
+    ui.stop()
+
+
+def test_room_panel_metadata_preserves_long_items_and_shares_the_response_cap() -> None:
+    from specvania.ui.server import RoomChecklist, RoomCode, _cap_room_code
+
+    item = RoomChecklist(item="Checklist " + "x" * 1000)
+    response = RoomCode(room_id="T01", kind="files", checklist=(item,))
+    assert _cap_room_code(response, iter(())).checklist[0].item == item.item
+    response = response.model_copy(update={"checklist": (item,) * 1200})
+    capped = _cap_room_code(response, iter(()))
+    assert len(capped.model_dump_json().encode("utf-8")) <= 1_000_000
+    assert capped.truncated and capped.reason and "truncated" in capped.reason

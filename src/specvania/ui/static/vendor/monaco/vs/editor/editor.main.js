@@ -1,0 +1,1 @@
+define("vs/editor/editor.main",["exports","require","vs/nls.messages-loader!","../editor-BdtEMBbM","../basic-languages/monaco.contribution"],function(exports,require,nls,core){Object.assign(exports,core);globalThis.monaco=core;const link=document.createElement("link");link.rel="stylesheet";link.href=require.toUrl("vs/editor/editor.main.css");document.head.appendChild(link);});

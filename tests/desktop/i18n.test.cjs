@@ -102,13 +102,23 @@ exact.add('url("${}")');
 exact.add("${}px ${}px");
 const diagnostics = {
   "screens/title.js": ["API key missing", "git work tree"], // Match non-secret studio errors, never render these fragments.
-
+  "hud/room-panel.js": ["Repository unavailable for this view.", "Room unavailable in the current world."],
   "map/castle.js": ["Cyclic room doors", "Door has an unknown room"],
   "pixel/cast.js": ["Invalid area id: ${}", "Art: Kenney Tiny Dungeon · CC0 1.0"], // CREDIT is consumed only by the allowlisted developer gallery until T33.
   "pixel/textures.js": ["Kenney sheet is missing; call preloadTextures in preload()", "Unknown cast entry: ${}", "Could not create tile texture: ${}", "Invalid 16x16 sprite frame: ${}", "Could not create sprite texture: ${}", "Unknown palette symbol in ${}: ${}"],
 };
+// T35 technical identifiers only; prose remains rejected by the same scan.
+const panelTechnical = new Set(`python javascript typescript markdown ini yaml html css shell plaintext
+  /vendor/monaco/worker.js /vendor/monaco/vs vs/nls vs/editor/editor.main script /vendor/monaco/vs/loader.js
+  same-origin vscode-worker-ready files room-panel aria-modal true border-box column room-panel-title aria-labelledby room-panel-content
+  tabpanel auto details summary tablist mission code diff tab aria-controls keydown ArrowRight ArrowLeft Home End
+  aria-selected specvania vs-dark editor.background editor.foreground editorLineNumber.foreground
+  editor.selectionBackground diffEditor.insertedLineBackground diffEditor.removedLineBackground off on select option
+  65vh visible Escape Tab wrap`.split(/\s+/));
+for (const value of ["-", "+", " ", "*", "diff --git", "/api/rooms/${}/code", "translateX(100%)", "translateX(0)",
+  "room-panel-${}", "transform 160ms", "panel.${}", "button, select, [tabindex]"]) panelTechnical.add(value);
 function approved(value, file) {
-  return !value || Object.hasOwn(en, value) || Object.hasOwn(en, `event.${value}`) || technical.has(value) || exact.has(value) || diagnostics[file]?.includes(value)
+  return !value || Object.hasOwn(en, value) || Object.hasOwn(en, `event.${value}`) || technical.has(value) || file === "hud/room-panel.js" && panelTechnical.has(value) || exact.has(value) || diagnostics[file]?.includes(value)
     || /^specvania:[a-z-]+$/.test(value) // internal DOM event names
     || /^(\.\.\/|\.\/)[\w/.-]+$/.test(value) // local imports/assets only
     || /^\d+(px|%|px 0)?$/.test(value) || /^\d+(\.\d+)?$/.test(value) // CSS sizes and numeric formats

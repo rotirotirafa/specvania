@@ -41,7 +41,9 @@ from specvania.run.events import (
     ApprovalRequested,
     Event,
     FrozenModel,
+    GateResult,
     RedactionGuard,
+    Review,
     SecretLeakError,
     ShortText,
 )
@@ -82,8 +84,17 @@ class RoomCodeFile(FrozenModel):
     truncated: bool = False
 
 
+class RoomChecklist(FrozenModel):
+    item: str
+    ok: bool | None = None
+    note: ShortText = ""
+
+
 class RoomCode(FrozenModel):
     room_id: str
+    checklist: tuple[RoomChecklist, ...] = ()
+    review: Review | None = None
+    gates: tuple[GateResult, ...] = ()
     kind: Literal["commit", "working", "files"]
     commit: str | None = None
     files: tuple[RoomCodeFile, ...] = ()
@@ -100,6 +111,22 @@ def _cap_body(body: str, limit: int, marker: str) -> str:
 
 def _cap_room_code(response: RoomCode, candidates: Iterator[RoomCodeFile]) -> RoomCode:
     """Bound the encoded JSON, including escaping, metadata and the marker."""
+    # Mission/review metadata shares the existing response cap. Remove the
+    # latest appended metadata only when necessary and expose the same marker.
+    while len(response.model_dump_json().encode("utf-8")) > 900_000:
+        updates: dict[str, object] = {
+            "truncated": True,
+            "reason": _cap_body("", 0, "1 MB"),
+        }
+        if response.gates:
+            updates["gates"] = response.gates[:-1]
+        elif response.review is not None:
+            updates["review"] = None
+        elif response.checklist:
+            updates["checklist"] = response.checklist[:-1]
+        else:
+            break
+        response = response.model_copy(update=updates)
     files: list[RoomCodeFile] = []
     for file in candidates:
         key = "diff" if file.diff is not None else "content"
@@ -422,6 +449,14 @@ class UIServer:
                 raise UIServerError(
                     "Replay sequences must be strictly increasing."
                 ) from None
+        # Studio has no Ledger attached to the UI server. Keep only the latest
+        # per-room review/gates, drained from its local bus when code is opened.
+        self._panel_subscription = (
+            bus.subscribe() if studio_snapshot is not None and bus else None
+        )
+        self._panel_run = ""
+        self._panel_reviews: dict[str, Review] = {}
+        self._panel_gates: dict[str, list[GateResult]] = {}
         self.app = self._create_app()
 
     def publish_studio_state(self) -> None:
@@ -441,6 +476,8 @@ class UIServer:
                     queue.put(message)
 
     def stop(self) -> None:
+        if self._panel_subscription is not None:
+            self._panel_subscription.close()
         if self._serving is not None:
             self._serving.should_exit = True
 
@@ -498,25 +535,31 @@ class UIServer:
             if token is None:
                 token = request.cookies.get(self.view_cookie_name)
             if not _matches(token, self.view_token):
-                return JSONResponse({"detail": "View token required"}, status_code=401)
-            if request.headers.get("host") != f"127.0.0.1:{self.port}":
-                return JSONResponse(
+                response = JSONResponse(
+                    {"detail": "View token required"}, status_code=401
+                )
+            elif request.headers.get("host") != f"127.0.0.1:{self.port}":
+                response = JSONResponse(
                     {"detail": "Loopback host required"}, status_code=403
                 )
-            response = await call_next(request)
-            # Relative ES modules and font requests carry the view token in a
-            # same-site cookie; the control token is never persisted in a cookie.
-            response.set_cookie(
-                self.view_cookie_name, self.view_token, httponly=True, samesite="strict"
-            )
+            else:
+                response = await call_next(request)
+                # Only the view token goes in the same-site asset cookie.
+                response.set_cookie(
+                    self.view_cookie_name,
+                    self.view_token,
+                    httponly=True,
+                    samesite="strict",
+                )
             response.headers["referrer-policy"] = "no-referrer"
             response.headers["cache-control"] = "no-store"
             response.headers["x-content-type-options"] = "nosniff"
             response.headers["content-security-policy"] = (
                 "default-src 'self'; img-src 'self' data: blob:; "
                 "script-src 'self' 'unsafe-inline'; "
+                "font-src 'self'; worker-src 'self'; "
                 "style-src 'self' 'unsafe-inline'; object-src 'none'; "
-                "frame-ancestors 'none'; connect-src 'self' "
+                "base-uri 'none'; frame-ancestors 'none'; connect-src 'self' "
                 f"ws://127.0.0.1:{self.port}"
             )
             return response
@@ -550,8 +593,34 @@ class UIServer:
         if re.fullmatch(r"T\d{2,}", room_id, flags=re.ASCII) is None:
             raise RoomCodeError("Room unavailable in the current world.")
         try:
+            snapshot: Sequence[Event] = ()
             if self.studio_snapshot is not None:
                 state = self.studio_snapshot().state
+                with self._state_lock:
+                    if self._panel_run != (state.run_id or ""):
+                        self._panel_reviews.clear()
+                        self._panel_gates.clear()
+                        self._panel_run = state.run_id or ""
+                    if self._panel_subscription is not None:
+                        while True:
+                            try:
+                                event = self._panel_subscription.get(timeout=0)
+                            except Empty:
+                                break
+                            if event.run_id != state.run_id:
+                                continue
+                            if event.type == "attempt_started":
+                                self._panel_gates[event.room_id] = []
+                                self._panel_reviews.pop(event.room_id, None)
+                            elif isinstance(event, Review):
+                                self._panel_reviews[event.room_id] = event
+                            elif isinstance(event, GateResult):
+                                self._panel_gates.setdefault(event.room_id, []).append(
+                                    event
+                                )
+                    snapshot = tuple(self._panel_reviews.values()) + tuple(
+                        gate for gates in self._panel_gates.values() for gate in gates
+                    )
             else:
                 snapshot = (
                     self.replay
@@ -584,7 +653,13 @@ class UIServer:
                 git.root / ".specvania/specs" / state.feature if state.feature else None
             )
             world = None
-            if kind == "files" and directory is not None:
+            if directory is not None and (
+                kind == "files"
+                or (
+                    (directory / "spec.md").is_file()
+                    and (directory / "tasks.md").is_file()
+                )
+            ):
                 # Validate the documents before parsing: they too can be symlinks.
                 safe_directory = sandbox.resolve(str(directory.absolute()))
                 for name in ("spec.md", "tasks.md"):
@@ -597,7 +672,61 @@ class UIServer:
             )
             if not state.rooms and room is None:
                 raise RoomCodeError("Room unavailable in the current world.")
-            response = RoomCode(room_id=room_id, kind=kind, commit=commit)
+            review = next(
+                (
+                    event
+                    for event in reversed(snapshot)
+                    if isinstance(event, Review) and event.room_id == room_id
+                ),
+                None,
+            )
+            gates = tuple(
+                event
+                for event in snapshot
+                if isinstance(event, GateResult) and event.room_id == room_id
+            )
+            if self.studio_snapshot is None:
+                attempt_seq = max(
+                    (
+                        event.seq
+                        for event in snapshot
+                        if event.type == "attempt_started" and event.room_id == room_id
+                    ),
+                    default=0,
+                )
+                gates = tuple(gate for gate in gates if gate.seq > attempt_seq)
+                if review and review.seq < attempt_seq:
+                    review = None
+            results = {item.item: item for item in review.checklist} if review else {}
+            checklist = (
+                tuple(
+                    RoomChecklist(
+                        item=self._redact_code(item.text),
+                        ok=results[item.text].ok
+                        if item.text in results
+                        else True
+                        if item.checked
+                        else None,
+                        note=results[item.text].note if item.text in results else "",
+                    )
+                    for item in room.checklist
+                )
+                if room
+                else tuple(
+                    RoomChecklist(item=item.item, ok=item.ok, note=item.note)
+                    for item in review.checklist
+                )
+                if review
+                else ()
+            )
+            response = RoomCode(
+                room_id=room_id,
+                kind=kind,
+                commit=commit,
+                checklist=checklist,
+                review=review,
+                gates=gates,
+            )
             if kind == "files":
                 if room is None:
                     raise RoomCodeError("Room files unavailable in the current world.")

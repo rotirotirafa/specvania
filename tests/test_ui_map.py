@@ -49,7 +49,10 @@ def test_map_mount_snapshot_camera_overview_integer_zoom_and_reduced_motion() ->
 
 def test_index_mounts_map_before_transport_and_uses_local_pixel_assets() -> None:
     source = (ROOT / "src/specvania/ui/static/index.html").read_text()
-    assert source.index("mountMap(Phaser,") < source.index('await import("./main.js")')
+    assert 'type="module" src="./main.js"' in source
+    bootstrap = (ROOT / "src/specvania/ui/static/main.js").read_text()
+    assert bootstrap.index("mountMap(window.Phaser,") < bootstrap.index("connectRun();")
+    assert bootstrap.index("mountRoomPanel(hudHost)") < bootstrap.index("connectRun();")
     assert 'src="./vendor/phaser.min.js"' in source
     assert 'url("./vendor/fonts/PressStart2P-Regular.ttf")' in source
     assert "image-rendering: pixelated" in source
