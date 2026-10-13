@@ -43,6 +43,15 @@ class LedgerNotFoundError(LedgerError):
     """A referenced ledger record does not exist."""
 
 
+class RunIdTakenError(LedgerError):
+    """A run id collided; callers can retry without repeating model calls."""
+
+
+def generate_run_id(clock: Clock) -> str:
+    """Keep the domain format; uniqueness is enforced by the Ledger."""
+    return f"{clock.now():%Y%m%d-%H%M%S}-{secrets.token_hex(2)}"
+
+
 class Record(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
     id: str
@@ -238,6 +247,7 @@ class Ledger:
         values: dict[str, Any],
         model: type[RecordT],
         identity: ColumnElement[bool] | None = None,
+        identity_error: type[LedgerError] | None = None,
     ) -> RecordT:
         # A unique constraint handles concurrent deduplication on both adapters.
         # Catch outside the failed transaction, then read in a fresh transaction.
@@ -248,6 +258,8 @@ class Ledger:
             if identity is not None:
                 matches = self._list(table, identity, model)
                 if matches:
+                    if identity_error is not None:
+                        raise identity_error("Run id is already taken.") from None
                     return matches[0]
             raise LedgerError(
                 "Cannot add ledger record; check references and unique identities."
@@ -343,7 +355,7 @@ class Ledger:
         plans have no ledger records. Execution rows still start as running.
         """
         now = self._clock.now()
-        identifier = run_id or f"{now:%Y%m%d-%H%M%S}-{secrets.token_hex(2)}"
+        identifier = run_id or generate_run_id(self._clock)
         return self._add(
             self._schema.runs,
             {
@@ -357,6 +369,8 @@ class Ledger:
                 "finished_at": now if kind == "plan" else None,
             },
             Run,
+            self._schema.runs.c.id == identifier,
+            identity_error=RunIdTakenError,
         )
 
     def get_run(self, run_id: str) -> Run:

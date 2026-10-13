@@ -1,6 +1,5 @@
 """Synchronous room orchestration over the existing Warrior and Paladin APIs."""
 
-import secrets
 from collections.abc import Callable, Sequence
 from datetime import datetime
 from pathlib import Path
@@ -13,15 +12,17 @@ from specvania.agent.gates import GateRunner
 from specvania.agent.reviewer import Reviewer, ReviewError
 from specvania.agent.sandbox import Sandbox
 from specvania.agent.tools import Tools
+from specvania.bugs import Bugs
 from specvania.clock import Clock
 from specvania.config import Config
-from specvania.ledger.repo import Ledger
+from specvania.ledger.repo import Ledger, RunIdTakenError, generate_run_id
 from specvania.provider.client import Provider, ProviderError
 from specvania.provider.router import Router
 from specvania.run.bus import EventBus
 from specvania.run.events import (
     AttemptStarted,
     BossStarted,
+    BugClosed,
     Event,
     Respawn,
     RoomCleared,
@@ -116,6 +117,15 @@ class Engine:
 
     def _finish(self, status: Literal["finished", "aborted"]) -> None:
         self.emit(RunFinished(**self._fields(), status=status))
+        if status == "finished":
+            events = self.ledger.list_events(self.run_id)
+            cleared = {e.room_id for e in events if e.type == "room_cleared"}
+            if cleared == {room.id for room in self.world.rooms} and not any(
+                e.type == "room_skipped" for e in events
+            ):
+                self.bugs.close_from_plans(
+                    run_id=self.run_id, clock=self.clock, emit=self.emit
+                )
         write_summary(self.git.root, self.ledger, self.run_id, config=self.config)
 
     def _reset_router(self) -> None:
@@ -138,13 +148,40 @@ class Engine:
             emit=self.emit,
         )
 
-    def _skip(self, room: Room, reason: str) -> None:
+    def _skip(self, room: Room, reason: str, *, feedback: str | None = None) -> None:
+        body = reason if feedback is None else feedback
         # Restore the tree before another room can review or commit these edits.
         stash = self.git.stash_room(self.run_id, room.id)
         if stash is not None:
             recovery = f"; saved to stash {stash}"
             reason = reason[: 200 - len(recovery)] + recovery
         self.emit(RoomSkipped(**self._fields(), room_id=room.id, reason=reason[:200]))
+        self._open_bug(
+            f"Skipped {room.id}: {room.title}",
+            body,
+            source="room_skipped",
+            room_id=room.id,
+        )
+
+    def _open_bug(
+        self,
+        title: str,
+        body: str,
+        *,
+        source: Literal["room_skipped", "boss_scenario"],
+        room_id: str | None = None,
+    ) -> str:
+        bug = self.ledger.add_bug(
+            self.bugs.project_id,
+            title,
+            body=body,
+            source=source,
+            feature_id=self.feature_id,
+            run_id=self.run_id,
+            room_id=room_id,
+        )
+        self.emit(self.bugs.opened_event(bug, run_id=self.run_id, clock=self.clock))
+        return bug.id
 
     def _room(self, room: Room, spec_summary: str) -> str | None:
         """Return cleared/skipped, or None when the run stops at a pause/abort."""
@@ -153,6 +190,7 @@ class Engine:
         lives = self.config.limits.lives
         attempt = 0
         feedback = ""
+        last_feedback: str | None = None
         should_respawn = False
         while True:
             attempt += 1
@@ -195,7 +233,7 @@ class Engine:
                     self._reset_router()
                     continue  # Provider outages never debit a life.
                 if choice == "skip":
-                    self._skip(room, result.reason)
+                    self._skip(room, result.reason, feedback=last_feedback)
                     return "skipped"
                 return None
             gates = self.gates.run(room.id)
@@ -205,6 +243,7 @@ class Engine:
                         room, attempt_diff=self.git.diff(base), gates=gates
                     )
                     feedback = review.feedback
+                    last_feedback = review.feedback
                     passed = review.verdict == "pass" and result.status == "finished"
                     if result.status != "finished":
                         feedback = result.reason + "\n" + feedback
@@ -216,7 +255,7 @@ class Engine:
                         self.router.start_room(room.id)
                         continue
                     if choice == "skip":
-                        self._skip(room, str(error))
+                        self._skip(room, str(error), feedback=last_feedback)
                         return "skipped"
                     return None
                 except ReviewError as error:
@@ -238,7 +277,7 @@ class Engine:
             if choice == "retry":
                 lives = self.config.limits.lives
             elif choice == "skip":
-                self._skip(room, feedback)
+                self._skip(room, feedback, feedback=last_feedback)
                 return "skipped"
             else:
                 return None
@@ -251,6 +290,8 @@ class Engine:
             if event.type == "room_cleared" and event.room_id in room_ids
         )
         diff = self.git.area_diff(commits)
+        # One fight per area/run; keep ids across evaluations, including fixed bugs.
+        scenario_bugs: dict[str, str] = {}
         while True:
             self.emit(
                 BossStarted(**self._fields(), area_id=area.id, scenarios=area.boss)
@@ -260,6 +301,29 @@ class Engine:
                 results = self._reviewer().evaluate_boss(
                     area, scenarios=world.scenarios, area_diff=diff, gates=gates
                 )
+                for result in results:
+                    bug_id = scenario_bugs.get(result.scenario)
+                    if result.passed:
+                        if bug_id is not None:
+                            bug = self.ledger.get_bug(bug_id)
+                            if bug.status == "open":
+                                self.ledger.close_bug(
+                                    bug_id, status="fixed", fixed_by_run=self.run_id
+                                )
+                                self.emit(
+                                    BugClosed(
+                                        **self._fields(),
+                                        bug_id=bug_id,
+                                        status="fixed",
+                                        fixed_by_run=self.run_id,
+                                    )
+                                )
+                    elif bug_id is None:
+                        scenario_bugs[result.scenario] = self._open_bug(
+                            f"Boss {area.id}: {result.scenario}",
+                            result.reason,
+                            source="boss_scenario",
+                        )
                 failures = [r for r in results if not r.passed]
                 if not failures:
                     return True
@@ -282,6 +346,7 @@ class Engine:
         on_started: Callable[[str], Sequence[ApprovalResponder] | None] | None = None,
     ) -> RunState:
         world = validate_directory(directory)
+        self.world = world
         self.git.check(allow_dirty=allow_dirty)
         try:
             spec_md = (directory / "spec.md").read_text(encoding="utf-8")
@@ -292,14 +357,34 @@ class Engine:
         feature = self.ledger.add_feature(
             project.id, directory.resolve().name, directory.resolve().name
         )
+        self.feature_id = feature.id
+        self.bugs = Bugs(self.ledger, project.id)
         version = self.ledger.add_spec_version(feature.id, spec_md, tasks_md)
-        self.run_id = f"{self.clock.now():%Y%m%d-%H%M%S}-{secrets.token_hex(2)}"
+        for attempt in range(5):
+            self.run_id = generate_run_id(self.clock)
+            try:
+                self.ledger.create_run(
+                    feature.id,
+                    version.id,
+                    f"specvania/{self.run_id}",
+                    run_id=self.run_id,
+                )
+                break
+            except RunIdTakenError:
+                if attempt == 4:
+                    raise EngineError(
+                        "Cannot allocate a unique run id; try again."
+                    ) from None
         branch = f"specvania/{self.run_id}"
-        self.ledger.create_run(feature.id, version.id, branch, run_id=self.run_id)
         self.git.create_branch(self.run_id)
         self.emit(RunStarted(**self._fields(), feature=feature.slug, branch=branch))
         payload = build_world_payload(world)
         self.emit(WorldLoaded(**self._fields(), **payload.model_dump()))
+        for bug in self.bugs.list():
+            if bug.feature_id == feature.id:
+                self.emit(
+                    self.bugs.opened_event(bug, run_id=self.run_id, clock=self.clock)
+                )
         self.sandbox = Sandbox(self.git.root)
         self.router = Router(
             config=self.config,

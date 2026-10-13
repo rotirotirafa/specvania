@@ -2,7 +2,6 @@
 
 import json
 import re
-import secrets
 from collections.abc import Callable
 from importlib.resources import files
 from pathlib import Path
@@ -12,9 +11,10 @@ from typing import Annotated
 from pydantic import Field, ValidationError, model_validator
 
 from specvania.agent.sandbox import Sandbox, SandboxRefusal
+from specvania.bugs import source_bug
 from specvania.clock import Clock
 from specvania.config import Config, NonEmptyText
-from specvania.ledger.repo import Ledger
+from specvania.ledger.repo import Ledger, RunIdTakenError, generate_run_id
 from specvania.provider.client import ChatMessage, Provider, ProviderError
 from specvania.provider.jsonout import ModelOutputError, extract_json_value
 from specvania.provider.router import Router
@@ -181,16 +181,20 @@ def plan(
     guard: RedactionGuard,
     answer: Callable[[Question], str],
     no_clarify: bool = False,
+    from_bug_id: str | None = None,
 ) -> PlanResult:
     """Buffer seq=0 events; persist only a validated plan with kind='plan'.
 
     The run id is allocated before the first Mage call. Failed plans retain
     only drafts. Successful plans use an empty branch (no Git mutations).
     """
+    bug = source_bug(ledger, root, from_bug_id) if from_bug_id is not None else None
+    if bug is not None:
+        idea = bug.title
     if not idea.strip():
         raise PlanError("Give the Mage a non-empty idea.")
     root = root.resolve()
-    run_id = f"{clock.now():%Y%m%d-%H%M%S}-{secrets.token_hex(2)}"
+    run_id = generate_run_id(clock)
     slug = (
         re.sub(r"[^a-z0-9]+", "-", idea.lower()).strip("-")[:80].rstrip("-")
         or "feature"
@@ -216,6 +220,8 @@ def plan(
             for name in ("spec.md", "tasks.md", "spec.draft.md", "tasks.draft.md")
         }
         context = {"idea": idea, **_context(root, sandbox)}
+        if bug is not None:
+            context["bug"] = bug.model_dump()
         answers: list[dict[str, str]] = []
         if not no_clarify:
             clarification = _clarify(router, context)
@@ -310,7 +316,12 @@ def plan(
             guard.validate(event)
         guard.validate(
             SpecWritten(
-                ts=clock.now(), run_id=run_id, seq=0, feature=slug, spec_version=""
+                ts=clock.now(),
+                run_id=run_id,
+                seq=0,
+                feature=slug,
+                spec_version="",
+                from_bug_id=from_bug_id,
             )
         )
         paths["spec.md"].write_text(draft.spec_md)
@@ -346,13 +357,33 @@ def plan(
         raise PlanError(
             "Cannot complete the plan; check Mage output and repository permissions."
         ) from None
-    project = ledger.add_project(root)
+    project = (
+        ledger.get_project(bug.project_id)
+        if bug is not None
+        else ledger.add_project(root)
+    )
     feature = ledger.add_feature(project.id, slug, idea)
     version = ledger.add_spec_version(feature.id, draft.spec_md, draft.tasks_md)
-    ledger.create_run(feature.id, version.id, "", run_id=run_id, kind="plan")
+    for attempt in range(5):
+        try:
+            ledger.create_run(feature.id, version.id, "", run_id=run_id, kind="plan")
+            break
+        except RunIdTakenError:
+            if attempt == 4:
+                raise PlanError(
+                    "Cannot allocate a unique plan run id; "
+                    "the validated world is saved."
+                ) from None
+            run_id = generate_run_id(clock)
+    buffered = [event.model_copy(update={"run_id": run_id}) for event in buffered]
     emit(
         SpecWritten(
-            ts=clock.now(), run_id=run_id, seq=0, feature=slug, spec_version=version.id
+            ts=clock.now(),
+            run_id=run_id,
+            seq=0,
+            feature=slug,
+            spec_version=version.id,
+            from_bug_id=from_bug_id,
         )
     )
     for event in buffered:

@@ -53,14 +53,7 @@ def test_version_matches_package_metadata(module: bool) -> None:
 
 @pytest.mark.parametrize(
     "arguments",
-    [
-        ("bug",),
-        ("bug", "add"),
-        ("bug", "list"),
-        ("bug", "close"),
-        ("bug", "add", "a bug", "--feature", "invoices", "--room", "T01"),
-        ("bug", "close", "1", "--wontfix"),
-    ],
+    [],
 )
 def test_commands_are_explicit_stubs(
     arguments: tuple[str, ...], tmp_path: Path, monkeypatch: pytest.MonkeyPatch

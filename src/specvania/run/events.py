@@ -138,6 +138,7 @@ class SpecWritten(EventBase):
     type: Literal["spec_written"] = "spec_written"
     feature: ShortText
     spec_version: ShortText
+    from_bug_id: ShortText | None = None
 
 
 class RoomEvent(EventBase):

@@ -390,7 +390,10 @@ def test_boss_skip_continues_later_area_and_abort_stops(
         ["T01", "T02"] if decision == "skip" else ["T01"]
     )
     assert not any(e.type == "room_skipped" for e in events)
-    assert not any(e.type == "bug_opened" for e in events)
+    bugs = [e for e in events if e.type == "bug_opened"]
+    assert len(bugs) == 1
+    assert bugs[0].source == "boss_scenario" and "S1" in bugs[0].title
+    assert bugs[0].body == "Missing acceptance"
 
 
 def test_boss_retry_reuses_area_diff_and_runs_fresh_gates(harness: Harness) -> None:

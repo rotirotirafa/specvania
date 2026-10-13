@@ -8,6 +8,7 @@ from specvania.ledger.repo import (
     LedgerNotFoundError,
     Project,
     Run,
+    RunIdTakenError,
     SpecVersion,
 )
 
@@ -19,5 +20,6 @@ __all__ = [
     "LedgerNotFoundError",
     "Project",
     "Run",
+    "RunIdTakenError",
     "SpecVersion",
 ]

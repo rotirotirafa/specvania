@@ -226,11 +226,11 @@ files: src/specvania/bugs.py, src/specvania/cli.py, src/specvania/run/engine.py,
 Implement D17. `bug add` (title, optional feature and room), `bug list` (open by default, `--all`), `bug close <id> --wontfix`. The engine opens a bug on `room_skipped` and on a failed boss scenario, with the Paladin's last feedback as body. `plan --from-bug <id>` gives the bug to the Mage as the idea plus context and links the new feature to the bug; when a run of that feature finishes with every room cleared, the bug is closed as fixed by that run. Each change emits `bug_opened` or `bug_closed`.
 
 Checklist:
-- [ ] Skipping a room opens one bug linked to feature, run and room
-- [ ] A failed boss scenario opens one bug naming the scenario
-- [ ] `plan --from-bug` includes the bug title and body in the Mage's input (asserted on the fake provider)
-- [ ] A fully cleared run of a feature planned from a bug closes that bug with `fixed_by_run`
-- [ ] `bug close --wontfix` closes without a run; closed bugs only show with `--all`
+- [x] Skipping a room opens one bug linked to feature, run and room
+- [x] A failed boss scenario opens one bug naming the scenario
+- [x] `plan --from-bug` includes the bug title and body in the Mage's input (asserted on the fake provider)
+- [x] A fully cleared run of a feature planned from a bug closes that bug with `fixed_by_run`
+- [x] `bug close --wontfix` closes without a run; closed bugs only show with `--all`
 
 ---
 

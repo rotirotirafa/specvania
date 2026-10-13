@@ -14,12 +14,15 @@ from typing import Annotated, Any, Literal, NoReturn, cast
 import typer
 from rich.console import Console
 from rich.prompt import Prompt
+from rich.table import Table
+from rich.text import Text
 from typer.core import TyperCommand
 
 from specvania.agent.approval import ApprovalError, ApprovalResponder, TerminalResponder
 from specvania.agent.gates import GateError
 from specvania.agent.sandbox import SandboxRefusal
 from specvania.agent.tools import ToolError
+from specvania.bugs import BugError, Bugs
 from specvania.clock import SystemClock
 from specvania.config import Config, ConfigError, initialize_config, load_config
 from specvania.ledger.repo import Ledger, LedgerError
@@ -259,10 +262,13 @@ def create_app() -> typer.Typer:
 
     @app.command("plan", help="Mage: Clarify an idea and write a verifiable world.")
     def plan(
-        idea: Annotated[str, typer.Argument(help="Feature idea for the Mage.")],
+        idea: Annotated[str, typer.Argument(help="Feature idea for the Mage.")] = "",
         no_clarify: Annotated[
             bool, typer.Option("--no-clarify", help="Skip Clarify.")
         ] = False,
+        from_bug: Annotated[
+            str | None, typer.Option("--from-bug", help="Plan a fix for an open bug.")
+        ] = None,
     ) -> None:
         console = Console()
         root = Path.cwd()
@@ -298,8 +304,9 @@ def create_app() -> typer.Typer:
                         guard=guard,
                         answer=answer,
                         no_clarify=no_clarify,
+                        from_bug_id=from_bug,
                     )
-        except (ConfigError, LedgerError, ProviderError, PlanError) as error:
+        except (ConfigError, LedgerError, ProviderError, PlanError, BugError) as error:
             Console(stderr=True).print(str(error), markup=False)
             raise typer.Exit(code=1) from None
         console.print(
@@ -541,19 +548,88 @@ def create_app() -> typer.Typer:
             raise typer.Exit(code=1)
         console.print("OK")
 
-    bug = typer.Typer(help="Manage bugs in the Bestiary.", invoke_without_command=True)
+    bug = typer.Typer(help="Manage bugs in the Bestiary.", no_args_is_help=True)
 
-    @bug.callback()
-    def bug_root(ctx: typer.Context) -> None:
-        if ctx.invoked_subcommand is None:
-            not_implemented()
+    def bug_ledger() -> tuple[Ledger, Bugs]:
+        git = GitOps(Path.cwd())
+        config = load_config(git.root / ".specvania/config.toml")
+        guard = RedactionGuard()
+        for secret in (
+            os.environ.get(config.provider.api_key_env, ""),
+            os.environ.get(config.ledger.database_url_env, ""),
+        ):
+            if secret:
+                guard.register(secret)
+        ledger = Ledger.from_config(
+            git.root, config.ledger, clock=SystemClock(), guard=guard
+        )
+        try:
+            project = ledger.add_project(git.root, git.origin_url())
+        except (LedgerError, GitError):
+            ledger.close()
+            raise
+        return ledger, Bugs(ledger, project.id)
 
-    for name in ("add", "list", "close"):
-        bug.command(
-            name,
-            help="Not implemented yet.",
-            context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-        )(not_implemented)
+    @bug.command("add", help="Open a bug in the Bestiary.")
+    def bug_add(
+        title: Annotated[str, typer.Argument(help="Bug title.")],
+        feature: Annotated[str | None, typer.Option("--feature")] = None,
+        room: Annotated[str | None, typer.Option("--room")] = None,
+    ) -> None:
+        try:
+            ledger, bugs = bug_ledger()
+            with ledger:
+                added = bugs.add(title, feature=feature, room=room)
+        except (ConfigError, GitError, LedgerError, BugError) as error:
+            Console(stderr=True).print(str(error), markup=False)
+            raise typer.Exit(code=1) from None
+        Console().print(f"Opened bug {added.id}: {added.title}", markup=False)
+
+    @bug.command("list", help="Show the Bestiary (open bugs by default).")
+    def bug_list(
+        all_bugs: Annotated[
+            bool, typer.Option("--all", help="Include closed bugs.")
+        ] = False,
+    ) -> None:
+        try:
+            ledger, bugs = bug_ledger()
+            with ledger:
+                rows = bugs.list(include_closed=all_bugs)
+                features = {f.id: f.slug for f in ledger.list_features(bugs.project_id)}
+        except (ConfigError, GitError, LedgerError, BugError) as error:
+            Console(stderr=True).print(str(error), markup=False)
+            raise typer.Exit(code=1) from None
+        table = Table(title="Bestiary")
+        for column in ("Bug", "Title", "Feature", "Room", "Status"):
+            table.add_column(column, overflow="fold")
+        for row in rows:
+            table.add_row(
+                Text(row.id),
+                Text(row.title),
+                Text(features.get(row.feature_id or "", "—")),
+                Text(row.room_id or "—"),
+                Text(row.status),
+            )
+        Console(markup=False).print(table)
+
+    @bug.command("close", help="Close a bug without a run.")
+    def bug_close(
+        bug_id: Annotated[str, typer.Argument(help="Bug id.")],
+        wontfix: Annotated[bool, typer.Option("--wontfix")] = False,
+    ) -> None:
+        try:
+            if not wontfix:
+                raise BugError(
+                    "Use --wontfix; fixed bugs close after a fully cleared run."
+                )
+            ledger, bugs = bug_ledger()
+            with ledger:
+                closed = bugs.close_wontfix(bug_id)
+        except (ConfigError, GitError, LedgerError, BugError) as error:
+            Console(stderr=True).print(str(error), markup=False)
+            raise typer.Exit(code=1) from None
+        Console().print(f"Closed bug {closed.id}: wontfix", markup=False)
+
     app.add_typer(bug, name="bug")
     return app
 

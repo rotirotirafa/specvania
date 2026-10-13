@@ -14,6 +14,18 @@ Every change to the spec's intent, logged before the commit that introduces it. 
 
 ## Entries
 
+### DEV-008 · 2026-10-12 · T13
+**What changed:** Within a run, repeated failed boss evaluations reuse one bug per area/scenario without another `bug_opened`. A later passing evaluation closes that scenario's still-open bug from the same run as fixed with `fixed_by_run` and emits `bug_closed`; choosing skip keeps the bug open.
+**Why:** The T13 reviewer found duplicate monsters after repeated failures and stale monsters after a successful retry. Fake-provider tests cover fail/retry/fail, fail/retry/pass and fail/skip.
+**Impact:** T13 engine bug hooks, D17, S14 and T17 Bestiary. No schema migration or event field/type change.
+**Approved by:** pending (requested in the T13 reviewer verdict).
+
+### DEV-007 · 2026-10-12 · T13
+**What changed:** CLI `bug add` and `bug close --wontfix` write only the bugs table through the Ledger API, without events. After `world_loaded`, runs emit `bug_opened` for every open bug of their feature. The optional `spec_written.from_bug_id` field records the source bug in the feature's plan-run events; a finished run with every room cleared and none skipped closes each still-open linked bug with `fixed_by_run` and emits `bug_closed`. No migration.
+**Why:** Events require a run and CLI bug commands run outside one. The reviewer approved persisting the feature/source bug link in existing plan-run events under the owner's wiring delegation.
+**Impact:** bugs.py, planner (T07), events, engine (T11), map/Bestiary (T17), D17 and S14. Existing event streams remain readable because `from_bug_id` defaults to None.
+**Approved by:** owner, 2026-10-12 (CLI events and run-start emission); reviewer under the owner's wiring delegation (optional source bug field and DEV-007 numbering).
+
 ### DEV-006 · 2026-10-12 · T11
 **What changed:** Skipping a room saves its uncommitted tracked edits, deletions and non-ignored untracked files in a named local Git stash before continuing. The stable stash id is included in `room_skipped.reason`. Abort leaves the working tree in place for inspection.
 **Why:** The T11 reviewer identified that skipped partial work contaminated the next room's Paladin diff and commit. Temporary-repository tests cover review failure and both Warrior and Paladin router errors, stash recovery and abort preservation.

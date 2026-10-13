@@ -150,7 +150,11 @@ def event_samples() -> tuple[dict[str, object], ...]:
 def test_every_event_type_round_trips_without_loss(payload: dict[str, object]) -> None:
     event = EVENT_ADAPTER.validate_python(payload)
     serialized = event.model_dump_json()
-    assert json.loads(serialized) == payload
+    assert json.loads(serialized) == (
+        {**payload, "from_bug_id": None}
+        if payload["type"] == "spec_written"
+        else payload
+    )
     assert EVENT_ADAPTER.validate_json(serialized) == event
     with pytest.raises(ValidationError, match="frozen"):
         event.seq = 999
