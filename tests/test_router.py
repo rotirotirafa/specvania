@@ -230,13 +230,117 @@ def test_transport_failure_uses_synthetic_599_without_changing_schema() -> None:
     ) == tuple(events)
 
 
-def test_authentication_error_is_typed_and_not_retried() -> None:
-    router, provider, _, events = setup_router([ProviderError(status=401)])
-    with pytest.raises(ProviderError):
+@pytest.mark.parametrize("status", [400, 401, 403, 422])
+def test_non_retryable_http_error_is_typed_and_not_retried(status: int) -> None:
+    error = ProviderError(status=status)
+    router, provider, clock, events = setup_router([error])
+    start = clock.now()
+    with pytest.raises(ProviderError) as caught:
         router.complete(Role.MAGE, messages())
+    assert caught.value is error
     assert len(provider.calls) == 1
     assert len(events) == 1
-    assert isinstance(events[0], ModelCall) and events[0].status == 401
+    assert isinstance(events[0], ModelCall) and events[0].status == status
+    assert clock.now() == start
+
+
+def test_unavailable_model_falls_back_without_cooldown_or_sleep(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    router, provider, clock, events = setup_router(
+        [
+            ProviderError(status=404, retry_after="100"),
+            Completion(content="fallback"),
+            Completion(content="same room"),
+            Completion(content="new room"),
+        ]
+    )
+    # Isolate provider fallback from the independently tested shared rate limiter.
+    monkeypatch.setattr(router.limiter, "acquire", lambda on_wait=None: None)
+
+    def unexpected_sleep(seconds: float) -> None:
+        pytest.fail(f"404 fallback must not sleep ({seconds} seconds)")
+
+    monkeypatch.setattr(clock, "sleep", unexpected_sleep)
+    router.start_room("T01")
+    assert router.complete(Role.MAGE, messages()).content == "fallback"
+    assert [call.model for call in provider.calls] == ["first", "second"]
+    assert [event.type for event in events] == ["model_call", "fallback", "model_call"]
+    assert isinstance(events[0], ModelCall) and events[0].status == 404
+    fallback = events[1]
+    assert isinstance(fallback, Fallback)
+    assert (fallback.role, fallback.from_model, fallback.to_model, fallback.reason) == (
+        Role.MAGE,
+        "first",
+        "second",
+        "model unavailable (HTTP 404)",
+    )
+    assert fold_events(events).party[0].model == "second"
+    router.start_room("T01")
+    assert router.complete(Role.MAGE, messages()).content == "same room"
+    router.start_room("T02")
+    assert router.complete(Role.MAGE, messages()).content == "new room"
+    assert [call.model for call in provider.calls] == [
+        "first",
+        "second",
+        "second",
+        "first",
+    ]
+    assert not any(isinstance(event, Cooldown) for event in events)
+
+
+def test_unavailable_last_model_exhausts_chain_without_cooldown() -> None:
+    router, provider, clock, events = setup_router([ProviderError(status=404)])
+    start = clock.now()
+    with pytest.raises(ChainExhaustedError) as caught:
+        router.complete(Role.WARRIOR, messages())
+    assert caught.value.role == Role.WARRIOR
+    assert [call.model for call in provider.calls] == ["first"]
+    assert len(events) == 1
+    assert isinstance(events[0], ModelCall) and events[0].status == 404
+    assert clock.now() == start
+    with pytest.raises(ChainExhaustedError):
+        router.complete(Role.WARRIOR, messages())
+    assert len(provider.calls) == 1
+
+
+def test_unavailable_model_resets_failure_count_before_next_model_backoff() -> None:
+    router, provider, _, events = setup_router(
+        [
+            ProviderError(status=503),
+            ProviderError(status=503),
+            ProviderError(status=404),
+            ProviderError(status=503),
+            ProviderError(status=503),
+            ProviderError(status=503),
+        ]
+    )
+    with pytest.raises(ChainExhaustedError):
+        router.complete(Role.MAGE, messages())
+    assert [call.model for call in provider.calls] == [
+        "first",
+        "first",
+        "first",
+        "second",
+        "second",
+        "second",
+    ]
+    assert [event.status for event in events if isinstance(event, ModelCall)] == [
+        503,
+        503,
+        404,
+        503,
+        503,
+        503,
+    ]
+    assert [
+        event.seconds
+        for event in events
+        if isinstance(event, Cooldown) and event.reason == "provider backoff"
+    ] == [1.0, 2.0, 1.0, 2.0]
+    fallbacks = [event for event in events if isinstance(event, Fallback)]
+    assert len(fallbacks) == 1
+    assert fallbacks[0].reason == "model unavailable (HTTP 404)"
 
 
 def test_configured_failure_threshold_and_independent_role_chains() -> None:

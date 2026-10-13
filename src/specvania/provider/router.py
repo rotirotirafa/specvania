@@ -129,11 +129,13 @@ class Router:
                     self._failures[role] = 0
                     return reply
                 assert failure is not None
-                if not failure.retryable:
+                unavailable = failure.status == 404
+                if not failure.retryable and not unavailable:
                     raise failure
-                self._failures[role] += 1
+                if not unavailable:
+                    self._failures[role] += 1
                 count = self._failures[role]
-                if count >= self._limit:
+                if unavailable or count >= self._limit:
                     self._index[role] += 1
                     self._failures[role] = 0
                     if self._index[role] >= len(chain):
@@ -146,9 +148,13 @@ class Router:
                             role=role,
                             from_model=model,
                             to_model=chain[self._index[role]],
-                            reason=f"{count} consecutive provider failures",
+                            reason="model unavailable (HTTP 404)"
+                            if unavailable
+                            else f"{count} consecutive provider failures",
                         )
                     )
+                if unavailable:
+                    continue
                 # Retry-After applies to the key even when moving to another model.
                 seconds = max(
                     2.0 ** (count - 1) + self._jitter(),

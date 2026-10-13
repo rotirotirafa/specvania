@@ -14,6 +14,12 @@ Every change to the spec's intent, logged before the commit that introduces it. 
 
 ## Entries
 
+### DEV-012 · 2026-10-13 · T05
+**What changed:** A provider HTTP 404 immediately advances the role to the next model for the rest of the room, resets consecutive failures, and emits `fallback` with reason `model unavailable (HTTP 404)` after the existing `model_call`, without provider backoff or a provider `cooldown`. A 404 on the last model raises `ChainExhaustedError`; other non-retryable statuses still raise unchanged.
+**Why:** After the timed-out `z-ai/glm-5.3` Warrior calls in the owner's T23 dogfood run, `moonshotai/kimi-k2.6` returned HTTP 404 in 0.5 seconds (function not found), despite appearing in `/v1/models`. The router raised and paused the run instead of trying `deepseek-ai/deepseek-v4.1-flash`.
+**Impact:** D5, T05 router and regression tests, engine pauses only after an unavailable chain is exhausted, and T17 HUD model updates through the existing fallback event. Per-room chain resets, shared rate limiting and 429/5xx retries remain unchanged.
+**Approved by:** reviewer under the owner's wiring delegation, 2026-10-13
+
 ### DEV-011 · 2026-10-13 · T05
 **What changed:** Provider requests use configurable `provider.timeout_s`, a positive finite float defaulting to 300 seconds, instead of the hard-coded 60-second SDK timeout. The setting also applies to injected SDK clients and is written by `specvania init`.
 **Why:** During the owner's T23 dogfood run against `https://integrate.api.nvidia.com/v1`, three Warrior calls to `z-ai/glm-5.3` failed at 60.3 seconds with synthetic status 599, while a tiny probe answered in 1.6 seconds. Whole-file Warrior replies and reasoning tokens need more time; `moonshotai/kimi-k3` produced 1,227 output tokens in 26 seconds during planning.
