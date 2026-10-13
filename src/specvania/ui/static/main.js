@@ -3,6 +3,9 @@ import { t, onLanguageChange, i18n, bindDocument, connectLanguage } from "./i18n
 import { UI_COLORS } from "./pixel/palette.js";
 import { mountScreens } from "./screens/title.js";
 import { mountApproval } from "./hud/approval.js";
+import { mountPause } from "./screens/pause.js";
+import { mountBoss } from "./screens/boss.js";
+import { mountEnd } from "./screens/end.js";
 
 import { mountMap } from "./map/scene.js";
 import { mountParty } from "./hud/party.js";
@@ -61,6 +64,9 @@ function connectRun() {
   // T34 mounts its Start expedition button by listening for this controller.
   if (screens) window.dispatchEvent(new CustomEvent("specvania:screens-ready", {detail: screens}));
   mountApproval(socket);
+  mountPause(socket);
+  mountBoss(socket);
+  mountEnd(socket);
   connectLanguage(socket);
   let connectionKey = "connection.connecting", current;
   function render() {

@@ -10,7 +10,7 @@ const root = path.resolve(__dirname, "../..");
 const token = "desktop-control-secret";
 
 class Element {
-  constructor(tag) { this.tagName = tag; this.style = {}; this.children = []; this.listeners = {}; this.disabled = false; }
+  constructor(tag) { this.tagName = tag; this.style = {}; this.dataset = {}; this.children = []; this.listeners = {}; this.disabled = false; }
   append(...children) { for (const child of children) { child.parent = this; this.children.push(child); } }
   remove() { if (this.parent) this.parent.children = this.parent.children.filter(child => child !== this); }
   setAttribute(name, value) { this[name] = value; }

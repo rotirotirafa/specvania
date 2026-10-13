@@ -565,10 +565,10 @@ files: src/specvania/ui/static/hud/approval.js, src/specvania/ui/static/screens/
 The T20 approval choice box restyled and translated, with keyboard support. The pause dialog ("The party fell!") with Retry / Skip / Abort and one line explaining each; for "stamina exhausted", Rest / Abort. The boss arena transition with one HP segment per scenario. The end screen with the run summary — rooms, tokens, calls, fallbacks, time and coins when priced — plus See commits and Back to the castle.
 
 Checklist:
-- [ ] Approvals, pause choices and stamina choices work with keyboard and mouse and reach the studio
-- [ ] The pause dialog shows the `run_paused` reason, translated when it is a known reason
-- [ ] The end screen numbers match `summary.md` for the same run (fixture test)
-- [ ] The boss loses one HP segment per passed scenario in the arena
+- [x] Approvals, pause choices and stamina choices work with keyboard and mouse and reach the studio
+- [x] The pause dialog shows the `run_paused` reason, translated when it is a known reason
+- [x] The end screen numbers match `summary.md` for the same run (fixture test)
+- [x] The boss loses one HP segment per passed scenario in the arena
 
 ### T37 · Watch the demo in the app
 depends_on: T33, T36

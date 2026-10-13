@@ -120,8 +120,14 @@ const panelTechnical = new Set(`python javascript typescript markdown ini yaml h
   65vh visible Escape Tab wrap`.split(/\s+/));
 for (const value of ["-", "+", " ", "*", "diff --git", "/api/rooms/${}/code", "translateX(100%)", "translateX(0)",
   "room-panel-${}", "transform 160ms", "panel.${}", "button, select, [tabindex]"]) panelTechnical.add(value);
+// T36 DOM/CSS/input/protocol identifiers; engine reason templates are matched
+// only as diagnostics and rendered exclusively through translated templates.
+const expeditionTechnical = new Set(`boss-hp transparent end end-metrics tokens_in tokens_out calls fallbacks latency
+  e end-commits expedition-dialog expedition-content expedition-actions ArrowLeft ArrowRight pause retry abort skip pause_decision`.split(/\s+/));
+for (const value of ["expedition-dialog boss-dialog", ".${}", "end.${}", "384px 352px", "pause.${}Help", "pause.${}"]) expeditionTechnical.add(value);
+diagnostics["screens/pause.js"] = ["stamina exhausted", "model chain exhausted", "boss failed"];
 function approved(value, file) {
-  return !value || Object.hasOwn(en, value) || Object.hasOwn(en, `event.${value}`) || technical.has(value) || file === "hud/room-panel.js" && panelTechnical.has(value) || exact.has(value) || diagnostics[file]?.includes(value)
+  return !value || Object.hasOwn(en, value) || Object.hasOwn(en, `event.${value}`) || technical.has(value) || file === "hud/room-panel.js" && panelTechnical.has(value) || /^(screens\/(pause|boss|end)\.js)$/.test(file) && expeditionTechnical.has(value) || exact.has(value) || diagnostics[file]?.includes(value)
     || /^specvania:[a-z-]+$/.test(value) // internal DOM event names
     || /^(\.\.\/|\.\/)[\w/.-]+$/.test(value) // local imports/assets only
     || /^\d+(px|%|px 0)?$/.test(value) || /^\d+(\.\d+)?$/.test(value) // CSS sizes and numeric formats
@@ -136,7 +142,7 @@ function scanJS(source, file) {
     // are also status/event keys. Check common sinks independently of allowlist.
     const before = source.slice(Math.max(0, start - 100), start);
     const visible = /(?:textContent\s*=|(?:label|text)\([^\n]*,|setAttribute\("aria-label",)\s*$/.test(before);
-    return (!approved(value, file) || visible && technical.has(value) && !["aria-label", "p", "h2", "h3", "div", "button", "span", "strong", "small"].includes(value));
+    return (!approved(value, file) || visible && (technical.has(value) || expeditionTechnical.has(value) || diagnostics[file]?.includes(value)) && !["aria-label", "p", "h2", "h3", "div", "button", "span", "strong", "small"].includes(value));
   }).map(({value}) => value);
 }
 function walk(directory) {
@@ -156,6 +162,9 @@ test("static_JS_and_HTML_have_no_untranslated_visible_literals", () => {
     } else failures.push(...scanJS(source,file).map(value=>`${file}: ${value}`));
   }
   assert.deepEqual(failures, []);
+  // T36's new protocol identifiers are never accepted as direct UI labels.
+  assert.ok(scanJS('node.textContent = "abort";', "screens/pause.js").length);
+  assert.ok(scanJS('node.textContent = "stamina exhausted";', "screens/pause.js").length);
   // Prove the scan rejects prose, single words and technical keys in text sinks.
   for (const source of ['const hint = "World map · M";', 'node.textContent = "running";', 'label(document, "h2", "Mage");', 'text("p", `Oops ${id}`);']) assert.ok(scanJS(source,"main.js").length, source);
 });
@@ -171,6 +180,8 @@ class Element {
   addEventListener(key, fn) { this.listeners[key] = fn; }
   click() { this.listeners.click?.(); }
   focus() {}
+  getAttribute(key) {return this.attrs[key] ?? null;}
+  removeAttribute(key) {delete this.attrs[key];}
   set innerHTML(_) { assert.fail("HTML injection"); }
 }
 const flatten = node => [node, ...node.children.flatMap(flatten)];
@@ -243,15 +254,17 @@ test("switch_updates_static_transport_map_party_bestiary_dialogue_and_approval_t
   let config; const object=()=>({destroy(){},setVisible(){},setAlpha(){},setPosition(){},setTexture(){},setInteractive(){},on(){}});
   const graphics=()=>({destroy(){},fillStyle(){return this;},fillRect(){return this;}});
   const camera={stopFollow(){},setZoom(){},setBounds(){},centerOn(){}};
-  const scene={textures:{exists:()=>true},input:{keyboard:{on(){}}},cameras:{main:camera},
+  const scene={textures:{exists:()=>true,get:()=>undefined},input:{keyboard:{on(){}}},cameras:{main:camera},
     add:{image:object,text:object,zone:object,graphics},children:{bringToTop(){}},tweens:{killTweensOf(){}}};
   const Phaser={CANVAS:1,Scale:{NONE:0},Game:class{constructor(value){config=value;this.scale={resize(){}};}destroy(){}}};
   const map=mountMap(Phaser,{},h.browser);
   const originalGet=h.document.getElementById;
   // The camera measures an actual HUD width; the projection updates map labels.
-  h.document.getElementById=id=>id==="castle-hud" ? {getBoundingClientRect:()=>({width:260})} : originalGet(id);
+  h.host.getBoundingClientRect=()=>({width:260});
+  h.document.getElementById=id=>id==="castle-hud" ? h.host : originalGet(id);
   global.window=h.browser; global.document=h.document;
   global.CustomEvent=class {constructor(type,options){Object.assign(this,{type,...options});}};
+  h.browser.CustomEvent=global.CustomEvent;
   global.WebSocket=class {constructor(){return h.socket;}};
   try {
     await import(`${pathToFileURL(path.join(root,"main.js"))}?i18n-test`);

@@ -87,7 +87,7 @@ export function drawRoom(graphics, room) {
 
 /** Install listeners before Phaser's asynchronous create so no snapshot is lost. */
 export function mountMap(Phaser, host, browser = window) {
-  let world = worldFromRooms([]), scene = null, overview = false, partyRoom = null;
+  let world = worldFromRooms([]), scene = null, overview = false, partyRoom = null, activeArena = null;
   let width = browser.innerWidth || host.clientWidth || 960;
   let height = browser.innerHeight || 540;
   const objects = [];
@@ -162,6 +162,7 @@ export function mountMap(Phaser, host, browser = window) {
       tile(stair.x - 16, stair.y + 48, "door_open_middle");
     }
     const party = animations.render(scene, layout, partyRoom);
+    const arena = layout.areas.find(area => area.id === activeArena)?.boss;
     const camera = scene.cameras.main;
     const hud = browser.document.getElementById("castle-hud");
     if (hud) hud.hidden = overview; // M exposes the entire castle, including the stairwell.
@@ -183,7 +184,13 @@ export function mountMap(Phaser, host, browser = window) {
     camera.setBounds(overview || preview ? frame.x + Math.min(0, (frame.width - viewWidth) / 2) : 0,
       overview || preview ? frame.y + Math.min(0, (frame.height - viewHeight) / 2) : 0,
       Math.max(layout.width, viewWidth) + coveredWidth, Math.max(layout.height, viewHeight));
-    if (overview || preview || !layout.rooms.length) camera.centerOn(Math.floor(frame.x + frame.width / 2) + offset, Math.floor(frame.y + frame.height / 2));
+    if (arena) {
+      camera.setViewport?.(0, 0, width, height);
+      camera.setZoom(Math.max(1, Math.min(4, Math.floor(width / (arena.width + 64)), Math.floor(height / 128))));
+      // Center the real T30 arena below the HP header and above Continue.
+      camera.setBounds(-width, -height, layout.width + width * 2, layout.height + height * 2);
+      camera.centerOn(arena.x + Math.floor(arena.width / 2), arena.y + 24);
+    } else if (overview || preview || !layout.rooms.length) camera.centerOn(Math.floor(frame.x + frame.width / 2) + offset, Math.floor(frame.y + frame.height / 2));
     else {
       const target = party || { x: layout.rooms[0].x + 40, y: layout.rooms[0].y + 24 };
       // Phaser subtracts its follow offset from the target before centering.
@@ -194,6 +201,10 @@ export function mountMap(Phaser, host, browser = window) {
     const description = browser.document.getElementById("map-rooms");
     if (description) description.textContent = world.rooms.map(room => t("map.room", {area: room.area, id: room.id, title: room.title, state: t(`room.${room.state}`)})).join("\n");
   }
+  const onExpedition = () => {overview = false; redraw();};
+  browser.addEventListener("specvania:expedition-dialog", onExpedition);
+  const onBossScreen = ({detail}) => {activeArena = detail.active ? detail.area_id : null; overview = false; redraw();};
+  browser.addEventListener("specvania:boss-screen", onBossScreen);
   let studioWorld = null, revealedWorld = null, barHeight = 72;
   const onDialogueLayout = ({detail}) => {barHeight = detail.height; redraw();};
   browser.addEventListener("specvania:dialogue-layout", onDialogueLayout);
@@ -245,7 +256,7 @@ export function mountMap(Phaser, host, browser = window) {
       registerTextures(this);
       if (browser.CustomEvent) browser.dispatchEvent?.(new browser.CustomEvent("specvania:textures-ready", {detail: this.textures}));
       this.input.keyboard.on("keydown-M", event => {
-        if (event.repeat || /^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName) || event.target?.isContentEditable) return;
+        if (host.getAttribute?.("inert") != null || event.repeat || /^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName) || event.target?.isContentEditable) return;
         overview = !overview; redraw();
       });
       redraw(); revealReady();
@@ -260,6 +271,8 @@ export function mountMap(Phaser, host, browser = window) {
   resize();
   return { setReducedMotion: animations.setReducedMotion,
     setReplaySpeed: animations.setReplaySpeed, destroy() {
+    browser.removeEventListener("specvania:expedition-dialog", onExpedition);
+    browser.removeEventListener("specvania:boss-screen", onBossScreen);
     browser.removeEventListener("specvania:dialogue-layout", onDialogueLayout);
     browser.removeEventListener("specvania:studio-state", onStudio);
     browser.removeEventListener("specvania:state", onState);
