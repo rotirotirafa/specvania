@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 
 const payload = JSON.parse(fs.readFileSync(0, "utf8"));
 const base = pathToFileURL(`${process.cwd()}/src/specvania/ui/static/`);
-const { layoutWorld, worldFromRooms, integerDisplayZoom } = await import(new URL("map/layout.js", base));
+const { layoutWorld, worldFromRooms, integerDisplayZoom, castleViewZoom } = await import(new URL("map/layout.js", base));
 const { roomAppearance, drawRoom, projectEvent, mountMap } = await import(new URL("map/scene.js", base));
 const { PALETTE } = await import(new URL("pixel/palette.js", base));
 const world = worldFromRooms(payload.rooms, payload.areas, payload.doors);
@@ -12,8 +12,10 @@ const world = worldFromRooms(payload.rooms, payload.areas, payload.doors);
 if (process.argv[2] === "layout") {
   for (const overview of [false, true]) {
     const layout = layoutWorld(world, overview);
-    assert.equal(layout.rooms.length, 38);
-    assert.equal(layout.areas.length, 10);
+    assert.equal(layout.rooms.length, 41);
+    assert.equal(layout.areas.length, 11);
+    assert.deepEqual([layout.width, layout.height], [832, 576]);
+    if (overview) assert.equal(castleViewZoom(960, 540, layout, true), 1);
     assert.deepEqual(layout, layoutWorld(worldFromRooms([...payload.rooms].reverse(),
       [...payload.areas].reverse(), payload.doors), overview));
     for (const room of layout.rooms) {
@@ -31,7 +33,7 @@ if (process.argv[2] === "layout") {
       const sources = room.depends_on.map(id => layout.rooms.find(room => room.id === id))
         .filter(source => source.area === room.area);
       assert.equal(room.depth, sources.length ? Math.max(...sources.map(room => room.depth)) + 1 : 0);
-      if (overview) assert.ok(room.x + room.width <= 960 && room.y + room.height <= 540);
+      if (overview) assert.ok(room.x + room.width <= layout.width && room.y + room.height <= layout.height);
     }
     assert.equal(layout.doors.length, payload.rooms.length - payload.areas.length);
     for (const door of layout.doors) {
@@ -106,7 +108,7 @@ if (process.argv[2] === "projection") {
   assert.equal(JSON.stringify(world), original);
   // The mid-run projection retains redundant area metadata and dependencies.
   assert.deepEqual(worldFromRooms(current.rooms).areas, world.areas);
-  // T23 is last in tasks.md (A10), but reconnects rebuild doors by room id.
+  // T23 follows T38 in tasks.md (A10), but reconnects rebuild doors by room id.
   // Compare every edge, including duplicates, independently of that order.
   const doorOrder = (a, b) => a.dst.localeCompare(b.dst) || a.src.localeCompare(b.src);
   assert.deepEqual(worldFromRooms(current.rooms).doors.sort(doorOrder), [...world.doors].sort(doorOrder));

@@ -1,16 +1,17 @@
-# specvania — Spec v0.3
+# specvania — Spec v0.3.1
 
 > A spec-driven coding agent where **your spec becomes a metroidvania castle**.
 > A party of open models (served by NVIDIA NIM by default) plans, codes and reviews your work. You direct it from a desktop game — type the idea, answer the Mage, approve commands — and watch the party clear the castle built from your spec, room by room, in English or Brazilian Portuguese.
 
 | | |
 |---|---|
-| Status | Approved by the owner (2026-10-13) |
+| Status | Approved by the owner (2026-10-13), including the v0.3.1 amendment |
 | Owner | @rotirotirafa |
 | Date | 2026-10-13 |
 | Read with | [`docs/domain.md`](domain.md) · [`docs/conventions.md`](conventions.md) · [`docs/tasks.md`](tasks.md) · [`.agent/execution-protocol.md`](../.agent/execution-protocol.md) |
 
 **Changelog**
+- v0.3.1 (2026-10-13) — Launch: the CLI ships on PyPI and the desktop app on GitHub Releases, from a tag the owner pushes (C19, D26); a new last area A11 prepares the public repository (community files, sponsor), the release automation and the launch kit with the recorded demo and LinkedIn drafts (C20, D27, S24, T39–T41). The dogfood run (T23) happens in a fresh repository the owner creates. Providers beyond an OpenAI-compatible endpoint (Claude, Codex, OpenClaw, Hermes…) are v0.4 (C21).
 - v0.3 (2026-10-13) — The desktop game becomes the main surface: a long-lived `specvania studio` server started by the Electron app runs plan and run without a terminal (C12–C18). The map becomes a castle cross-section drawn with the Kenney Tiny Dungeon pack (CC0), replacing the code-drawn sprites (D10). Read-only code and diff per room in an embedded Monaco editor. Stamina becomes a per-run token budget. The game, the agents' prose and the README in English and Brazilian Portuguese. Party probe before an expedition. T23 moves to the new last area so the dogfood run happens in the game. Purpose: a demo and portfolio piece.
 - v0.2 (2026-10-12) — Added the ledger (runs, features, spec versions, bugs) with SQLite by default and Postgres as a pluggable adapter; bugs become monsters on the map; Electron desktop window next to the browser; shell approvals also from the desktop window. Redis considered and left out (D14).
 - v0.1 (2026-10-12) — First draft: CLI, team of NIM models, SDD world format, metroidvania map in the browser.
@@ -40,6 +41,7 @@ specvania combines it all: **SDD-native workflow + a team of open models + a pro
 - G7. Play the whole cycle — pick a project, idea, Clarify, save the world, run, approvals, pauses, bosses, summary — inside the desktop game, without a terminal.
 - G8. Offer the game and the agents' human-facing text in English and Brazilian Portuguese.
 - G9. Be demo-ready: someone who watches about two minutes of the game understands the concept without an explanation, and a recorded real run plays offline inside the app.
+- G10. Be launch-ready: installable from PyPI and GitHub Releases, in a repository that welcomes issues, contributions and sponsors, with the launch material ready for the owner to publish.
 
 ## 3. Non-goals (v0.3)
 
@@ -52,6 +54,9 @@ specvania combines it all: **SDD-native workflow + a team of open models + a pro
 - Native function-calling (D3), multiplayer, approvals from a plain browser tab.
 - Long-context summarization of agent history (truncation only).
 - Signed and notarized desktop builds; Windows as a first-class platform (best effort).
+- Providers other than an OpenAI-compatible endpoint — native Claude, Codex, OpenClaw, Hermes or other agents as party members (v0.4, C21).
+- Distribution through npm (C19).
+- Publishing, tagging, posting or making the repository public from automation: the launch rooms prepare everything, the owner presses the buttons (S-7).
 
 ## 4. Clarify log
 
@@ -75,6 +80,9 @@ specvania combines it all: **SDD-native workflow + a team of open models + a pro
 | C16 | Stamina | The tokens available and spent: a per-run token budget |
 | C17 | Languages | The product in English and Brazilian Portuguese, switchable in the game |
 | C18 | Front-end approach | Evolve the existing web app and Electron shell (no bundler); a long-lived studio server bridges the engine to the game |
+| C19 | Distribution (v0.3.1) | The CLI on PyPI (`uvx specvania`, `uv tool install specvania`) and the desktop app on GitHub Releases; no npm package |
+| C20 | Launch (v0.3.1) | A last area after the dogfood run prepares the public repository (contributing, issue forms, code of conduct, security policy, GitHub Sponsors), the release automation and the launch kit (recorded demo, screenshots, LinkedIn drafts in English and Portuguese); the owner publishes and posts |
+| C21 | Providers beyond NIM | Wanted next (v0.4): use any provider or agent — Claude, Codex, OpenClaw, Hermes and others — instead of being tied to NVIDIA NIM; brainstorm and spec it after v0.3 ships |
 
 ## 5. How SDD maps to the game
 
@@ -254,6 +262,8 @@ Studio mode (v0.3), started from the Dock:
 | D23 | **Castle layout.** A pure function turns a world into floors (one per area, in order), chambers (rooms left to right by door depth, then id), doors between consecutive chambers (locked until every dependency of the next room is cleared), a boss arena at the end of each floor and stairs to the next floor. The camera follows the party; `M` shows the whole castle | Deterministic and testable; the cross-section reads as a castle (C15) |
 | D24 | **Party probe.** `doctor --probe` and the game's "Check the party" send one minimal completion to each distinct configured model through the provider (no router, no fallback) and report ok with latency, the HTTP status, or a timeout. Owner-run only (real key) | Catalog presence did not prove a model answers (T05/T23 findings) |
 | D25 | **Saving the world.** After Clarify the game commits only `.specvania/specs/<slug>/` on the current branch ("specvania: map <slug>") before the run. If other files are dirty, the game lists them and asks to cancel or start anyway (`--allow-dirty`) | The v0.2 flow required a manual commit between plan and run (T23 friction) |
+| D26 | **Distribution.** One version, in `pyproject.toml`, drives everything. Pushing a tag `vX.Y.Z` runs a release workflow that builds the sdist and wheel and publishes them to PyPI through trusted publishing (OIDC, no token stored in the repository), builds the desktop app (unsigned dmg arm64 and x64, AppImage) and creates the GitHub Release with the artifacts, `SHA256SUMS` and the version's `CHANGELOG.md` section. Pull requests run the same builds without publishing. The owner sets up the PyPI trusted publisher and pushes the tag | The CLI is a Python package (PyPI is where `uvx` finds it); Releases carry the desktop builds; OIDC avoids long-lived secrets in a public repository |
+| D27 | **Community.** `CONTRIBUTING.md` explains the SDD contract (spec, rooms, gates, deviations) and the local setup; issue forms for a bug, a feature idea and a room proposal; a pull-request template with the gate checklist; `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1); `SECURITY.md` pointing to GitHub private vulnerability reporting; `.github/FUNDING.yml` for GitHub Sponsors (@rotirotirafa). Everything in English, with the README in both languages | A portfolio project that invites contributions needs a front door; issue forms keep reports actionable |
 
 ## 10. Acceptance — business scenarios (BDD)
 
@@ -464,6 +474,16 @@ And its Clarify answers and approvals appear as they happened
 And I can switch between 1×, 2× and 4× while it plays
 ```
 
+### S24 · From visitor to user and contributor
+```gherkin
+Given the public GitHub repository and its latest release
+When a visitor follows the README
+Then `uvx specvania --version` installs the CLI from PyPI and prints the release version
+And the desktop app from the release opens the title screen and plays Watch demo offline
+And the visitor can open a bug, a feature idea or a room proposal through an issue form
+And the README and CONTRIBUTING.md explain how to contribute and how to sponsor the project
+```
+
 ## 11. Acceptance — technical checklist
 
 - [ ] `ruff check`, `ruff format --check`, `pyright` and `pytest` pass in CI on Linux and macOS, Python 3.12 and 3.13.
@@ -482,7 +502,7 @@ And I can switch between 1×, 2× and 4× while it plays
 
 ## 12. Definition of done (v0.3)
 
-All scenarios S1–S23 pass, the technical checklist is green, the desktop app builds for macOS (arm64, x64) and Linux (AppImage) in CI, and the full cycle of S22 works from the Dock. The package ships a real recorded run (`real-run`, plan and run) produced by specvania on `examples/sample-todo-api/` through the game, playable as Watch demo next to the synthetic `demo`. The README exists in English and Brazilian Portuguese, and its GIF comes from the real run.
+All scenarios S1–S24 pass, the technical checklist is green, the desktop app builds for macOS (arm64, x64) and Linux (AppImage) in CI, and the full cycle of S22 works from the Dock. The package ships a real recorded run (`real-run`, plan and run) produced by specvania through the game on a fresh repository the owner creates (the sample project is the fallback), playable as Watch demo next to the synthetic `demo`. The README exists in English and Brazilian Portuguese, and its GIF comes from the real run. The release workflow, the community files and the launch kit are ready; publishing to PyPI, creating the release and posting are the owner's steps.
 
 ## 13. Open points (decide during execution, log in `.agent/deviations.md`)
 

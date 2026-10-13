@@ -234,6 +234,28 @@ export const SPRITES = freezeSprites({
       ]
     ]
   },
+  "room_a11": {
+    "idle": [
+      [
+        "KKKKKKKKKKKKKKKK",
+        "KLLLLLLLLLLLLLLK",
+        "KLSSSSSSSSSSSSLK",
+        "KLSKKKKKKKKKKSLK",
+        "KLSKKKKKKKKKKSLK",
+        "KLSKKKKKKKKKKSLK",
+        "KLSKKKKKKKKKKSLK",
+        "KLSKKKKKKKKKKSLK",
+        "KLSKKKKKKKKKKSLK",
+        "KLSKKKKKKKKKKSLK",
+        "KLSKKKKKKKKKKSLK",
+        "KLSKKKKKKKKKKSLK",
+        "KLSKKKKKKKKKKSLK",
+        "KLSSSSSSSSSSSSLK",
+        "KLLLLLLLLLLLLLLK",
+        "KKKKKKKKKKKKKKKK"
+      ]
+    ]
+  },
   "heart": {
     "idle": [
       [

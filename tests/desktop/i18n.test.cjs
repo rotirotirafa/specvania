@@ -57,7 +57,7 @@ const technical = new Set(`en pt-BR specvania.language specvania.settings text/j
   role dialog status progressbar meter img aria-label aria-pressed aria-valuemin aria-valuemax aria-valuenow aria-valuetext
   div section p h1 h2 h3 strong small span button canvas nav header style pre main 2d
   click message close error open resize pointerdown pointerup pointermove pointercancel wheel keydown-M change
-  function boolean anywhere json pt Linear shake kenney-tiny-dungeon slime bat ghost spider rat red_crab hooded_figure coin stamina_pip V C P idle thinking acting cooldown running paused finished aborted locked active cleared failed skipped
+  function boolean anywhere json pt Linear shake kenney-tiny-dungeon slime bat ghost spider rat red_crab hooded_figure coin stamina_pip V C P L idle thinking acting cooldown running paused finished aborted locked active cleared failed skipped
   mage warrior paladin state event studio_state set_language approval_answer approval_rejected desktop-title-bar connection run-state
   view_token ws: /ws world-map castle-hud map-rooms party-hud bestiary-hud dialogue-hud approval-choice
   action finish pass fail walk act rest defeated escaped swing shield plan hit escape bossResult arena reveal defeat
@@ -134,7 +134,7 @@ function approved(value, file) {
     || /^[#][\da-fA-F]{6}$/.test(value) // palette data
     || /^[a-z]+_[a-z_]+$/.test(value) && (Object.hasOwn(en, `event.${value}`) || value === "kenney_tiny_dungeon")
     || file === "pixel/palette.js" && /^A\d+$/.test(value)
-    || file === "pixel/sprites.js" && (/^room_a\d+$/.test(value) || /^[KSBWYOGRN.VCP]{16}$/.test(value)); // pixel rows/symbols
+    || file === "pixel/sprites.js" && (/^room_a\d+$/.test(value) || /^[KSBWYOGRN.VCPL]{16}$/.test(value)); // pixel rows/symbols
 }
 function scanJS(source, file) {
   return literals(source).filter(({value, start}) => {

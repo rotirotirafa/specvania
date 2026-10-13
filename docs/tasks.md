@@ -1,4 +1,4 @@
-# specvania — Tasks v0.3
+# specvania — Tasks v0.3.1
 
 World for [`docs/spec.md`](spec.md). Execute with [`.agent/execution-protocol.md`](../.agent/execution-protocol.md): one room at a time, in door order, gates after every room.
 
@@ -26,9 +26,13 @@ A8 Castle        T29 ── T30 ── T31 ........................ boss: S20
 A9 Screens       T32 ─┬─ T33 ── T34 ── T36 ── T37
                       └─ T35 .............................. boss: S21 S22
 A10 Demo         T38 ── T23 ............................... boss: S23
+A11 Launch       T39 ─┬─ T41
+                 T40 ─┘ ................................... boss: S24
 ```
 
 v0.3 note: T23 moved from A6 to A10 so the dogfood run happens in the game; its sample project (`examples/sample-todo-api/`) is already in place.
+
+v0.3.1 note: A11 prepares the launch (D26, D27); publishing and posting stay with the owner. T23 now runs on a fresh repository the owner creates, with the sample project as the fallback.
 
 ---
 
@@ -605,10 +609,55 @@ depends_on: T38
 covers: S11, S23
 files: examples/sample-todo-api/, src/specvania/examples/real-run/, .agent/deviations.md, README.md, README.pt-BR.md
 
-The sample project already exists in `examples/sample-todo-api/` (FastAPI todo API with tests). With a real NVIDIA API key, the owner plays one feature end to end in the desktop game: Check the party, idea, Clarify, Save map, expedition, approvals, boss, end screen. Export the plan and run streams as `real-run`, bundled as the in-app Watch demo; make the README GIF from it; use the summary to settle O1 (default models per role).
+The owner creates a fresh repository with a small idea of their own (the sample project in `examples/sample-todo-api/` is the fallback). With a real NVIDIA API key, the owner plays one feature end to end in the desktop game, from an empty project to the end screen: Check the party, idea, Clarify, Save map, expedition, approvals, boss, end screen. Export the plan and run streams as `real-run`, bundled as the in-app Watch demo; make the README GIF from it; use the summary to settle O1 (default models per role).
 
 Checklist:
-- [ ] One full plan → run cycle completes in the desktop game on the sample project (or the failure is documented)
+- [ ] One full plan → run cycle completes in the desktop game on the owner's fresh repository (or the sample project), or the failure is documented
 - [ ] `real-run` (plan and run streams) and `summary.md` are committed and replay correctly in the game
 - [ ] O1 is decided and logged in `.agent/deviations.md` with the numbers from the summary
 - [ ] The README GIF comes from the real run, not the synthetic one
+
+---
+
+## A11 · Launch
+boss: S24
+
+### T39 · Community files and sponsor
+depends_on: T38
+covers: S24
+files: CONTRIBUTING.md, CODE_OF_CONDUCT.md, SECURITY.md, .github/ISSUE_TEMPLATE/bug.yml, .github/ISSUE_TEMPLATE/feature.yml, .github/ISSUE_TEMPLATE/room.yml, .github/ISSUE_TEMPLATE/config.yml, .github/pull_request_template.md, .github/FUNDING.yml, README.md, README.pt-BR.md, tests/test_community.py
+
+D27: the repository's front door. `CONTRIBUTING.md` covers the local setup (uv, Node for the desktop checks, optional Postgres), the SDD contract (spec, rooms, gates G1–G10, deviations) and how to propose a room. Issue forms for a bug (version, OS, steps, `specvania doctor` output with the key redacted), a feature idea and a room proposal (area, depends_on, covers, files, checklist); blank issues disabled with a link to Discussions if enabled. The pull-request template lists the gates. `CODE_OF_CONDUCT.md` is the Contributor Covenant 2.1 with the owner's contact; `SECURITY.md` points to GitHub private vulnerability reporting; `FUNDING.yml` names `github: rotirotirafa`. The README (both languages) gains badges (CI, PyPI version, license) and short Contributing and Sponsor sections.
+
+Checklist:
+- [ ] Every issue form is valid YAML with the required fields, labels and a redaction reminder (test)
+- [ ] The pull-request template lists gates G1–G10 and the deviation rule
+- [ ] `CODE_OF_CONDUCT.md`, `SECURITY.md` and `FUNDING.yml` exist with the owner's contact and Sponsors handle
+- [ ] `README.md` and `README.pt-BR.md` keep the same section headings, including Contributing and Sponsor (test)
+
+### T40 · Release automation
+depends_on: T38
+covers: S24
+files: .github/workflows/release.yml, .github/workflows/ci.yml, CHANGELOG.md, pyproject.toml, apps/desktop/package.json, tests/test_release.py
+
+D26: a workflow on tags `v*.*.*` builds the sdist and wheel with `uv build`, checks that the tag, `pyproject.toml` and `apps/desktop/package.json` agree, publishes to PyPI through trusted publishing (`id-token: write`, no secret), builds the desktop app on macOS (dmg arm64 and x64) and Linux (AppImage), and creates the GitHub Release with the artifacts, `SHA256SUMS` and the version's section of `CHANGELOG.md` (Keep a Changelog). The same build jobs run on pull requests without publishing. `CHANGELOG.md` starts with 0.3.0.
+
+Checklist:
+- [ ] The release workflow publishes only on a version tag, uses trusted publishing and stores no token (test on the workflow file)
+- [ ] A test fails when the tag, `pyproject.toml` and `apps/desktop/package.json` disagree
+- [ ] Pull requests build the sdist, wheel and desktop artifacts without publishing (workflow test; CI run owner-checked)
+- [ ] `CHANGELOG.md` has a 0.3.0 section the release job extracts (test)
+
+### T41 · Demo and launch kit
+depends_on: T23, T39, T40
+covers: S24
+files: docs/launch/checklist.md, docs/launch/linkedin.en.md, docs/launch/linkedin.pt-BR.md, docs/launch/demo-script.md, docs/media/, README.md, README.pt-BR.md, tests/test_launch_kit.py
+
+From T23's recorded real run: a README GIF and a short MP4 recorded from Watch demo at 2× (under 8 MB and 25 MB), screenshots of the title, castle, room panel and end screen in both languages, a demo script for a two-minute walkthrough (G9), LinkedIn post drafts in English and Brazilian Portuguese (what it is, the castle idea, open models on NVIDIA NIM, link, credits; no claim without evidence from the summary), and an ordered launch checklist for the owner: make the repository public, enable Sponsors and private vulnerability reporting, set up the PyPI trusted publisher, push the tag, check the release, post.
+
+Checklist:
+- [ ] The GIF, MP4 and screenshots come from the real run and stay within the size limits (test)
+- [ ] Both LinkedIn drafts exist, have the same structure, stay under 3,000 characters and link the repository (test)
+- [ ] Every number in the drafts and the demo script matches the real run's `summary.md` (test)
+- [ ] The launch checklist lists each owner step in order, with where to click or what to run
+
