@@ -935,3 +935,99 @@ def test_start_run_token_budget_override_is_run_only(
         )
     assert config_path.read_bytes() == original
     assert load_config(config_path).limits.token_budget == 1_000_000
+
+
+def test_planned_world_payload_reaches_ready_and_reconnect_without_spec_prose(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from specvania.run.events import build_world_payload
+    from specvania.sdd.world import parse_world
+
+    prepare(project)
+    instance = make_studio(monkeypatch, [draft()])
+    with socket(instance) as ws:
+        send(ws, instance, "open_project", path=str(project))
+        opened = receive(ws, "studio_state", phase="project_open")
+        assert opened["world"] is None and opened["world_slug"] is None
+        send(ws, instance, "start_plan", idea="Build work", no_clarify=True)
+        planned = receive(ws, "studio_state", phase="world_ready")
+        expected = build_world_payload(
+            parse_world(project / ".specvania/specs/build-work")
+        ).model_dump(mode="json")
+        assert planned["world"] == expected
+        assert planned["world_slug"] == "build-work"
+        assert SPEC not in json.dumps(planned) and TASKS not in json.dumps(planned)
+        assert "checklist" not in json.dumps(planned["world"])
+        assert "files" not in json.dumps(planned["world"])
+    with socket(instance) as ws:
+        restored = receive(ws, "studio_state", phase="world_ready")
+        assert restored["world"] == expected
+        assert restored["world_slug"] == "build-work"
+        send(ws, instance, "open_project", path=str(project))
+        cleared = receive(ws, "studio_state", phase="project_open")
+        assert cleared["world"] is None and cleared["world_slug"] is None
+
+
+@pytest.mark.parametrize("already_committed", [False, True])
+def test_saved_existing_world_payload_and_clearing_on_project_open(
+    project: Path, monkeypatch: pytest.MonkeyPatch, already_committed: bool
+) -> None:
+    from specvania.run.events import build_world_payload
+    from specvania.sdd.world import parse_world
+
+    prepare(project)
+    directory = project / ".specvania/specs/existing"
+    directory.mkdir(parents=True)
+    (directory / "spec.md").write_text(SPEC)
+    (directory / "tasks.md").write_text(TASKS)
+    if already_committed:
+        git(project, "add", ".specvania/specs")
+        git(project, "commit", "-m", "existing map")
+    instance = make_studio(monkeypatch, [])
+    with socket(instance) as ws:
+        send(ws, instance, "open_project", path=str(project))
+        receive(ws, "studio_state", phase="project_open")
+        send(ws, instance, "save_world", slug="existing")
+        saved = receive(ws, "studio_state", phase="world_ready")
+        assert saved["world"] == build_world_payload(parse_world(directory)).model_dump(
+            mode="json"
+        )
+        assert saved["world_slug"] == "existing"
+        assert saved["world"]["doors"] == [{"src": "T01", "dst": "T02"}]
+        assert saved["world"]["boss_ids"] == ["S1"]
+        instance.transition("project_open")
+        cleared = receive(ws, "studio_state", phase="project_open")
+        assert cleared["world"] is None and cleared["world_slug"] is None
+        send(ws, instance, "open_project", path=str(project))
+        cleared = receive(ws, "studio_state", phase="project_open")
+        assert cleared["world"] is None and cleared["world_slug"] is None
+
+
+def test_ready_payload_requires_lint_and_sandbox_before_parsing(
+    project: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    prepare(project)
+    directory = project / ".specvania/specs/existing"
+    directory.mkdir(parents=True)
+    (directory / "spec.md").write_text(SPEC)
+    (directory / "tasks.md").write_text(TASKS)
+    instance = make_studio(monkeypatch, [])
+    with socket(instance) as ws:
+        send(ws, instance, "open_project", path=str(project))
+        receive(ws, "studio_state", phase="project_open")
+        monkeypatch.setattr(
+            studio_module,
+            "parse_world",
+            lambda *args: pytest.fail("Parsed before validating world directory"),
+        )
+        (directory / "tasks.md").write_text("invalid")
+        send(ws, instance, "save_world", slug="existing")
+        receive(ws, "approval_rejected")
+        info = instance.info()
+        assert info is not None and info.world is None
+        outside = tmp_path / "outside.md"
+        outside.write_text(TASKS)
+        (directory / "tasks.md").unlink()
+        (directory / "tasks.md").symlink_to(outside)
+        send(ws, instance, "save_world", slug="existing")
+        receive(ws, "approval_rejected")

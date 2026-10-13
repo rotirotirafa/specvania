@@ -97,7 +97,8 @@ export function mountMap(Phaser, host, browser = window) {
     if (!scene) return;
     scene.cameras.main.stopFollow();
     for (const object of objects.splice(0)) object.destroy();
-    const layout = layoutWorld(world, overview);
+    const preview = Boolean(studioWorld && barHeight > 0);
+    const layout = layoutWorld(world, overview || preview);
     const tile = (x, y, name) => {
       const object = scene.add.image(x + 8, y + 8, textureKey(name, "idle"));
       objects.push(object);
@@ -116,6 +117,13 @@ export function mountMap(Phaser, host, browser = window) {
         tile(x, room.y + 32, column === 2 ? "floor_grate" : "floor_stones");
       }
     };
+    if (!layout.rooms.length) {
+      for (let x = 32; x < 192; x += TILE_SIZE) {
+        tile(x, 32, "wall_top_middle"); tile(x, 48, "back_wall"); tile(x, 64, "floor_stones");
+      }
+      tile(144, 48, "door_double_left"); tile(160, 48, "door_double_right");
+      tile(80, 48, "mage"); tile(48, 32, "banner");
+    }
     for (const area of layout.areas) {
       // Continuous masonry joins chambers, hallway, boss arena and stairwell.
       for (let x = 128; x < area.boss.x; x += 16) {
@@ -159,18 +167,23 @@ export function mountMap(Phaser, host, browser = window) {
     if (hud) hud.hidden = overview; // M exposes the entire castle, including the stairwell.
     const overlayWidth = Math.min(width - 1, hud?.getBoundingClientRect?.().width || 0);
     const visibleWidth = width - overlayWidth;
+    const viewport = preview ? {x: 16, y: 32, width: Math.max(1, width - overlayWidth - 32),
+      height: Math.max(1, height - 32 - barHeight - 16)} : {x: 0, y: 0, width, height};
+    const frame = preview && (layout.width > viewport.width || layout.height > viewport.height)
+      && layout.areas.length ? layout.areas[0] : {x: 0, y: 0, width: layout.width, height: layout.height};
+    camera.setViewport?.(viewport.x, viewport.y, viewport.width, viewport.height);
     camera.roundPixels = true;
-    const zoom = castleViewZoom(overview ? visibleWidth : width, height, layout, overview);
+    const zoom = castleViewZoom(preview ? viewport.width : overview ? visibleWidth : width, viewport.height, preview ? frame : layout, overview || preview);
     camera.setZoom(zoom);
     // A small overview needs negative bounds so Phaser does not clamp its
     // centered scroll to the top-left. Labels share the castle's coordinates.
-    const viewWidth = width / zoom, viewHeight = height / zoom;
-    const coveredWidth = Math.ceil(overlayWidth / zoom);
-    const offset = Math.round(overlayWidth / (2 * zoom));
-    camera.setBounds(overview ? Math.min(0, (layout.width - viewWidth) / 2) : 0,
-      overview ? Math.min(0, (layout.height - viewHeight) / 2) : 0,
+    const viewWidth = viewport.width / zoom, viewHeight = viewport.height / zoom;
+    const coveredWidth = preview ? 0 : Math.ceil(overlayWidth / zoom);
+    const offset = preview ? 0 : Math.round(overlayWidth / (2 * zoom));
+    camera.setBounds(overview || preview ? frame.x + Math.min(0, (frame.width - viewWidth) / 2) : 0,
+      overview || preview ? frame.y + Math.min(0, (frame.height - viewHeight) / 2) : 0,
       Math.max(layout.width, viewWidth) + coveredWidth, Math.max(layout.height, viewHeight));
-    if (overview || !layout.rooms.length) camera.centerOn(Math.floor(layout.width / 2) + offset, Math.floor(layout.height / 2));
+    if (overview || preview || !layout.rooms.length) camera.centerOn(Math.floor(frame.x + frame.width / 2) + offset, Math.floor(frame.y + frame.height / 2));
     else {
       const target = party || { x: layout.rooms[0].x + 40, y: layout.rooms[0].y + 24 };
       // Phaser subtracts its follow offset from the target before centering.
@@ -181,6 +194,29 @@ export function mountMap(Phaser, host, browser = window) {
     const description = browser.document.getElementById("map-rooms");
     if (description) description.textContent = world.rooms.map(room => t("map.room", {area: room.area, id: room.id, title: room.title, state: t(`room.${room.state}`)})).join("\n");
   }
+  let studioWorld = null, revealedWorld = null, barHeight = 72;
+  const onDialogueLayout = ({detail}) => {barHeight = detail.height; redraw();};
+  browser.addEventListener("specvania:dialogue-layout", onDialogueLayout);
+  function revealReady() {
+    if (!studioWorld || revealedWorld === studioWorld) return;
+    if (animations.inspect().revealed.length !== world.rooms.length) return;
+    revealedWorld = studioWorld;
+    browser.dispatchEvent(new browser.CustomEvent("specvania:world-revealed", {detail: {slug: studioWorld}}));
+  }
+  const onStudio = ({ detail }) => {
+    if (["running", "finished"].includes(detail.phase)) {
+      overview = false; studioWorld = null; redraw();
+    } else if (detail.phase === "world_ready" && detail.world && detail.world_slug !== studioWorld) {
+      studioWorld = detail.world_slug;
+      world = worldFromRooms(detail.world.rooms, detail.world.areas, detail.world.doors);
+      partyRoom = null; overview = false;
+      animations.onEvent({type: "world_loaded", ...detail.world}, layoutWorld(world, overview)); redraw(); revealReady();
+    } else if (detail.phase === "project_open") {
+      studioWorld = revealedWorld = null; world = worldFromRooms([]); partyRoom = null; overview = false;
+      animations.setState({rooms: []}, layoutWorld(world)); redraw();
+    }
+  };
+  browser.addEventListener("specvania:studio-state", onStudio);
   const onState = ({ detail }) => {
     world = worldFromRooms(detail.rooms, detail.areas, detail.doors);
     partyRoom = detail.active_room || detail.party_room || null;
@@ -188,7 +224,7 @@ export function mountMap(Phaser, host, browser = window) {
   };
   const onEvent = ({ detail }) => {
     world = projectEvent(world, detail);
-    if (detail.type === "world_loaded") partyRoom = null;
+    if (detail.type === "world_loaded") {partyRoom = null; overview = false; studioWorld = null;}
     if (["room_entered", "attempt_started", "respawn"].includes(detail.type)) partyRoom = detail.room_id;
     animations.onEvent(detail, layoutWorld(world, overview), partyRoom);
     redraw(); // No timeout or animation queue delaying chamber state.
@@ -212,8 +248,8 @@ export function mountMap(Phaser, host, browser = window) {
         if (event.repeat || /^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName) || event.target?.isContentEditable) return;
         overview = !overview; redraw();
       });
-      redraw();
-    } },
+      redraw(); revealReady();
+    }, update() { revealReady(); } },
   });
   const resize = () => {
     width = Math.max(1, Math.floor(browser.innerWidth || host.clientWidth || 960));
@@ -224,6 +260,8 @@ export function mountMap(Phaser, host, browser = window) {
   resize();
   return { setReducedMotion: animations.setReducedMotion,
     setReplaySpeed: animations.setReplaySpeed, destroy() {
+    browser.removeEventListener("specvania:dialogue-layout", onDialogueLayout);
+    browser.removeEventListener("specvania:studio-state", onStudio);
     browser.removeEventListener("specvania:state", onState);
     browser.removeEventListener("specvania:event", onEvent);
     browser.removeEventListener("resize", resize);

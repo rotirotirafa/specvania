@@ -538,10 +538,10 @@ files: src/specvania/ui/static/screens/idea.js, src/specvania/ui/static/hud/dial
 At the castle entrance the Mage asks for the idea in a dialogue box with a text field. Each Clarify question appears as RPG dialogue with selectable options, a free-text field and the default highlighted. The chambers of the new world appear one by one; then Save map (`save_world`) and Start expedition (`start_run`), which lists dirty paths with Cancel / Start anyway when the tree is dirty.
 
 Checklist:
-- [ ] The idea and each answer travel as studio messages (Node test with a fake socket)
-- [ ] Enter accepts the default; options are selectable with arrow keys and the mouse
-- [ ] Start expedition stays disabled until the map is saved
-- [ ] A dirty tree lists the dirty paths and offers Cancel / Start anyway
+- [x] The idea and each answer travel as studio messages (Node test with a fake socket)
+- [x] Enter accepts the default; options are selectable with arrow keys and the mouse
+- [x] Start expedition stays disabled until the map is saved
+- [x] A dirty tree lists the dirty paths and offers Cancel / Start anyway
 
 ### T35 · Room panel with Monaco
 depends_on: T26, T32

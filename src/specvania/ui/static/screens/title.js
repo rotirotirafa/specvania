@@ -1,6 +1,7 @@
 import { t, i18n, setLanguage, onLanguageChange } from "../i18n/index.js";
 import { UI_COLORS, PALETTE } from "../pixel/palette.js";
 import { CREDIT, CAST, TILE_SIZE, SHEET_URL } from "../pixel/cast.js";
+import { ideaScreen } from "./idea.js";
 import { projectScreen } from "./project.js";
 import { settingsScreen } from "./settings.js";
 import { errorScreen } from "./error.js";
@@ -30,10 +31,13 @@ export function mountScreens({host, browser = window, socket, startup, watchDemo
     #screen-host .title-footer { margin-top: 16px; font-size: 8px; } #screen-host .title-footer p { margin: 4px 0 0; }
     #screen-host .title-footer button { min-height: 32px; padding: 8px 16px; margin: 0 6px; }`;
   document.head.append(css);
+  let savingSlug = null, savedSlug = null, revealedSlug = null;
   const send = (kind, fields = {}) => {
     const token = desktop?.controlToken?.();
     if (!token || !socket || socket.readyState !== 1) return false;
-    socket.send(JSON.stringify({kind, ...fields, control_token: token})); return true;
+    socket.send(JSON.stringify({kind, ...fields, control_token: token}));
+    if (kind === "save_world") savingSlug = fields.slug;
+    return true;
   };
   const label = (node, key, params = {}) => { labels.push([node, key, params]); node.textContent = t(key, params); };
   let container = host;
@@ -57,9 +61,18 @@ export function mountScreens({host, browser = window, socket, startup, watchDemo
   }
   const controls = () => {
     const walk = node => Array.from(node.children).flatMap(child => [child, ...walk(child)]);
-    return walk(host).filter(node => ["button", "input", "select"].includes(node.tagName.toLowerCase()) && !node.disabled && !node.hidden);
+    return walk(host).filter(node => (["button", "input", "select", "textarea"].includes(node.tagName.toLowerCase()) || node.tabIndex === 0) && !node.disabled && !node.hidden);
   };
-  function close() {host.hidden = true; isolate(false);}
+  function restoreGame() {
+    isolate(false);
+    const hud = document.getElementById?.("castle-hud");
+    if (hud && studio) hud.hidden = false;
+  }
+  function dialogueLayout(mode) {
+    host.dataset.dialogue = mode;
+    browser.dispatchEvent(new browser.CustomEvent("specvania:dialogue-layout", {detail: {height: mode === "world" ? 72 : 0}}));
+  }
+  function close() {host.hidden = true; restoreGame(); if (studio) dialogueLayout("");}
   let unavailable = Boolean(startup);
   const back = () => show(unavailable ? "error" : "title");
   function titleArt() {
@@ -106,9 +119,14 @@ export function mountScreens({host, browser = window, socket, startup, watchDemo
     if (!watchDemo) node.title = t("title.demoPending");
     return node;
   };
-  const ui = {document, t, palette: PALETTE, label, element, text, button, send, chooseFolder, demo,
+  const ui = {document, t, restoreGame, dialogueLayout, palette: PALETTE, label, element, text, button, send, chooseFolder, demo,
     heading: (key, tag = "h1") => text(tag, key), back: () => button("screen.back", back), show, applySettings,
     restart: desktop?.studio?.restart ? () => desktop.studio.restart() : null,
+    startRun: (slug, allowDirty = false) => send("start_run", {slug, allow_dirty: allowDirty, token_budget: settings.tokenBudget}),
+    get savedSlug() {return savedSlug;},
+    get revealedSlug() {return revealedSlug;},
+    hasMap: Boolean(browser.Phaser),
+    get canControl() {return Boolean(desktop?.controlToken?.());},
     get settings() {return settings;}};
   function render() {
     for (const [node, key, params] of labels) node.textContent = t(key, params);
@@ -116,11 +134,13 @@ export function mountScreens({host, browser = window, socket, startup, watchDemo
     view.render?.();
   }
   function show(next, reason = "") {
-    if (destroyed || !studio && !startup) return;
+    if (destroyed || !studio && !startup || next === "idea" && !ui.canControl) return;
+    view.destroy?.();
     screen = next; labels = []; host.hidden = false; host.replaceChildren(); isolate(true);
     host.dataset.screen = next; container = host;
     container = element("div"); container.className = "screen-panel";
-    if (next === "project") view = projectScreen(ui, project, reason);
+    if (next === "idea") view = ideaScreen(ui, reason ? {...project, world_slug: reason} : project);
+    else if (next === "project") view = projectScreen(ui, project, reason);
     else if (next === "settings") view = settingsScreen(ui);
     else if (next === "error") view = errorScreen(ui, lastError);
     else {
@@ -140,7 +160,7 @@ export function mountScreens({host, browser = window, socket, startup, watchDemo
       view = {};
     }
     const first = controls()[0];
-    if (next !== "settings") first?.focus();
+    if (!["settings", "idea"].includes(next)) first?.focus();
   }
   function showError(error) {
     if (!studio && !startup) return;
@@ -152,23 +172,35 @@ export function mountScreens({host, browser = window, socket, startup, watchDemo
       const nodes = controls(); const index = nodes.indexOf(document.activeElement);
       event.preventDefault();
       nodes[(index + (event.shiftKey ? -1 : 1) + nodes.length) % nodes.length]?.focus();
-    } else if (event.key === "Escape" && screen !== "title") {event.preventDefault(); back();}
+    } else if (event.key === "Escape" && !["title", "idea"].includes(screen)) {event.preventDefault(); back();}
   };
   const message = ({data}) => {
     const value = JSON.parse(data);
     if (value.kind === "studio_state" || value.kind === "state" && value.phase) {
       if (!studio) {studio = true; send("set_language", {language: settings.language}); show("title");}
+      if (value.kind === "studio_state") project = value;
+      if (["running", "finished"].includes(value.phase)) {
+        view.destroy?.(); view = {}; labels = []; close(); host.replaceChildren(); screen = "project"; return;
+      }
       if (value.kind === "studio_state") {
-        project = value;
-        if (value.error) showError({reason: value.error});
+        if (value.phase === "project_open") savedSlug = revealedSlug = null;
+        if (value.phase === "world_ready" && savingSlug === value.world_slug) {savedSlug = savingSlug; savingSlug = null;}
+        if (screen === "idea") view.update?.(value);
+        else if (desktop?.controlToken?.() && ["planning", "world_ready"].includes(value.phase)) show("idea");
+        else if (desktop?.controlToken?.() && value.project?.initialized && value.error) show("idea");
+        else if (value.error) showError({reason: value.error});
         else if (screen === "project" || screen === "title" && value.project) show("project");
       }
     } else if (value.kind === "probe_result" && screen === "project") view.probe?.(value.results);
     else if (value.kind === "approval_rejected") {
-      if (value.reason.includes("API key missing")) showError({kind:"missingKey"});
+      savingSlug = null;
+      if (screen === "idea" && !host.hidden) view.reject?.(value);
+      else if (value.reason.includes("API key missing")) showError({kind:"missingKey"});
       else if (screen === "project") show("project", value.reason.includes("git work tree") ? t("project.outsideGit") : value.reason);
     }
   };
+  const revealed = ({detail}) => {revealedSlug = detail.slug; view.previewReady?.();};
+  browser.addEventListener("specvania:world-revealed", revealed);
   const opened = () => {if (screen === "title") show("title");};
   const closed = () => showError({kind:"connection"});
   host.addEventListener("keydown", keydown);
@@ -191,7 +223,7 @@ export function mountScreens({host, browser = window, socket, startup, watchDemo
     else if (screen === "title") show("title");
   }).catch(() => showError({reasonKey:"settings.invalid"}));
   return { ready, showError, close, startRun(slug, allowDirty = false) {return send("start_run", {slug, allow_dirty: allowDirty, token_budget: settings.tokenBudget});},
-    destroy() {close(); destroyed = true; unsubscribe(); css.remove(); host.removeEventListener("keydown", keydown);
+    destroy() {view.destroy?.(); close(); destroyed = true; browser.removeEventListener("specvania:world-revealed", revealed); unsubscribe(); css.remove(); host.removeEventListener("keydown", keydown);
       socket?.removeEventListener("open", opened);
       socket?.removeEventListener("message", message); socket?.removeEventListener("close", closed); socket?.removeEventListener("error", closed);},
   };

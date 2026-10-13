@@ -72,6 +72,9 @@ technical.add("waiting for player");
 // T33 DOM/input identifiers, screen names and control protocol values only.
 for (const value of `error.start screen-host missingKey inert aria-hidden screen-panel title-castle title-menu title-footer footer absolute true Tab settings init_project probe_party project_open world_ready ok timeout number select option checkbox text title specvania string project open_project probe_result start_run Escape keydown`.split(/\s+/)) technical.add(value);
 
+// T34 DOM identifiers, input keys, screen modes and studio message kinds only.
+for (const value of `dirty dialogue-content dialogue-actions dialogue-speaker mage-dialogue aria-modal block aria-selected textarea auto world working idea start_plan clarify listbox save_world planning Enter ArrowDown ArrowUp door_double_left door_double_right`.split(/\s+/)) technical.add(value);
+
 const exact = new Set([
   '"Press Start 2P", monospace', "SpecvaniaPixel, monospace", "@font-face { font-family: SpecvaniaPixel; src: url(\"./vendor/fonts/PressStart2P-Regular.ttf\"); }",
   "repeat(3, minmax(0, 1fr))", "32px minmax(0, 1fr)", "(prefers-reduced-motion: reduce)", "${}:idle:0", "${}:boss", "\\n", "${}:${}:${}",

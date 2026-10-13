@@ -1,4 +1,4 @@
-/** T34 receives the selected project through studio_state; no planning UI here. */
+/** Project entrance to the Mage and to existing worlds. */
 export function projectScreen(ui, state = {}, reason = "") {
   ui.heading("project.title");
   const notice = ui.text("p", "project.pick");
@@ -9,9 +9,13 @@ export function projectScreen(ui, state = {}, reason = "") {
   ui.button("project.choose", ui.chooseFolder);
   const initialized = state.project?.initialized;
   if (initialized) {
+    ui.button("idea.new", () => ui.show("idea"), !ui.canControl);
     ui.heading("project.worlds", "h2");
     if (!state.worlds?.length) ui.text("p", "project.noWorlds");
-    for (const world of state.worlds || []) ui.text("p", "project.world", { world });
+    for (const world of state.worlds || []) {
+      const choose = ui.button("project.world", () => ui.show("idea", world), !ui.canControl);
+      ui.label(choose, "project.world", {world});
+    }
     // T25 exposes a count, not bug records. The existing Bestiary shows run bugs.
     ui.text("p", "project.bugs", { count: state.open_bugs || 0 });
   }

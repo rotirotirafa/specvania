@@ -36,12 +36,14 @@ from specvania.run.events import (
     RedactionGuard,
     RunPaused,
     SecretLeakError,
+    WorldPayload,
+    build_world_payload,
 )
 from specvania.run.gitops import GitError, GitOps
 from specvania.run.state import RunState, fold_events
 from specvania.sdd.lint import WorldLintError, validate_directory
 from specvania.sdd.planner import PlanError, Question, plan
-from specvania.sdd.world import WorldParseError
+from specvania.sdd.world import WorldParseError, parse_world
 from specvania.ui.server import (
     ClarifyPrompt,
     ClarifyReply,
@@ -111,6 +113,8 @@ class Studio:
         self._project: StudioProject | None = None
         self._code_world: Path | None = None
         self._worlds: tuple[str, ...] = ()
+        self._world: WorldPayload | None = None
+        self._world_slug: str | None = None
         self._open_bugs = 0
         self._question: ClarifyPrompt | None = None
         self._answer: str | None = None
@@ -160,6 +164,8 @@ class Studio:
                 project=self._project,
                 language=self._language,
                 worlds=self._worlds,
+                world=self._world if self.phase == "world_ready" else None,
+                world_slug=self._world_slug if self.phase == "world_ready" else None,
                 open_bugs=self._open_bugs,
                 clarify_request=self._question,
                 pause_request=self._pause.reason if self._pause else None,
@@ -250,6 +256,13 @@ class Studio:
         validate_directory(directory)
         return directory
 
+    def _load_world(self, slug: str) -> None:
+        directory = self._world_directory(slug)
+        payload = build_world_payload(parse_world(directory))
+        self._safe(payload.model_dump_json())
+        with self._lock:
+            self._world, self._world_slug = payload, slug
+
     def transition(self, phase: StudioPhase) -> None:
         with self._lock:
             next_phase: dict[StudioPhase, tuple[StudioPhase, ...]] = {
@@ -264,6 +277,7 @@ class Studio:
                 raise StudioError("Studio message does not fit the current phase.")
             self.phase = phase
             if phase == "project_open":
+                self._world, self._world_slug = None, None
                 self.server.run_id = ""
                 self._run_state = RunState
             self.server.publish_studio_state()
@@ -387,7 +401,7 @@ class Studio:
                                     self._run_state = lambda: fold_events(snapshot())
                                     self.server.publish_studio_state()
 
-                            plan(
+                            result = plan(
                                 root=root,
                                 idea=message.idea,
                                 config=config,
@@ -400,6 +414,7 @@ class Studio:
                                 bus=self.server.bus,
                                 on_started=started,
                             )
+                            self._load_world(result.directory.name)
                             final_state = self._run_state()
                         else:
                             assert directory is not None
@@ -548,6 +563,7 @@ class Studio:
                 self._project, self._worlds, self._open_bugs = previous
                 raise
             self._error = None
+            self._world, self._world_slug = None, None
             self._code_world = None
             if self.phase != "project_open":
                 self.transition("project_open")
@@ -576,7 +592,10 @@ class Studio:
             assert self._project is not None
             if directory.name not in self._worlds:
                 raise StudioError("World unavailable.")
+            payload = build_world_payload(parse_world(directory))
+            self._safe(payload.model_dump_json())
             GitOps(Path(self._project.path)).save_world(message.slug)
+            self._world, self._world_slug = payload, message.slug
             self._code_world = directory
             self._refresh()
             if self.phase == "project_open":

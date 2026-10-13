@@ -1,5 +1,6 @@
 import { t, onLanguageChange } from "../i18n/index.js";
 import { panel, label } from "./party.js";
+import { CAST, SHEET_URL, TILE_SIZE } from "../pixel/cast.js";
 
 export function dialogueFor(event, control = false) {
   if (!event) return null;
@@ -41,4 +42,22 @@ export function mountDialogue(host, browser = window) {
     unsubscribe();
     browser.removeEventListener("specvania:state", onState); browser.removeEventListener("specvania:event", onEvent); element.remove();
   }};
+}
+
+/** The studio uses the HUD's RPG dialogue style with the Mage's cast portrait. */
+export function mageDialogue(ui) {
+  const box = ui.element("section"); box.className = "mage-dialogue";
+  box.setAttribute("role", "dialog"); box.setAttribute("aria-modal", "true");
+  box.setAttribute("aria-label", ui.t("role.mage"));
+  const header = ui.document.createElement("header"); header.className = "dialogue-speaker"; box.append(header);
+  const portrait = ui.document.createElement("span");
+  portrait.dataset.cast = "mage"; portrait.setAttribute("aria-hidden", "true");
+  const size = TILE_SIZE * 2;
+  Object.assign(portrait.style, {display: "block", width: `${size}px`, height: `${size}px`,
+    imageRendering: "pixelated", backgroundImage: `url("${SHEET_URL}")`,
+    backgroundSize: `${192 * 2}px ${176 * 2}px`,
+    backgroundPosition: `${-(CAST.mage % 12) * size}px ${-Math.floor(CAST.mage / 12) * size}px`});
+  header.append(portrait);
+  const speaker = ui.document.createElement("h2"); ui.label(speaker, "role.mage"); header.append(speaker);
+  return box;
 }

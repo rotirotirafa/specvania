@@ -22,6 +22,24 @@
     canvas { image-rendering: pixelated; display: block; }
     main p { margin: 4px 0; }
     main h2, main h3 { font-size: 8px; margin: 6px 0; }
+    #screen-host[data-screen=idea] { background: transparent; align-items: end; pointer-events: none; overflow: hidden; }
+    #screen-host[data-screen=idea] .screen-panel { pointer-events: auto; margin: auto auto 0; }
+    .mage-dialogue { box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; background: var(--surface); border: 4px solid var(--border); padding: 12px; text-align: left; font: 10px/1.5 "Press Start 2P", monospace; max-height: calc(100vh - 64px); overflow: hidden; }
+    .dialogue-speaker { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    #screen-host .dialogue-speaker h2 { font-size: 10px; margin: 0; }
+    .dialogue-content { min-height: 0; overflow: auto; }
+    .dialogue-actions { display: flex; justify-content: end; gap: 8px; flex-shrink: 0; }
+    #screen-host .mage-dialogue p { margin: 4px 0; }
+    #screen-host .mage-dialogue button { min-height: 32px; margin: 0; padding: 8px; }
+    #screen-host .mage-dialogue label { margin: 4px 0; }
+    #screen-host[data-screen=idea][data-dialogue=world] .screen-panel { width: 100%; }
+    .mage-dialogue[data-mode=world] { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; height: 72px; padding: 8px; }
+    .mage-dialogue[data-mode=world] .dialogue-speaker h2 { display: none; }
+    .mage-dialogue[data-mode=world] .dialogue-content { overflow: hidden; }
+    .mage-dialogue[data-mode=world] p { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #screen-host textarea { box-sizing: border-box; width: 100%; font: inherit; color: var(--text); background: var(--background); border: 2px solid var(--border); padding: 8px; min-height: 48px; max-height: 96px; resize: vertical; }
+    #screen-host[data-screen=idea] label { display: block; }
+    #screen-host[data-screen=idea] [role=option] { display: block; width: 100%; margin: 4px 0; padding: 6px; text-align: left; }
     #map-rooms { white-space: pre-wrap; }
   </style>
 </head>

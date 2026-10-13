@@ -46,6 +46,7 @@ from specvania.run.events import (
     Review,
     SecretLeakError,
     ShortText,
+    WorldPayload,
 )
 from specvania.run.gitops import GitError, GitOps
 from specvania.run.jsonl import EventStreamError, decode_events
@@ -202,6 +203,8 @@ class StudioState(FrozenModel):
     project: StudioProject | None
     language: Language = "en"
     worlds: tuple[ShortText, ...] = ()
+    world: WorldPayload | None = None
+    world_slug: ShortText | None = None
     open_bugs: int = Field(default=0, ge=0)
     clarify_request: ClarifyPrompt | None = None
     pause_request: ShortText | None = None
