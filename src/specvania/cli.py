@@ -128,7 +128,9 @@ def launch_ui(
             desktop_path=config.desktop.path,
         )
     except (BrowserLaunchError, DesktopLaunchError) as error:
-        Console(stderr=True).print(str(error), markup=False)
+        Console(stderr=True).print(
+            str(error), markup=False, highlight=False, soft_wrap=True
+        )
         raise typer.Exit(code=1) from None
     if result.notice is not None:
         Console().print(result.notice, markup=False, highlight=False, soft_wrap=True)
@@ -206,9 +208,13 @@ def create_app() -> typer.Typer:
         try:
             path = initialize_config(Path.cwd(), force=force)
         except ConfigError as error:
-            Console(stderr=True).print(str(error), markup=False)
+            Console(stderr=True).print(
+                str(error), markup=False, highlight=False, soft_wrap=True
+            )
             raise typer.Exit(code=1) from None
-        Console().print(f"Created {path}", markup=False)
+        Console().print(
+            f"Created {path}", markup=False, highlight=False, soft_wrap=True
+        )
 
     @app.command("doctor", help="Check the API key, model chains and ledger.")
     def doctor() -> None:
@@ -217,7 +223,9 @@ def create_app() -> typer.Typer:
         try:
             config = load_config(root / ".specvania/config.toml")
         except ConfigError as error:
-            Console(stderr=True).print(str(error), markup=False)
+            Console(stderr=True).print(
+                str(error), markup=False, highlight=False, soft_wrap=True
+            )
             raise typer.Exit(code=1) from None
         failed = False
         guard = RedactionGuard()
@@ -245,7 +253,7 @@ def create_app() -> typer.Typer:
                         )
                         failed |= not found
             except ProviderError as error:
-                console.print(str(error), markup=False)
+                console.print(str(error), markup=False, highlight=False, soft_wrap=True)
                 failed = True
         try:
             with Ledger.from_config(
@@ -255,7 +263,7 @@ def create_app() -> typer.Typer:
                     f"Ledger: connected, migration {ledger.migration_version}"
                 )
         except LedgerError as error:
-            console.print(str(error), markup=False)
+            console.print(str(error), markup=False, highlight=False, soft_wrap=True)
             failed = True
         if failed:
             raise typer.Exit(code=1)
@@ -307,10 +315,15 @@ def create_app() -> typer.Typer:
                         from_bug_id=from_bug,
                     )
         except (ConfigError, LedgerError, ProviderError, PlanError, BugError) as error:
-            Console(stderr=True).print(str(error), markup=False)
+            Console(stderr=True).print(
+                str(error), markup=False, highlight=False, soft_wrap=True
+            )
             raise typer.Exit(code=1) from None
         console.print(
-            f"Mage wrote {result.directory} (plan {result.run_id})", markup=False
+            f"Mage wrote {result.directory} (plan {result.run_id})",
+            markup=False,
+            highlight=False,
+            soft_wrap=True,
         )
 
     @app.command(
@@ -402,6 +415,8 @@ def create_app() -> typer.Typer:
                 f"{diagnostic.path}:{diagnostic.line} {diagnostic.rule} "
                 f"{diagnostic.message}",
                 markup=False,
+                highlight=False,
+                soft_wrap=True,
             )
             raise typer.Exit(code=1) from None
         except WorldLintError as error:
@@ -410,6 +425,8 @@ def create_app() -> typer.Typer:
                     f"{diagnostic.path}:{diagnostic.line} {diagnostic.rule} "
                     f"{diagnostic.message}",
                     markup=False,
+                    highlight=False,
+                    soft_wrap=True,
                 )
             raise typer.Exit(code=1) from None
         except (
@@ -427,7 +444,9 @@ def create_app() -> typer.Typer:
             PricingError,
             SummaryError,
         ) as error:
-            Console(stderr=True).print(str(error), markup=False)
+            Console(stderr=True).print(
+                str(error), markup=False, highlight=False, soft_wrap=True
+            )
             raise typer.Exit(code=1) from None
         console.print(f"Run {state.run_id}: {state.status}", markup=False)
         if state.status != "finished":
@@ -521,7 +540,9 @@ def create_app() -> typer.Typer:
 
             server.serve(on_started=launch)
         except (ConfigError, LedgerError, UIServerError) as error:
-            Console(stderr=True).print(str(error), markup=False)
+            Console(stderr=True).print(
+                str(error), markup=False, highlight=False, soft_wrap=True
+            )
             raise typer.Exit(code=1) from None
 
     @app.command("lint", help="Validate a world's format, doors and coverage.")
@@ -581,7 +602,9 @@ def create_app() -> typer.Typer:
             with ledger:
                 added = bugs.add(title, feature=feature, room=room)
         except (ConfigError, GitError, LedgerError, BugError) as error:
-            Console(stderr=True).print(str(error), markup=False)
+            Console(stderr=True).print(
+                str(error), markup=False, highlight=False, soft_wrap=True
+            )
             raise typer.Exit(code=1) from None
         Console().print(f"Opened bug {added.id}: {added.title}", markup=False)
 
@@ -597,7 +620,9 @@ def create_app() -> typer.Typer:
                 rows = bugs.list(include_closed=all_bugs)
                 features = {f.id: f.slug for f in ledger.list_features(bugs.project_id)}
         except (ConfigError, GitError, LedgerError, BugError) as error:
-            Console(stderr=True).print(str(error), markup=False)
+            Console(stderr=True).print(
+                str(error), markup=False, highlight=False, soft_wrap=True
+            )
             raise typer.Exit(code=1) from None
         table = Table(title="Bestiary")
         for column in ("Bug", "Title", "Feature", "Room", "Status"):
@@ -626,7 +651,9 @@ def create_app() -> typer.Typer:
             with ledger:
                 closed = bugs.close_wontfix(bug_id)
         except (ConfigError, GitError, LedgerError, BugError) as error:
-            Console(stderr=True).print(str(error), markup=False)
+            Console(stderr=True).print(
+                str(error), markup=False, highlight=False, soft_wrap=True
+            )
             raise typer.Exit(code=1) from None
         Console().print(f"Closed bug {closed.id}: wontfix", markup=False)
 

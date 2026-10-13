@@ -68,6 +68,34 @@ def test_init_defaults_match_binding_decisions(repository: Path) -> None:
     assert load_config(path).model_dump(exclude_none=True) == expected
 
 
+def test_init_prints_long_path_on_one_line(
+    repository: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    nested = repository / ("long-repository-path-" * 8)
+    nested.mkdir()
+    (repository / ".git").rename(nested / ".git")
+    monkeypatch.chdir(nested)
+    result = CliRunner().invoke(create_app(), ["init"], env={"COLUMNS": "40"})
+    assert result.exit_code == 0, result.output
+    assert result.output.splitlines() == [
+        f"Created {nested / '.specvania/config.toml'}"
+    ]
+
+
+def test_cli_config_error_prints_long_path_on_one_line(
+    repository: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    nested = repository / ("long-repository-path-" * 8)
+    nested.mkdir()
+    (repository / ".git").rename(nested / ".git")
+    monkeypatch.chdir(nested)
+    result = CliRunner().invoke(create_app(), ["doctor"], env={"COLUMNS": "40"})
+    assert result.exit_code == 1
+    assert result.output.splitlines() == [
+        f"Cannot read config at {nested / '.specvania/config.toml'}."
+    ]
+
+
 @pytest.mark.parametrize(
     "section", [None, "provider", "roles", "limits", "ledger", "ui", "desktop"]
 )
