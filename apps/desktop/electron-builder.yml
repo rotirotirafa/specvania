@@ -2,7 +2,7 @@
   "appId": "specvania",
   "productName": "specvania",
   "directories": {"output": "dist", "buildResources": "build"},
-  "files": ["main.js", "preload.js", "build/icon.png"],
+  "files": ["main.js", "preload.js", "studio.cjs", "build/icon.png"],
   "artifactName": "specvania-${version}-${arch}.${ext}",
   "mac": {
     "target": [{"target": "dmg", "arch": ["arm64", "x64"]}],

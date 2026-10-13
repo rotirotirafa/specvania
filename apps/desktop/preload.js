@@ -3,8 +3,7 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 function exposeDesktop() {
-  const index = process.argv.indexOf("--control-token");
-  const token = index === -1 ? "" : (process.argv[index + 1] || "");
+  const token = ipcRenderer.sendSync("specvania:control-token") || "";
   contextBridge.exposeInMainWorld("specvaniaDesktop", {
     isDesktop: true,
     controlToken: () => token,

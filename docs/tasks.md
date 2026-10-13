@@ -391,11 +391,11 @@ files: src/specvania/ui/studio.py, src/specvania/ui/server.py, src/specvania/cli
 `specvania studio` starts the UI server in studio mode with no run (D18): it binds `127.0.0.1:0`, creates the view and control tokens, prints exactly one JSON line `{"port", "view_token", "control_token"}` on stdout and logs only to stderr. Started without `--url`, the desktop app spawns it through the login shell (D19: `$SHELL -lic 'exec <specvania> studio'`, with the path from the app settings or `specvania` on `PATH`), reads the handshake and loads the game; the control token reaches the renderer through the preload, never through argv or a URL. Studio phases: `idle` → `project_open` → `planning` → `world_ready` → `running` → `finished` (back to `project_open` on demand). A `shutdown` control message finishes an active run as aborted and exits 0; quitting the app sends it and kills the child after 5 s. Until T33 exists, a failed start shows a plain error page.
 
 Checklist:
-- [ ] `specvania studio` prints exactly one handshake line on stdout and serves the game under the existing token rules (D16)
-- [ ] Started without `--url`, the desktop app spawns the studio through the login shell and opens the game; the spawn command line and environment contain no token (Node test with a fake child process)
-- [ ] If the studio exits or no handshake arrives within 20 s, the app shows an error page with a non-secret reason and the log path
-- [ ] `shutdown` finishes an active run with `run_finished` status aborted and the process exits 0; quitting the app sends it
-- [ ] Control messages without the control token are rejected like approval answers and leave the connection open
+- [x] `specvania studio` prints exactly one handshake line on stdout and serves the game under the existing token rules (D16)
+- [x] Started without `--url`, the desktop app spawns the studio through the login shell and opens the game; the spawn command line and environment contain no token (Node test with a fake child process)
+- [x] If the studio exits or no handshake arrives within 20 s, the app shows an error page with a non-secret reason and the log path
+- [x] `shutdown` finishes an active run with `run_finished` status aborted and the process exits 0; quitting the app sends it
+- [x] Control messages without the control token are rejected like approval answers and leave the connection open
 
 ### T25 · Plan and run from the studio
 depends_on: T24

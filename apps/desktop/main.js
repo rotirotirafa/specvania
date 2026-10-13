@@ -1,6 +1,9 @@
 "use strict";
 
 const path = require("node:path");
+const { spawn } = require("node:child_process");
+const { mkdirSync, createWriteStream } = require("node:fs");
+const { launchStudio, quitStudio, readSettings, connectControl } = require(path.join(__dirname, "studio.cjs"));
 const { app, BrowserWindow, ipcMain, Notification, shell } = require("electron");
 
 function argument(name, required = false) {
@@ -26,9 +29,13 @@ function safeUrl(value, controlToken) {
 }
 
 async function openWindow() {
-  const controlToken = argument("--control-token");
-  const target = safeUrl(argument("--url", true), controlToken);
-  if (!target || target.protocol !== "http:" || target.hostname !== "127.0.0.1") {
+  let lifecycle;
+  let quitting = false;
+  let quitComplete = false;
+  let controlToken = argument("--control-token");
+  const launchUrl = argument("--url");
+  let target = launchUrl ? safeUrl(launchUrl, controlToken) : null;
+  if (launchUrl && (!target || target.protocol !== "http:" || target.hostname !== "127.0.0.1")) {
     throw new Error("Desktop needs the loopback UI URL.");
   }
   const window = new BrowserWindow({
@@ -44,13 +51,12 @@ async function openWindow() {
       nodeIntegration: false,
       sandbox: true,
       preload: path.join(__dirname, "preload.js"),
-      additionalArguments: controlToken ? ["--control-token", controlToken] : [],
     },
   });
   window.setAspectRatio(16 / 9);
   const sameOrigin = (value) => {
     const url = safeUrl(value, controlToken);
-    return url !== null && url.origin === target.origin;
+    return target !== null && url !== null && url.origin === target.origin;
   };
   const guardNavigation = (event, url) => {
     // Recent Electron frame events put the URL on the event; redirects also
@@ -69,6 +75,10 @@ async function openWindow() {
     return { action: "deny" };
   });
   window.webContents.on("will-attach-webview", (event) => event.preventDefault());
+  ipcMain.on("specvania:control-token", (event) => {
+    event.returnValue = event.sender === window.webContents && sameOrigin(event.senderFrame?.url)
+      ? controlToken : "";
+  });
   ipcMain.on("specvania:notify", (event, message) => {
     if (event.sender !== window.webContents || !sameOrigin(event.senderFrame?.url) ||
         !message || typeof message.title !== "string" || typeof message.body !== "string" ||
@@ -78,7 +88,43 @@ async function openWindow() {
       new Notification({ title: message.title, body: message.body }).show();
     }
   });
-  await window.loadURL(target.href);
+  if (target) {
+    await window.loadURL(target.href);
+  } else {
+    const userData = app.getPath("userData");
+    const logs = path.join(userData, "logs");
+    mkdirSync(logs, { recursive: true });
+    const logPath = path.join(logs, "studio.log");
+    const log = createWriteStream(logPath, { flags: "a", mode: 0o600 });
+    log.on("error", () => {});
+    lifecycle = launchStudio({
+      spawn, executable: readSettings(userData), logPath,
+      log: (data) => log.write(data),
+      open: (url, token) => {
+        controlToken = token;
+        target = safeUrl(url, token);
+        window.loadURL(target.href).catch(() => {
+          console.error("Cannot load the local studio game.");
+          app.quit();
+        });
+      },
+      error: (page) => {
+        controlToken = "";
+        window.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(page)).catch(() => {});
+      },
+    });
+    lifecycle.child?.once("exit", () => log.end());
+  }
+  app.on("before-quit", (event) => {
+    if (!lifecycle || lifecycle.exited || quitComplete) return;
+    event.preventDefault();
+    if (quitting) return;
+    quitting = true;
+    quitStudio(lifecycle, { connect: connectControl }).then(() => {
+      quitComplete = true;
+      app.quit();
+    });
+  });
 }
 
 app.whenReady().then(openWindow).catch(() => {

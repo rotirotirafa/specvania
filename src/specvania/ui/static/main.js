@@ -37,8 +37,15 @@ socket.addEventListener("open", () => {
 socket.addEventListener("message", ({ data }) => {
   const message = JSON.parse(data);
   if (message.kind === "state") {
-    runState.textContent = `Run: ${message.state.status}`;
-    window.dispatchEvent(new CustomEvent("specvania:state", { detail: message.state }));
+    if (message.phase) {
+      runState.textContent = `Studio: ${message.phase}`;
+      window.dispatchEvent(new CustomEvent("specvania:studio-state", { detail: message }));
+    } else {
+      runState.textContent = `Run: ${message.state.status}`;
+    }
+    if (message.state.run_id) {
+      window.dispatchEvent(new CustomEvent("specvania:state", { detail: message.state }));
+    }
   } else if (message.kind === "event") {
     const event = message.event;
     runState.textContent = `Event ${event.seq}: ${event.type}`;

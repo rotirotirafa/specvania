@@ -10,9 +10,9 @@ import secrets
 import socket
 from collections.abc import Awaitable, Callable, Sequence
 from pathlib import Path
-from queue import Empty
+from queue import Empty, Queue
 from threading import Event as ThreadEvent
-from threading import Thread
+from threading import RLock, Thread
 from typing import Literal
 
 import uvicorn
@@ -39,13 +39,35 @@ from specvania.run.state import RunState, StateFoldError, fold_events
 from specvania.ui.launcher import open_browser
 
 
+class TokenLogFormatter(logging.Formatter):
+    """Redact even exception text before a log handler writes to stderr."""
+
+    def __init__(self, tokens: tuple[str, ...]) -> None:
+        super().__init__()
+        self.tokens = tokens
+
+    def format(self, record: logging.LogRecord) -> str:
+        rendered = super().format(record)
+        for token in self.tokens:
+            rendered = rendered.replace(token, "[redacted]")
+        return rendered
+
+
 class UIServerError(Exception):
     """An invalid replay or unavailable local UI that the player can fix."""
+
+
+type StudioPhase = Literal[
+    "idle", "project_open", "planning", "world_ready", "running", "finished"
+]
 
 
 class StateMessage(FrozenModel):
     kind: Literal["state"] = "state"
     state: RunState
+    phase: StudioPhase | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     approval_request: ApprovalRequest | None = None
 
 
@@ -59,6 +81,11 @@ class ApprovalAnswer(FrozenModel):
     kind: Literal["approval_answer"]
     request_id: ShortText
     answer: bool = Field(strict=True)
+    control_token: str = Field(default="", repr=False, exclude=True)
+
+
+class Shutdown(FrozenModel):
+    kind: Literal["shutdown"]
     control_token: str = Field(default="", repr=False, exclude=True)
 
 
@@ -110,7 +137,7 @@ class UIServer:
         *,
         guard: RedactionGuard,
         clock: Clock,
-        run_id: str,
+        run_id: str = "",
         ledger: Ledger | None = None,
         bus: EventBus | None = None,
         live_snapshot: Callable[[], Sequence[Event]] | None = None,
@@ -118,13 +145,22 @@ class UIServer:
         speed: Literal[1, 2, 4] = 1,
         port: int = 0,
         approval_responder: Callable[[ApprovalAnswer], bool | None] | None = None,
+        studio_snapshot: Callable[[], StateMessage] | None = None,
+        control_responder: Callable[[Shutdown], bool] | None = None,
     ) -> None:
         if speed not in (1, 2, 4) or not 0 <= port <= 65535:
             raise UIServerError("Use replay speed 1, 2 or 4 and a valid local port.")
-        if replay is None and (
-            bus is None or (ledger is None and live_snapshot is None)
+        if (
+            studio_snapshot is None
+            and replay is None
+            and (bus is None or (ledger is None and live_snapshot is None))
         ):
             raise UIServerError("Live UI requires an event bus and a run snapshot.")
+        self.studio_snapshot = studio_snapshot
+        self.control_responder = control_responder
+        self._state_lock = RLock()
+        self._state_queues: list[Queue[StateMessage]] = []
+        self._serving: uvicorn.Server | None = None
         self.guard = guard
         self.clock = clock
         self.run_id = run_id
@@ -156,6 +192,17 @@ class UIServer:
                     "Replay sequences must be strictly increasing."
                 ) from None
         self.app = self._create_app()
+
+    def publish_studio_state(self) -> None:
+        if self.studio_snapshot is not None:
+            message = self.studio_snapshot()
+            with self._state_lock:
+                for queue in self._state_queues:
+                    queue.put(message)
+
+    def stop(self) -> None:
+        if self._serving is not None:
+            self._serving.should_exit = True
 
     @property
     def origin(self) -> str:
@@ -251,15 +298,24 @@ class UIServer:
             return
         await websocket.accept()
         subscription = (
-            self.bus.subscribe(self.run_id)
+            self.bus.subscribe(None if self.studio_snapshot else self.run_id)
             if self.replay is None and self.bus
             else None
         )
+        state_queue: Queue[StateMessage] | None = None
+        if self.studio_snapshot is not None:
+            state_queue = Queue()
+            with self._state_lock:
+                self._state_queues.append(state_queue)
         sender: asyncio.Task[None] | None = None
         receiver: asyncio.Task[None] | None = None
         try:
+            initial: StateMessage | None = None
             pending: ApprovalRequested | None = None
-            if subscription is not None:
+            if self.studio_snapshot is not None:
+                initial = self.studio_snapshot()
+                state = initial.state
+            elif subscription is not None:
                 if self.ledger is not None:
                     snapshot = await asyncio.to_thread(
                         self.ledger.list_events, self.run_id
@@ -282,14 +338,20 @@ class UIServer:
             else:
                 state = RunState()
             await websocket.send_json(
-                StateMessage(
-                    state=state,
-                    approval_request=self._approval_prompt(pending)
-                    if pending
-                    else None,
+                (
+                    initial
+                    if initial is not None
+                    else StateMessage(
+                        state=state,
+                        approval_request=self._approval_prompt(pending)
+                        if pending
+                        else None,
+                    )
                 ).model_dump(mode="json")
             )
-            sender = asyncio.create_task(self._send(websocket, subscription, state.seq))
+            sender = asyncio.create_task(
+                self._send(websocket, subscription, state.seq, state_queue)
+            )
             receiver = asyncio.create_task(self._receive(websocket))
             # In replay, the receiver stays available after the last event; closing
             # the tab cancels either a live bridge or an in-progress replay wait.
@@ -305,6 +367,9 @@ class UIServer:
             logging.getLogger(__name__).warning("UI state unavailable")
             await websocket.close(code=1011)
         finally:
+            if state_queue is not None:
+                with self._state_lock:
+                    self._state_queues.remove(state_queue)
             for worker in (sender, receiver):
                 if worker is not None:
                     worker.cancel()
@@ -320,7 +385,11 @@ class UIServer:
                 subscription.close()
 
     async def _send(
-        self, websocket: WebSocket, subscription: Subscription | None, seq: int
+        self,
+        websocket: WebSocket,
+        subscription: Subscription | None,
+        seq: int,
+        state_queue: Queue[StateMessage] | None = None,
     ) -> None:
         if subscription is None:
             previous: Event | None = None
@@ -335,11 +404,18 @@ class UIServer:
                 previous = event
             return
         loop = asyncio.get_running_loop()
-        queue: asyncio.Queue[Event] = asyncio.Queue()
+        queue: asyncio.Queue[Event | StateMessage] = asyncio.Queue()
         stopped = ThreadEvent()
 
         def bridge() -> None:
             while not stopped.is_set():
+                if state_queue is not None:
+                    while True:
+                        try:
+                            message = state_queue.get_nowait()
+                        except Empty:
+                            break
+                        loop.call_soon_threadsafe(queue.put_nowait, message)
                 try:
                     event = subscription.get(timeout=0.05)
                 except Empty:
@@ -351,6 +427,12 @@ class UIServer:
         try:
             while True:
                 event = await queue.get()
+                if isinstance(event, StateMessage):
+                    await websocket.send_json(event.model_dump(mode="json"))
+                    seq = event.state.seq
+                    continue
+                if self.studio_snapshot is not None and event.run_id != self.run_id:
+                    continue
                 if event.seq <= seq:
                     continue
                 await websocket.send_json(self._event_message(event))
@@ -372,7 +454,12 @@ class UIServer:
 
         while True:
             try:
-                message = ApprovalAnswer.model_validate(await websocket.receive_json())
+                payload = await websocket.receive_json()
+                message = (
+                    Shutdown.model_validate(payload)
+                    if isinstance(payload, dict) and payload.get("kind") == "shutdown"
+                    else ApprovalAnswer.model_validate(payload)
+                )
             except (ValidationError, ValueError):
                 await reject("invalid message")
                 continue
@@ -382,6 +469,15 @@ class UIServer:
                 or self.approval_responder is None
             ):
                 await reject("control unavailable")
+                continue
+            if isinstance(message, Shutdown):
+                if self.control_responder is None:
+                    await reject("control unavailable")
+                elif not await asyncio.to_thread(
+                    self.control_responder,
+                    message.model_copy(update={"control_token": ""}),
+                ):
+                    await reject("request unavailable")
                 continue
             # Pass only non-secret fields across the responder boundary (T20).
             answer = message.model_copy(update={"control_token": ""})
@@ -424,8 +520,37 @@ class UIServer:
                     port=self.port,
                     access_log=False,
                     log_level="warning",
+                    log_config={
+                        "version": 1,
+                        "disable_existing_loggers": False,
+                        "formatters": {
+                            "safe": {
+                                "()": lambda: TokenLogFormatter(
+                                    (self.view_token, self.control_token)
+                                )
+                            },
+                        },
+                        "handlers": {
+                            "stderr": {
+                                "formatter": "safe",
+                                "class": "logging.StreamHandler",
+                                "stream": "ext://sys.stderr",
+                            }
+                        },
+                        "loggers": {
+                            "uvicorn": {
+                                "handlers": ["stderr"],
+                                "level": "WARNING",
+                                "propagate": False,
+                            },
+                            "uvicorn.error": {"level": "WARNING", "propagate": True},
+                            "uvicorn.access": {"handlers": [], "propagate": False},
+                        },
+                    },
                 )
-                LocalServer(config).run(sockets=[listener])
+                self._serving = LocalServer(config)
+                self._serving.run(sockets=[listener])
+                self._serving = None
         except OSError:
             raise UIServerError(
                 "Cannot start the loopback UI; check the local port."

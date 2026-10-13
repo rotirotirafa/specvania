@@ -116,10 +116,21 @@ test("window_open_hands_http_and_https_to_system_browser_and_denies_other_scheme
   assert.equal(loaded.windows.length, 1);
 });
 
-test("control_token_only_reaches_preload_arguments_and_never_urls_or_logs", async () => {
+test("control_token_only_reaches_preload_ipc_and_never_urls_or_logs", async () => {
   const loaded = await loadMain();
   const window = loaded.windows[0];
-  assert.deepEqual(Array.from(window.options.webPreferences.additionalArguments), ["--control-token", control]);
+  assert.equal(window.options.webPreferences.additionalArguments, undefined);
+  const trusted = { sender: window.webContents, senderFrame: { url: viewUrl } };
+  loaded.ipcMain.emit("specvania:control-token", trusted);
+  assert.equal(trusted.returnValue, control);
+  for (const event of [
+    { sender: {}, senderFrame: { url: viewUrl } },
+    { sender: window.webContents, senderFrame: { url: "https://example.invalid" } },
+    { sender: window.webContents, senderFrame: { url: "http://127.0.0.1:9999/" } },
+  ]) {
+    loaded.ipcMain.emit("specvania:control-token", event);
+    assert.equal(event.returnValue, "");
+  }
   for (const url of [
     `https://example.invalid/?token=${control}`,
     "https://example.invalid/%66ake-control-secret",
@@ -135,7 +146,7 @@ test("control_token_only_reaches_preload_arguments_and_never_urls_or_logs", asyn
 
 test("bad_launch_arguments_fail_without_echoing_tokens", async () => {
   for (const args of [
-    [], ["--url"], ["--url", "not a URL"],
+    ["--url"], ["--url", "not a URL"],
     ["--url", "https://example.invalid/"],
     ["--url", `${viewUrl}&control_token=${control}`, "--control-token", control],
     ["--url", `http://127.0.0.1:8765/${control}`, "--control-token", control],
@@ -149,7 +160,7 @@ test("bad_launch_arguments_fail_without_echoing_tokens", async () => {
   // A view-only launch must work for the documented npm start command.
   const viewOnly = await loadMain(["--url", viewUrl]);
   assert.equal(viewOnly.windows.length, 1);
-  assert.deepEqual(Array.from(viewOnly.windows[0].options.webPreferences.additionalArguments), []);
+  assert.equal(viewOnly.windows[0].options.webPreferences.additionalArguments, undefined);
 });
 
 function loadPreload(args) {
@@ -160,7 +171,10 @@ function loadPreload(args) {
       assert.equal(name, "electron");
       return {
         contextBridge: { exposeInMainWorld(name, api) { assert.equal(name, "specvaniaDesktop"); exposed = api; } },
-        ipcRenderer: { send: (...args) => sent.push(args) },
+        ipcRenderer: { send: (...args) => sent.push(args), sendSync: (channel) => {
+          assert.equal(channel, "specvania:control-token");
+          return args.includes("--control-token") ? control : "";
+        } },
       };
     },
     process: { argv: ["electron", ...args] },

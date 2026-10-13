@@ -1,6 +1,9 @@
 """Thin CLI registration; commands remain stubs until their rooms are cleared."""
 
+import json
+import logging
 import os
+import sys
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from importlib.metadata import version
@@ -58,7 +61,8 @@ from specvania.ui.launcher import (
     UIMode,
     open_ui,
 )
-from specvania.ui.server import UIServer, UIServerError, load_replay
+from specvania.ui.server import TokenLogFormatter, UIServer, UIServerError, load_replay
+from specvania.ui.studio import Studio, StudioError
 
 
 class UICommand(TyperCommand):
@@ -199,6 +203,49 @@ def create_app() -> typer.Typer:
         invoke_without_command=True,
         add_completion=False,
     )
+
+    @app.command()
+    def studio() -> None:
+        """Serve the desktop game and print its private launch handshake."""
+        instance = Studio(guard=RedactionGuard(), clock=SystemClock())
+        handler = logging.StreamHandler(sys.stderr)
+        handler.setFormatter(
+            TokenLogFormatter(
+                (
+                    instance.server.view_token,
+                    instance.server.control_token,
+                )
+            )
+        )
+        logging.basicConfig(handlers=[handler], level=logging.WARNING, force=True)
+
+        def handshake() -> None:
+            server = instance.server
+            sys.stdout.write(
+                json.dumps(
+                    {
+                        "port": server.port,
+                        "view_token": server.view_token,
+                        "control_token": server.control_token,
+                    }
+                )
+                + "\n"
+            )
+            sys.stdout.flush()
+            # All later library output belongs on stderr, including incidental
+            # prints from future planner/engine integrations.
+            sys.stdout = sys.stderr
+
+        original_stdout = sys.stdout
+        try:
+            instance.serve(on_started=handshake)
+        except (UIServerError, StudioError):
+            Console(stderr=True).print(
+                "Cannot start or stop the studio; check the local server."
+            )
+            raise typer.Exit(code=1) from None
+        finally:
+            sys.stdout = original_stdout
 
     @app.callback()
     def root(
