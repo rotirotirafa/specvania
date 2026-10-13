@@ -2,6 +2,7 @@
 
 const { readFileSync, mkdirSync, writeFileSync, renameSync } = require("node:fs");
 const path = require("node:path");
+const HANDSHAKE_TIMEOUT_MS = 60000;
 
 function shellLaunch({ executable = "specvania", env = process.env, platform = process.platform }) {
   const quoted = "'" + executable.replaceAll("'", "'\\''") + "'";
@@ -31,15 +32,18 @@ function writeSettings(userData, patch, language = "en") {
   return next;
 }
 function readSettings(userData) { return readAppSettings(userData).specvaniaPath; }
-/** Local error UI uses the same dictionaries/screens even when Python cannot start.
+function errorPage(reasonKey, logPath) { return localPage({reasonKey, logPath}); }
+function startingPage() { return localPage({kind: "starting"}); }
+/** Local startup UI uses the same dictionaries/screens even when Python cannot start.
  * T38 packaging must include this static tree next to the desktop resources.
  */
-function errorPage(reasonKey, logPath) {
+function localPage(startup) {
+  const {reasonKey = "starting.title", logPath = ""} = startup;
   const root = path.resolve(__dirname, "../../src/specvania/ui/static");
   const read = file => readFileSync(path.join(root, file), "utf8");
   const nonce = require("node:crypto").randomBytes(16).toString("hex");
   const json = value => JSON.stringify(value).replaceAll("<", "\\u003c");
-  const modules = ["i18n/index.js", "pixel/palette.js", "pixel/cast.js", "screens/project.js", "screens/settings.js", "screens/error.js", "screens/title.js"];
+  const modules = ["i18n/index.js", "pixel/palette.js", "pixel/cast.js", "screens/project.js", "screens/settings.js", "screens/error.js", "screens/starting.js", "screens/title.js"];
   // Flatten only our import/export declarations; no remote module or eval.
   const code = modules.map(file => (file === "pixel/cast.js" ? read(file).replace(/export const SHEET_URL = .*;/, `const SHEET_URL = ${json("data:image/png;base64," + readFileSync(path.join(root, "vendor/kenney-tiny-dungeon/tilemap_packed.png")).toString("base64"))};`) : read(file)).replace(/^import .*;$/gm, "").replace(/^export /gm, "")).join("\n");
   const reason = JSON.parse(read("i18n/en.json"))[reasonKey] || reasonKey;
@@ -48,7 +52,7 @@ function errorPage(reasonKey, logPath) {
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; font-src data:; img-src data:"><title>specvania</title><style>@font-face {font-family: "Press Start 2P"; src: url(data:font/ttf;base64,${readFileSync(path.join(root, "vendor/fonts/PressStart2P-Regular.ttf")).toString("base64")});} html, body {margin:0; min-height:100%; background:${palette};} #desktop-title-bar {position:fixed; inset:0 0 auto; height:32px; background:${palette}; -webkit-app-region:drag;}</style></head><body><header id="desktop-title-bar"></header><section id="screen-host"><p>${escape(reason)}</p><p>${escape(logPath)}</p></section><script nonce="${nonce}">
 const en = ${read("i18n/en.json")}; const ptBR = ${read("i18n/pt-BR.json")};
 ${code}
-mountScreens({host: document.getElementById("screen-host"), browser: window, startup: ${json({reasonKey, logPath})}});
+mountScreens({host: document.getElementById("screen-host"), browser: window, startup: ${json(startup)}});
 </script></body></html>`;
 }
 function launchStudio({ spawn, env = process.env, platform = process.platform, executable = "specvania", timer = globalThis, logPath, log, open, error }) {
@@ -65,7 +69,7 @@ function launchStudio({ spawn, env = process.env, platform = process.platform, e
     lifecycle.child = spawn(launch.command, launch.args, { env: { ...env }, stdio: ["ignore", "pipe", "pipe"] });
   } catch { fail("error.startFailed"); return lifecycle; }
   const child = lifecycle.child;
-  timeout = timer.setTimeout(() => fail("error.startTimeout"), 20000);
+  timeout = timer.setTimeout(() => fail("error.startTimeout"), HANDSHAKE_TIMEOUT_MS);
   child.stderr.on("data", log);
   child.on("error", () => fail("error.startFailed"));
   child.on("exit", () => {
@@ -156,4 +160,4 @@ function connectControl(value, origin, request = require("node:http").request) {
   upgrade.end();
   return client;
 }
-module.exports = { shellLaunch, launchStudio, quitStudio, readSettings, errorPage, connectControl, readAppSettings, writeSettings };
+module.exports = { HANDSHAKE_TIMEOUT_MS, shellLaunch, launchStudio, quitStudio, readSettings, errorPage, startingPage, connectControl, readAppSettings, writeSettings };

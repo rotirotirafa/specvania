@@ -37,7 +37,9 @@ async function harness({studio = true, desktop = true} = {}) {
   for(const label of ["HUD PT","HUD EN"]) {const button=new Element("button",doc);button.textContent=label;hud.append(button);}
   doc.body.append(game,host,hud);doc.getElementById=id=>id==="world-map"?game:id==="castle-hud"?hud:null;
   const events=new Map(),sent=[],writes=[],motion=[],restarts=[];let saved={language:"en",tokenBudget:1200,specvaniaPath:"specvania",reducedMotion:false},folder="/repo";
+  const intervals=new Map();let now=0,intervalId=0;
   const browser={document:doc,innerWidth:960,innerHeight:540,navigator:{language:"en"},CustomEvent:class {constructor(type,options){this.type=type;this.detail=options.detail;}},
+    performance:{now:()=>now},setInterval(fn,ms){const id=++intervalId;intervals.set(id,{fn,ms});return id;},clearInterval(id){intervals.delete(id);},
     addEventListener(type,fn){const a=events.get(type)||[];a.push(fn);events.set(type,a);},removeEventListener(type,fn){events.set(type,(events.get(type)||[]).filter(f=>f!==fn));},
     dispatchEvent(event){if(event.type==="specvania:settings")motion.push(event.detail);for(const fn of events.get(event.type)||[])fn(event);},
     specvaniaDesktop:{isDesktop:true,controlToken:()=>"control",pickFolder:async()=>folder,settings:{get:async()=>({...saved}),set:async value=>{writes.push(value);saved={...saved,...value};return {...saved};}},studio:{get:async()=>({kind:"ready"}),restart:async()=>{restarts.push(true);}}}};
@@ -53,7 +55,9 @@ async function harness({studio = true, desktop = true} = {}) {
     // Simulate the browser's default focus traversal and button activation.
     if(!event.prevented && key==="Tab") {const nodes=flat(doc.body).filter(n=>["button","input","select","summary"].includes(n.tagName)&&!n.disabled&&!function inert(node){return node.attrs.inert!==undefined||node.hidden||node.parent&&inert(node.parent);}(n));const at=nodes.indexOf(doc.activeElement);nodes[(at+(shiftKey?-1:1)+nodes.length)%nodes.length]?.focus();}
     if(!event.prevented && ["Enter"," "].includes(key) && doc.activeElement?.tagName==="button")doc.activeElement.click();}
-  return {host,doc,game,hud,browser,socket,screens,sent,writes,motion,restarts,message,key,tick,initial,folder:value=>{folder=value;},button:label=>flat(host).find(n=>n.tagName==="button"&&n.textContent===label)};
+  return {host,doc,game,hud,browser,socket,screens,sent,writes,motion,restarts,message,key,tick,initial,intervals,
+    advance(ms){now+=ms;for(const {fn} of intervals.values())fn();},
+    folder:value=>{folder=value;},button:label=>flat(host).find(n=>n.tagName==="button"&&n.textContent===label)};
 }
 test("screens_stay_hidden_before_first_message_without_isolating_castle_or_hud",async()=>{
   const h=await harness({studio:false});try {
@@ -191,6 +195,41 @@ test("launcher_error_page_executes_shared_translated_screens_and_preserves_log_p
   h.button("Settings").click();assert.match(text(h.host),/Token budget/);
   const language=flat(h.host).find(n=>n.tagName==="select");language.value="pt-BR";language.dispatch("change");await h.tick();
   assert.match(text(h.host),/Configurações/);
+});
+
+for (const language of ["en","pt-BR"]) test(`launcher_starting_page_elapsed_hint_and_cleanup_${language}`,async()=>{
+  const h=await harness();h.screens.destroy();
+  h.browser.specvaniaDesktop.settings.get=async()=>({language});
+  const page=require("../../apps/desktop/studio.cjs").startingPage();
+  const dictionary=JSON.parse(fs.readFileSync(path.join(root,`i18n/${language}.json`),"utf8"));
+  const colors=(await load("pixel/palette.js")).UI_COLORS;
+  assert.ok(page.includes(`background:${colors.background}`));
+  assert.match(page,/default-src 'none'; script-src 'nonce-[a-f0-9]+'; style-src 'unsafe-inline'; font-src data:; img-src data:/);
+  assert.doesNotMatch(page,/<iframe|<script[^>]+src=/);
+  const script=page.match(/<script nonce="[a-f0-9]+">([\s\S]*?)<\/script>/)[1];
+  h.doc.getElementById=id=>id==="screen-host"?h.host:null;
+  const screens=vm.runInNewContext(script,{window:h.browser,document:h.doc,globalThis:{window:h.browser},console});
+  const hint=()=>flat(h.host).find(n=>n.textContent===dictionary["starting.firstStart"]);
+  try {
+    assert.equal(h.host.hidden,false);assert.equal(h.host.dataset.screen,"starting");
+    assert.match(text(h.host),/Starting the studio…/);assert.match(text(h.host),/Elapsed: 0 s/);
+    assert.ok(flat(h.host).find(n=>n.textContent==="The first start after installing can take longer.").hidden);
+    assert.equal(h.intervals.size,1);assert.equal([...h.intervals.values()][0].ms,1000);
+    h.advance(9000);
+    await screens.ready;
+    assert.equal(flat(h.host).find(n=>n.tagName==="h1").textContent,dictionary["starting.title"]);
+    assert.ok(text(h.host).includes(dictionary["starting.elapsed"].replace("{seconds}","9")));
+    assert.ok(hint().hidden);assert.ok(text(h.doc.head).includes(`color: ${colors.text}`));
+    h.advance(1000);assert.equal(hint().hidden,false);
+    assert.ok(text(h.host).includes(dictionary["starting.elapsed"].replace("{seconds}","10")));
+    h.key("Escape");assert.equal(h.host.dataset.screen,"starting");
+    h.advance(24000);
+    assert.ok(text(h.host).includes(dictionary["starting.elapsed"].replace("{seconds}","34")));
+    assert.equal(flat(h.host).filter(n=>n.tagName==="button").length,0);
+    screens.showError({reasonKey:"error.startTimeout"});
+    assert.equal(h.host.dataset.screen,"error");assert.equal(h.intervals.size,0);
+    assert.ok(text(h.host).includes(dictionary["error.startTimeout"]));
+  } finally {screens.destroy();assert.equal(h.intervals.size,0);}
 });
 
 const controlName = node => node.textContent || node.type || node.tagName;

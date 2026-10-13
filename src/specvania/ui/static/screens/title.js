@@ -5,6 +5,7 @@ import { ideaScreen } from "./idea.js";
 import { projectScreen } from "./project.js";
 import { settingsScreen } from "./settings.js";
 import { errorScreen } from "./error.js";
+import { startingScreen } from "./starting.js";
 
 /** One viewer-owned screen controller. T34 may call startRun; T37 supplies watchDemo. */
 export function mountScreens({host, browser = window, socket, startup, watchDemo = null}) {
@@ -146,6 +147,7 @@ export function mountScreens({host, browser = window, socket, startup, watchDemo
     else if (next === "project") view = projectScreen(ui, project, reason);
     else if (next === "settings") view = settingsScreen(ui);
     else if (next === "error") view = errorScreen(ui, lastError);
+    else if (next === "starting") view = startingScreen(ui, browser);
     else {
       text("h1", "app.name");
       titleArt();
@@ -175,7 +177,7 @@ export function mountScreens({host, browser = window, socket, startup, watchDemo
       const nodes = controls(); const index = nodes.indexOf(document.activeElement);
       event.preventDefault();
       nodes[(index + (event.shiftKey ? -1 : 1) + nodes.length) % nodes.length]?.focus();
-    } else if (event.key === "Escape" && !["title", "idea"].includes(screen)) {event.preventDefault(); back();}
+    } else if (event.key === "Escape" && !["title", "idea", "starting"].includes(screen)) {event.preventDefault(); back();}
   };
   const message = ({data}) => {
     const value = JSON.parse(data);
@@ -218,12 +220,14 @@ export function mountScreens({host, browser = window, socket, startup, watchDemo
   });
   // Replay and live watch views stay interactive until the server identifies a studio.
   close();
-  if (startup) showError(startup);
+  if (startup?.kind === "starting") show("starting");
+  else if (startup) showError(startup);
   const ready = Promise.resolve(desktop?.settings?.get?.()).then(saved => {
     if (destroyed) return;
     if (saved) {settings = {...settings, ...saved}; syncing = true; setLanguage(settings.language); syncing = false;}
     browser.dispatchEvent(new browser.CustomEvent("specvania:settings", {detail: settings}));
-    if (startup) showError(startup);
+    if (startup?.kind === "starting") render();
+    else if (startup) showError(startup);
     else if (screen === "title") show("title");
   }).catch(() => showError({reasonKey:"settings.invalid"}));
   return { ready, showError, close, showTitle() {project = {}; show("title");}, startRun(slug, allowDirty = false) {return send("start_run", {slug, allow_dirty: allowDirty, token_budget: settings.tokenBudget});},

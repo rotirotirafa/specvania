@@ -397,7 +397,7 @@ files: src/specvania/ui/studio.py, src/specvania/ui/server.py, src/specvania/cli
 Checklist:
 - [x] `specvania studio` prints exactly one handshake line on stdout and serves the game under the existing token rules (D16)
 - [x] Started without `--url`, the desktop app spawns the studio through the login shell and opens the game; the spawn command line and environment contain no token (Node test with a fake child process)
-- [x] If the studio exits or no handshake arrives within 20 s, the app shows an error page with a non-secret reason and the log path
+- [x] While waiting for the handshake, the app shows a translated starting screen with elapsed seconds and a first-start hint after 10 s; if the studio exits or no handshake arrives within 60 s, it shows an error page with a non-secret reason and the log path (DEV-013)
 - [x] `shutdown` finishes an active run with `run_finished` status aborted and the process exits 0; quitting the app sends it
 - [x] Control messages without the control token are rejected like approval answers and leave the connection open
 

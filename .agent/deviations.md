@@ -14,6 +14,12 @@ Every change to the spec's intent, logged before the commit that introduces it. 
 
 ## Entries
 
+### DEV-013 · 2026-10-13 · T24
+**What changed:** The desktop handshake timeout increases from 20 s to 60 s. Launch and Restart studio show a local, translated starting screen with elapsed seconds and a first-start hint after 10 s, replaced by the game on handshake or the error screen on failure/timeout.
+**Why:** On the owner's machine, the reviewer measured `$SHELL -lic exit` taking up to 9.5 s under load and the full `$SHELL -lic 'exec specvania studio'` path taking 12.9–18.8 s. A fresh install also compiles bytecode on first start; three review sessions hit the 20 s limit.
+**Impact:** T24 desktop startup and checklist wording; T33 timeout error text in both dictionaries and the local starting screen. The handshake format and token rules are unchanged.
+**Approved by:** reviewer under the owner's wiring delegation, 2026-10-13
+
 ### DEV-012 · 2026-10-13 · T05
 **What changed:** A provider HTTP 404 immediately advances the role to the next model for the rest of the room, resets consecutive failures, and emits `fallback` with reason `model unavailable (HTTP 404)` after the existing `model_call`, without provider backoff or a provider `cooldown`. A 404 on the last model raises `ChainExhaustedError`; other non-retryable statuses still raise unchanged.
 **Why:** After the timed-out `z-ai/glm-5.3` Warrior calls in the owner's T23 dogfood run, `moonshotai/kimi-k2.6` returned HTTP 404 in 0.5 seconds (function not found), despite appearing in `/v1/models`. The router raised and paused the run instead of trying `deepseek-ai/deepseek-v4.1-flash`.

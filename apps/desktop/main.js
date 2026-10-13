@@ -3,7 +3,7 @@
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { mkdirSync, createWriteStream } = require("node:fs");
-const { launchStudio, quitStudio, readSettings, connectControl, readAppSettings, writeSettings } = require(path.join(__dirname, "studio.cjs"));
+const { launchStudio, quitStudio, readSettings, startingPage, connectControl, readAppSettings, writeSettings } = require(path.join(__dirname, "studio.cjs"));
 const { app, BrowserWindow, ipcMain, Notification, shell, dialog } = require("electron");
 
 function argument(name, required = false) {
@@ -124,6 +124,10 @@ async function openWindow() {
     const logPath = path.join(logs, "studio.log");
     startStudio = () => {
       studioStatus = {kind: "starting"};
+      controlToken = "";
+      target = null;
+      startupUrl = "data:text/html;charset=utf-8," + encodeURIComponent(startingPage());
+      window.loadURL(startupUrl).catch(() => {});
       const log = createWriteStream(logPath, { flags: "a", mode: 0o600 });
       log.on("error", () => {});
       lifecycle = launchStudio({

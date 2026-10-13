@@ -3,15 +3,27 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
 const { spawnSync } = require("node:child_process");
-const { launchStudio, quitStudio, shellLaunch } = require("../../apps/desktop/studio.cjs");
+const { HANDSHAKE_TIMEOUT_MS, launchStudio, quitStudio, shellLaunch } = require("../../apps/desktop/studio.cjs");
 const handshake = { port: 8765, view_token: "view-secret", control_token: "control-secret" };
 function harness(options = {}) {
   const child = new EventEmitter();
   child.stdout = new EventEmitter(); child.stderr = new EventEmitter();
   child.kill = () => { child.killed = true; };
-  const timers = new Map(); let timerId = 0;
+  const timers = new Map(); let timerId = 0, now = 0;
   const opened = [], errors = [], logs = [], spawns = [];
-  const timer = { setTimeout(fn, ms) { const id = ++timerId; timers.set(id, { fn, ms }); return id; }, clearTimeout(id) { timers.delete(id); } };
+  const timer = {
+    setTimeout(fn, ms) { const id = ++timerId; timers.set(id, { fn, ms, at: now + ms }); return id; },
+    clearTimeout(id) { timers.delete(id); },
+    advance(ms) {
+      const until = now + ms;
+      for (;;) {
+        const next = [...timers].sort((a, b) => a[1].at - b[1].at)[0];
+        if (!next || next[1].at > until) break;
+        now = next[1].at; timers.delete(next[0]); next[1].fn();
+      }
+      now = until;
+    },
+  };
   const lifecycle = launchStudio({
     spawn: (...args) => { spawns.push(args); return child; },
     env: { SHELL: "/bin/bash", PATH: "/safe/bin" }, platform: "linux", executable: "specvania",
@@ -53,17 +65,25 @@ test("invalid_handshakes_produce_local_nonsecret_error_with_log_path", () => {
     assert.ok(h.child.killed);
   }
 });
-test("twenty_second_timeout_and_early_exit_show_local_error_screen", () => {
+test("sixty_second_timeout_and_early_exit_show_local_error_screen", () => {
+  assert.equal(HANDSHAKE_TIMEOUT_MS, 60000);
   for (const early of [false, true]) {
     const h = harness();
-    assert.equal([...h.timers.values()][0].ms, 20000);
+    assert.equal([...h.timers.values()][0].ms, HANDSHAKE_TIMEOUT_MS);
     h.child.stdout.emit("data", '{"control_token":"control-secret"');
-    if (early) h.child.emit("exit", 1); else [...h.timers.values()][0].fn();
+    h.timer.advance(59000);
+    assert.equal(h.errors.length, 0); assert.ok(!h.child.killed);
+    if (early) h.child.emit("exit", 1); else h.timer.advance(1000);
     assert.equal(h.errors.length, 1); assert.equal(h.opened.length, 0);
     assert.match(h.errors[0], /\/safe\/userData\/logs\/studio.log/);
     assert.ok(!h.errors[0].includes(handshake.control_token));
     assert.ok(!/<iframe|<script[^>]+src=/.test(h.errors[0]));
     assert.match(h.errors[0], /script-src 'nonce-[a-f0-9]+'/);
+    if (!early) {
+      assert.match(h.errors[0], /Studio did not respond within 60 seconds\./);
+      assert.match(h.errors[0], /O estúdio não respondeu em 60 segundos\./);
+      assert.ok(h.child.killed);
+    }
     h.child.stdout.emit("data", JSON.stringify(handshake) + "\n");
     assert.equal(h.opened.length, 0);
   }
@@ -106,7 +126,7 @@ test("control_websocket_upgrade_checks_origin_and_sends_masked_shutdown_frame", 
   assert.deepEqual(JSON.parse(payload.toString()), { kind: "shutdown", control_token: "control-secret" });
 });
 
-test("main_without_url_restarts_studio_after_exit_with_fresh_handshake_and_guarded_ipc", async () => {
+for (const failure of ["exit", "timeout"]) test(`main_starting_screen_replaced_by_game_or_${failure}_and_shown_again_on_restart`, async () => {
   const vm = require("node:vm");
   const fs = require("node:fs");
   const path = require("node:path");
@@ -132,7 +152,10 @@ test("main_without_url_restarts_studio_after_exit_with_fresh_handshake_and_guard
     vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, "../../apps/desktop/main.js"), "utf8"), {
       require(name) {
         if (name === "electron") return { app, BrowserWindow, ipcMain, Notification: {}, shell: {} };
-        if (name === "node:child_process") return { spawn: (...args) => { spawns.push(args); return spawns.length === 1 ? child : replacement; } };
+        if (name === "node:child_process") return { spawn: (...args) => {
+          assert.match(decodeURIComponent(pages.at(-1)), /Starting the studio…/); // Loaded before spawn.
+          spawns.push(args); return spawns.length === 1 ? child : replacement;
+        } };
         if (name === "node:fs") return { mkdirSync: fs.mkdirSync, createWriteStream: () => { const stream = new EventEmitter(); stream.write = (data) => logged.push(String(data)); stream.end = () => {}; return stream; } };
         if (name.endsWith("studio.cjs")) return { ...studio, launchStudio: (options) => studio.launchStudio({ ...options, timer: h.timer, env: { SHELL: "/bin/bash" } }) };
         return require(name);
@@ -142,22 +165,37 @@ test("main_without_url_restarts_studio_after_exit_with_fresh_handshake_and_guard
     await new Promise((resolve) => setImmediate(resolve));
     assert.match(spawns[0][1][1], /^exec /);
     assert.ok(spawns[0][1][1].includes("/a path/spec"));
-    assert.equal(pages.length, 0);
+    assert.equal(pages.length, 1);
+    assert.ok(pages[0].startsWith("data:text/html;charset=utf-8,"));
+    const startingFrame = {sender: window.webContents, senderFrame: {url: pages[0]}};
+    assert.equal(handlers.get("specvania:studio")(startingFrame).kind, "starting");
+    ipcMain.emit("specvania:control-token", startingFrame); assert.equal(startingFrame.returnValue, "");
     child.stderr.emit("data", "safe diagnostic\n");
     assert.equal(logged.join(""), "safe diagnostic\n");
-    child.stdout.emit("data", JSON.stringify(handshake) + "\n");
-    assert.equal(pages[0], "http://127.0.0.1:8765/?view_token=view-secret");
+    if (failure === "exit") {
+      h.timer.advance(1000);
+      child.stdout.emit("data", JSON.stringify(handshake) + "\n");
+      assert.equal(pages[1], "http://127.0.0.1:8765/?view_token=view-secret");
+      h.timer.advance(60000); assert.equal(pages.length, 2); // Handshake cancelled the deadline.
+    } else {
+      h.timer.advance(59000); assert.equal(pages.length, 1);
+      assert.equal(handlers.get("specvania:studio")(startingFrame).kind, "starting");
+      h.timer.advance(1000); assert.equal(pages.length, 2);
+      assert.match(decodeURIComponent(pages[1]), /Studio did not respond within 60 seconds\./);
+      child.stdout.emit("data", JSON.stringify(handshake) + "\n");
+      assert.equal(pages.length, 2); // A late handshake cannot open the game.
+    }
     assert.equal(window.options.webPreferences.additionalArguments, undefined);
-    const trusted = { sender: window.webContents, senderFrame: { url: pages[0] } };
-    ipcMain.emit("specvania:control-token", trusted); assert.equal(trusted.returnValue, handshake.control_token);
+    const trusted = { sender: window.webContents, senderFrame: { url: pages.at(-1) } };
+    ipcMain.emit("specvania:control-token", trusted); assert.equal(trusted.returnValue, failure === "exit" ? handshake.control_token : "");
     const foreign = { sender: window.webContents, senderFrame: { url: "https://example.invalid/" } };
     ipcMain.emit("specvania:control-token", foreign); assert.equal(foreign.returnValue, "");
     assert.ok(!JSON.stringify(spawns).includes(handshake.control_token));
     assert.ok(!JSON.stringify(spawns).includes(handshake.view_token));
     child.emit("exit", 1);
-    assert.equal(pages.length, 2);
-    assert.ok(pages[1].startsWith("data:text/html;charset=utf-8,"));
-    const stoppedPage = decodeURIComponent(pages[1].split(",").slice(1).join(","));
+    assert.equal(pages.length, failure === "exit" ? 3 : 2);
+    assert.ok(pages.at(-1).startsWith("data:text/html;charset=utf-8,"));
+    const stoppedPage = decodeURIComponent(pages.at(-1).split(",").slice(1).join(","));
     assert.ok(stoppedPage.includes(path.join(directory, "logs/studio.log")));
     for (const token of [handshake.view_token, handshake.control_token]) assert.ok(!stoppedPage.includes(token));
     ipcMain.emit("specvania:control-token", trusted);
@@ -165,16 +203,20 @@ test("main_without_url_restarts_studio_after_exit_with_fresh_handshake_and_guard
     const restart = handlers.get("specvania:studio-restart");
     assert.equal(typeof restart, "function");
     assert.throws(() => restart(foreign), /Untrusted/);
-    const errorFrame = {sender: window.webContents, senderFrame: {url: pages[1]}};
+    const errorFrame = {sender: window.webContents, senderFrame: {url: pages.at(-1)}};
+    const beforeRestart = pages.length;
     await Promise.all([restart(errorFrame), restart(errorFrame)]);
     assert.equal(spawns.length, 2);
     assert.deepEqual(spawns[1], spawns[0]);
-    assert.equal(pages.length, 2); // Reload only after the new handshake.
-    await restart(errorFrame);assert.equal(spawns.length, 2); // No duplicate child.
+    assert.equal(pages.length, beforeRestart + 1);
+    assert.match(decodeURIComponent(pages.at(-1)), /Starting the studio…/);
+    const restartingFrame = {sender: window.webContents, senderFrame: {url: pages.at(-1)}};
+    assert.equal(handlers.get("specvania:studio")(restartingFrame).kind, "starting");
+    await restart(restartingFrame);assert.equal(spawns.length, 2); // No duplicate child.
     const fresh = {port: 9876, view_token: "new-view-secret", control_token: "new-control-secret"};
     replacement.stdout.emit("data", JSON.stringify(fresh) + "\n");
-    assert.equal(pages[2], "http://127.0.0.1:9876/?view_token=new-view-secret");
-    const reloaded = {sender: window.webContents, senderFrame: {url: pages[2]}};
+    assert.equal(pages.at(-1), "http://127.0.0.1:9876/?view_token=new-view-secret");
+    const reloaded = {sender: window.webContents, senderFrame: {url: pages.at(-1)}};
     ipcMain.emit("specvania:control-token", reloaded);assert.equal(reloaded.returnValue, fresh.control_token);
     assert.equal(handlers.get("specvania:studio")(reloaded).kind,"ready");
     assert.throws(() => restart(errorFrame), /Untrusted/);
@@ -230,7 +272,7 @@ test("login_shell_noise_before_handshake_is_skipped", () => {
       h.child.stdout.emit("data", noise.slice(0, 5));
       h.child.stdout.emit("data", noise.slice(5));
       assert.equal(h.errors.length, 0);
-      assert.equal([...h.timers.values()][0].ms, 20000);
+      assert.equal([...h.timers.values()][0].ms, HANDSHAKE_TIMEOUT_MS);
       h.child.stdout.emit("data", JSON.stringify(handshake) + "\n");
     } else {
       h.child.stdout.emit("data", noise + JSON.stringify(handshake) + "\n");
