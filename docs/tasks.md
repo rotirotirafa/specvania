@@ -405,11 +405,11 @@ files: src/specvania/ui/studio.py, src/specvania/ui/server.py, src/specvania/sdd
 Control messages (control token): `open_project{path}` (must be inside a git work tree; reports whether `.specvania/` exists), `init_project`, `start_plan{idea, no_clarify}`, `clarify_answer{question_id, answer}`, `save_world{slug}` (D25: commits only `.specvania/specs/<slug>/` with the message `specvania: map <slug>`), `start_run{slug, allow_dirty}` (a dirty tree is refused with the list of dirty paths unless `allow_dirty`), `pause_decision{choice}`, plus the existing `approval_answer`. Plan and run execute in a worker thread; the planner's `answer`, the engine's `decide` and an `ApprovalBroker` responder wait on the WebSocket. Pending Clarify questions travel like pending approvals: a transient prompt with the options and the default, restored on reconnect. After each change the studio sends `studio_state{phase, project, worlds, open_bugs}`. Messages that do not fit the phase are rejected without changing state.
 
 Checklist:
-- [ ] A fake-provider test drives `open_project` → `start_plan` → Clarify answers → `save_world` → `start_run` → approval → `pause_decision` → finished over the WebSocket only, with one commit per cleared room on `specvania/<run-id>` and no terminal prompt
-- [ ] `save_world` commits only the world folder; other dirty files stay uncommitted
-- [ ] `start_run` on a dirty tree is refused with the dirty paths unless `allow_dirty` is true
-- [ ] A message sent in the wrong phase (for example `start_run` while planning) is rejected and the phase does not change
-- [ ] A pending Clarify question, with its options and default, is restored after a reconnect
+- [x] A fake-provider test drives `open_project` → `start_plan` → Clarify answers → `save_world` → `start_run` → approval → `pause_decision` → finished over the WebSocket only, with one commit per cleared room on `specvania/<run-id>` and no terminal prompt
+- [x] `save_world` commits only the world folder; other dirty files stay uncommitted
+- [x] `start_run` on a dirty tree is refused with the dirty paths unless `allow_dirty` is true
+- [x] A message sent in the wrong phase (for example `start_run` while planning) is rejected and the phase does not change
+- [x] A pending Clarify question, with its options and default, is restored after a reconnect
 
 ### T26 · Room files and diff endpoint
 depends_on: T24

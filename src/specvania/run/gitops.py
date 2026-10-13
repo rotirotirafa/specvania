@@ -38,6 +38,46 @@ class GitOps:
         if self._git("status", "--porcelain") and not allow_dirty:
             raise GitError("Git tree is dirty; commit changes or use --allow-dirty.")
 
+    def dirty_paths(self) -> tuple[str, ...]:
+        """Porcelain NUL records preserve spaces, newlines and renamed paths."""
+        records = iter(self._git("status", "--porcelain=v1", "-z").split("\0"))
+        paths: list[str] = []
+        for record in records:
+            if not record:
+                continue
+            paths.append(record[3:])
+            if "R" in record[:2] or "C" in record[:2]:
+                paths.append(next(records))
+        return tuple(dict.fromkeys(paths))
+
+    def save_world(self, slug: str) -> str:
+        """Commit this world on the current branch, preserving other index entries."""
+        # --only uses working-tree contents of these tracked/new files, ignoring
+        # unrelated staged entries and leaving them staged after the commit.
+        directory = f".specvania/specs/{slug}/"
+        self._git("--literal-pathspecs", "add", "--all", "--", directory)
+        if not self._git(
+            "--literal-pathspecs",
+            "diff",
+            "--cached",
+            "--name-only",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--",
+            directory,
+        ):
+            return self.head()
+        self._git(
+            "--literal-pathspecs",
+            "commit",
+            "--only",
+            "-m",
+            f"specvania: map {slug}",
+            "--",
+            directory,
+        )
+        return self.head()
+
     def head(self) -> str:
         return self._git("rev-parse", "HEAD").strip()
 

@@ -1,12 +1,16 @@
 """Bug lifecycle through the Ledger port; terminal rendering belongs to the CLI."""
 
+import os
 import re
 from collections.abc import Callable
 from pathlib import Path
 
 from specvania.clock import Clock
+from specvania.config import load_config
+from specvania.ledger import LedgerError
 from specvania.ledger.repo import Bug, Ledger
-from specvania.run.events import BugClosed, BugOpened, Event
+from specvania.run.events import BugClosed, BugOpened, Event, RedactionGuard
+from specvania.run.gitops import GitError, GitOps
 
 
 class BugError(Exception):
@@ -104,3 +108,24 @@ class Bugs:
             )
             self.ledger.close_bug(bug.id, status="fixed", fixed_by_run=run_id)
             emit(closed)
+
+
+def open_bug_ledger(
+    root: Path, *, clock: Clock, guard: RedactionGuard
+) -> tuple[Ledger, Bugs]:
+    """The shared bug-list/studio project registration path (including migrations)."""
+    git = GitOps(root)
+    config = load_config(git.root / ".specvania/config.toml")
+    for secret in (
+        os.environ.get(config.provider.api_key_env, ""),
+        os.environ.get(config.ledger.database_url_env, ""),
+    ):
+        if secret:
+            guard.register(secret)
+    ledger = Ledger.from_config(git.root, config.ledger, clock=clock, guard=guard)
+    try:
+        project = ledger.add_project(git.root, git.origin_url())
+    except (LedgerError, GitError):
+        ledger.close()
+        raise
+    return ledger, Bugs(ledger, project.id)

@@ -25,7 +25,7 @@ from specvania.agent.approval import ApprovalError, ApprovalResponder, TerminalR
 from specvania.agent.gates import GateError
 from specvania.agent.sandbox import SandboxRefusal
 from specvania.agent.tools import ToolError
-from specvania.bugs import BugError, Bugs
+from specvania.bugs import BugError, Bugs, open_bug_ledger
 from specvania.clock import SystemClock
 from specvania.config import (
     Config,
@@ -678,24 +678,7 @@ def create_app() -> typer.Typer:
     bug = typer.Typer(help="Manage bugs in the Bestiary.", no_args_is_help=True)
 
     def bug_ledger() -> tuple[Ledger, Bugs]:
-        git = GitOps(Path.cwd())
-        config = load_config(git.root / ".specvania/config.toml")
-        guard = RedactionGuard()
-        for secret in (
-            os.environ.get(config.provider.api_key_env, ""),
-            os.environ.get(config.ledger.database_url_env, ""),
-        ):
-            if secret:
-                guard.register(secret)
-        ledger = Ledger.from_config(
-            git.root, config.ledger, clock=SystemClock(), guard=guard
-        )
-        try:
-            project = ledger.add_project(git.root, git.origin_url())
-        except (LedgerError, GitError):
-            ledger.close()
-            raise
-        return ledger, Bugs(ledger, project.id)
+        return open_bug_ledger(Path.cwd(), clock=SystemClock(), guard=RedactionGuard())
 
     @bug.command("add", help="Open a bug in the Bestiary.")
     def bug_add(

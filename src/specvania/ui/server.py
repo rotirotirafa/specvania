@@ -13,12 +13,12 @@ from pathlib import Path
 from queue import Empty, Queue
 from threading import Event as ThreadEvent
 from threading import RLock, Thread
-from typing import Literal
+from typing import Annotated, Literal
 
 import uvicorn
 from fastapi import FastAPI, Request, WebSocket
 from fastapi.responses import JSONResponse, Response
-from pydantic import Field, ValidationError
+from pydantic import AfterValidator, Field, TypeAdapter, ValidationError
 from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocketDisconnect
 
@@ -62,6 +62,35 @@ type StudioPhase = Literal[
 ]
 
 
+class ClarifyPrompt(FrozenModel):
+    question_id: ShortText
+    text: ShortText
+    options: tuple[ShortText, ...] = ()
+    default: ShortText
+
+
+class StudioProject(FrozenModel):
+    path: str
+    initialized: bool
+
+
+class StudioState(FrozenModel):
+    kind: Literal["studio_state"] = "studio_state"
+    phase: StudioPhase
+    project: StudioProject | None
+    worlds: tuple[ShortText, ...] = ()
+    open_bugs: int = Field(default=0, ge=0)
+    clarify_request: ClarifyPrompt | None = None
+    pause_request: ShortText | None = None
+    error: ShortText | None = None
+
+
+class ControlError(UIServerError):
+    def __init__(self, reason: str, *, dirty_paths: tuple[str, ...] = ()) -> None:
+        super().__init__(reason)
+        self.dirty_paths = dirty_paths
+
+
 class StateMessage(FrozenModel):
     kind: Literal["state"] = "state"
     state: RunState
@@ -89,9 +118,80 @@ class Shutdown(FrozenModel):
     control_token: str = Field(default="", repr=False, exclude=True)
 
 
+class OpenProject(FrozenModel):
+    kind: Literal["open_project"]
+    path: str = Field(min_length=1)
+    control_token: str = Field(default="", repr=False, exclude=True)
+
+
+class InitProject(FrozenModel):
+    kind: Literal["init_project"]
+    control_token: str = Field(default="", repr=False, exclude=True)
+
+
+class StartPlan(FrozenModel):
+    kind: Literal["start_plan"]
+    idea: str = Field(min_length=1)
+    no_clarify: bool = Field(default=False, strict=True)
+    control_token: str = Field(default="", repr=False, exclude=True)
+
+
+class ClarifyReply(FrozenModel):
+    kind: Literal["clarify_answer"]
+    question_id: str = Field(min_length=1)
+    answer: str
+    control_token: str = Field(default="", repr=False, exclude=True)
+
+
+def _world_slug(value: str) -> str:
+    if value in (".", "..") or "/" in value or "\\" in value:
+        raise ValueError("Choose a world folder name.")
+    return value
+
+
+type WorldSlug = Annotated[
+    str, Field(min_length=1, max_length=200), AfterValidator(_world_slug)
+]
+
+
+class SaveWorld(FrozenModel):
+    kind: Literal["save_world"]
+    slug: WorldSlug
+    control_token: str = Field(default="", repr=False, exclude=True)
+
+
+class StartRun(FrozenModel):
+    kind: Literal["start_run"]
+    slug: WorldSlug
+    allow_dirty: bool = Field(default=False, strict=True)
+    control_token: str = Field(default="", repr=False, exclude=True)
+
+
+class PauseReply(FrozenModel):
+    kind: Literal["pause_decision"]
+    choice: Literal["retry", "skip", "abort"]
+    control_token: str = Field(default="", repr=False, exclude=True)
+
+
+type StudioControl = (
+    Shutdown
+    | OpenProject
+    | InitProject
+    | StartPlan
+    | ClarifyReply
+    | SaveWorld
+    | StartRun
+    | PauseReply
+)
+type ControlMessage = Annotated[
+    ApprovalAnswer | StudioControl, Field(discriminator="kind")
+]
+
+
 class ApprovalRejected(FrozenModel):
     kind: Literal["approval_rejected"] = "approval_rejected"
-    reason: Literal["invalid message", "control unavailable", "request unavailable"]
+    reason: ShortText
+    dirty_paths: tuple[str, ...] = Field(default=(), exclude_if=lambda value: not value)
 
 
 def _matches(candidate: str | None, expected: str) -> bool:
@@ -146,7 +246,8 @@ class UIServer:
         port: int = 0,
         approval_responder: Callable[[ApprovalAnswer], bool | None] | None = None,
         studio_snapshot: Callable[[], StateMessage] | None = None,
-        control_responder: Callable[[Shutdown], bool] | None = None,
+        control_responder: Callable[[StudioControl], bool] | None = None,
+        studio_info: Callable[[], StudioState | None] | None = None,
     ) -> None:
         if speed not in (1, 2, 4) or not 0 <= port <= 65535:
             raise UIServerError("Use replay speed 1, 2 or 4 and a valid local port.")
@@ -156,10 +257,11 @@ class UIServer:
             and (bus is None or (ledger is None and live_snapshot is None))
         ):
             raise UIServerError("Live UI requires an event bus and a run snapshot.")
+        self.studio_info = studio_info
         self.studio_snapshot = studio_snapshot
         self.control_responder = control_responder
         self._state_lock = RLock()
-        self._state_queues: list[Queue[StateMessage]] = []
+        self._state_queues: list[Queue[StateMessage | StudioState]] = []
         self._serving: uvicorn.Server | None = None
         self.guard = guard
         self.clock = clock
@@ -196,6 +298,15 @@ class UIServer:
     def publish_studio_state(self) -> None:
         if self.studio_snapshot is not None:
             message = self.studio_snapshot()
+            info = self.studio_info() if self.studio_info else None
+            with self._state_lock:
+                for queue in self._state_queues:
+                    queue.put(message)
+                    if info is not None:
+                        queue.put(info)
+
+    def publish_studio_info(self) -> None:
+        if self.studio_info is not None and (message := self.studio_info()) is not None:
             with self._state_lock:
                 for queue in self._state_queues:
                     queue.put(message)
@@ -213,7 +324,10 @@ class UIServer:
         return f"specvania_view_{self.port}"
 
     def _answer_approval(self, message: ApprovalAnswer) -> bool:
-        return self.desktop_responder.answer(message.request_id, message.answer)
+        accepted = self.desktop_responder.answer(message.request_id, message.answer)
+        if accepted:
+            self.publish_studio_info()
+        return accepted
 
     def _approval_prompt(self, event: ApprovalRequested) -> ApprovalRequest:
         pending = self.desktop_responder.pending
@@ -302,7 +416,7 @@ class UIServer:
             if self.replay is None and self.bus
             else None
         )
-        state_queue: Queue[StateMessage] | None = None
+        state_queue: Queue[StateMessage | StudioState] | None = None
         if self.studio_snapshot is not None:
             state_queue = Queue()
             with self._state_lock:
@@ -349,6 +463,10 @@ class UIServer:
                     )
                 ).model_dump(mode="json")
             )
+            if self.studio_info is not None:
+                info = self.studio_info()
+                if info is not None:
+                    await websocket.send_json(info.model_dump(mode="json"))
             sender = asyncio.create_task(
                 self._send(websocket, subscription, state.seq, state_queue)
             )
@@ -389,7 +507,7 @@ class UIServer:
         websocket: WebSocket,
         subscription: Subscription | None,
         seq: int,
-        state_queue: Queue[StateMessage] | None = None,
+        state_queue: Queue[StateMessage | StudioState] | None = None,
     ) -> None:
         if subscription is None:
             previous: Event | None = None
@@ -404,7 +522,7 @@ class UIServer:
                 previous = event
             return
         loop = asyncio.get_running_loop()
-        queue: asyncio.Queue[Event | StateMessage] = asyncio.Queue()
+        queue: asyncio.Queue[Event | StateMessage | StudioState] = asyncio.Queue()
         stopped = ThreadEvent()
 
         def bridge() -> None:
@@ -431,6 +549,9 @@ class UIServer:
                     await websocket.send_json(event.model_dump(mode="json"))
                     seq = event.state.seq
                     continue
+                if isinstance(event, StudioState):
+                    await websocket.send_json(event.model_dump(mode="json"))
+                    continue
                 if self.studio_snapshot is not None and event.run_id != self.run_id:
                     continue
                 if event.seq <= seq:
@@ -442,48 +563,39 @@ class UIServer:
             await asyncio.to_thread(thread.join)
 
     async def _receive(self, websocket: WebSocket) -> None:
-        async def reject(
-            reason: Literal[
-                "invalid message", "control unavailable", "request unavailable"
-            ],
-        ) -> None:
-            logging.getLogger(__name__).warning(
-                "UI approval message rejected: %s", reason
+        async def reject(reason: str, dirty_paths: tuple[str, ...] = ()) -> None:
+            logging.getLogger(__name__).warning("UI approval message rejected")
+            await websocket.send_json(
+                ApprovalRejected(reason=reason, dirty_paths=dirty_paths).model_dump()
             )
-            await websocket.send_json(ApprovalRejected(reason=reason).model_dump())
 
+        adapter = TypeAdapter(ControlMessage)
         while True:
             try:
-                payload = await websocket.receive_json()
-                message = (
-                    Shutdown.model_validate(payload)
-                    if isinstance(payload, dict) and payload.get("kind") == "shutdown"
-                    else ApprovalAnswer.model_validate(payload)
-                )
+                message = adapter.validate_python(await websocket.receive_json())
             except (ValidationError, ValueError):
                 await reject("invalid message")
                 continue
             if (
                 not _matches(message.control_token, self.control_token)
                 or self.replay is not None
-                or self.approval_responder is None
             ):
                 await reject("control unavailable")
                 continue
-            if isinstance(message, Shutdown):
-                if self.control_responder is None:
-                    await reject("control unavailable")
-                elif not await asyncio.to_thread(
-                    self.control_responder,
-                    message.model_copy(update={"control_token": ""}),
-                ):
-                    await reject("request unavailable")
-                continue
-            # Pass only non-secret fields across the responder boundary (T20).
+            # Never pass the token across either responder boundary.
             answer = message.model_copy(update={"control_token": ""})
-            accepted = await asyncio.to_thread(self.approval_responder, answer)
-            if accepted is False:
-                await reject("request unavailable")
+            try:
+                if isinstance(answer, ApprovalAnswer):
+                    accepted = await asyncio.to_thread(self.approval_responder, answer)
+                elif self.control_responder is not None:
+                    accepted = await asyncio.to_thread(self.control_responder, answer)
+                else:
+                    await reject("control unavailable")
+                    continue
+                if accepted is False:
+                    await reject("request unavailable")
+            except ControlError as error:
+                await reject(str(error), error.dirty_paths)
 
     def serve(
         self,
