@@ -14,6 +14,7 @@ const cast = () => import(moduleUrl("cast.js"));
 const sheet = () => readFileSync(path.join(staticRoot, "vendor/kenney-tiny-dungeon/tilemap_packed.png"));
 const expected = {
   mage: 84, warrior: 87, paladin: 96,
+  sword_long: 104, shield_round: 101,
   slime: 108, bat: 120, ghost: 121, spider: 122, rat: 123,
   cyclops: 109, red_crab: 110, hooded_figure: 111,
   back_wall: 40, wall_left: 57, wall_middle: 58, wall_right: 59,

@@ -1,5 +1,5 @@
 import { PALETTE, AREA_COLORS, UI_COLORS } from "../pixel/palette.js";
-import { bossForArea, TILE_SIZE } from "../pixel/cast.js";
+import { TILE_SIZE } from "../pixel/cast.js";
 import { preloadTextures, registerTextures, textureKey } from "../pixel/textures.js";
 import { worldFromRooms, layoutWorld, castleViewZoom } from "./layout.js";
 import { createMapAnimations } from "./animations.js";
@@ -90,14 +90,7 @@ export function mountMap(Phaser, host, browser = window) {
   let width = browser.innerWidth || host.clientWidth || 960;
   let height = browser.innerHeight || 540;
   const objects = [];
-  const animations = createMapAnimations(browser);
-  const media = browser.matchMedia("(prefers-reduced-motion: reduce)");
-  let reducedMotion = media.matches;
-  const motionChange = event => {
-    reducedMotion = event.matches;
-    if (scene) redraw();
-  };
-  media.addEventListener("change", motionChange);
+  const animations = createMapAnimations(browser, () => redraw());
 
   function redraw() {
     if (!scene) return;
@@ -131,7 +124,6 @@ export function mountMap(Phaser, host, browser = window) {
       text(area.x, area.y + 3, `${area.id}\n${area.title}`, PALETTE[AREA_COLORS[area.id] || "B"], 104);
       chamber(area.boss);
       tile(area.boss.x + 16, area.boss.y + 16, "banner");
-      tile(area.boss.x + 32, area.boss.y + 16, bossForArea(area.id));
       tile(area.boss.x + 48, area.boss.y + 16, "wall_grate");
       text(area.boss.x + 6, area.boss.y + 4, area.id, PALETTE.W);
     }
@@ -162,40 +154,50 @@ export function mountMap(Phaser, host, browser = window) {
     }
     const party = animations.render(scene, layout, partyRoom);
     const camera = scene.cameras.main;
+    const hud = browser.document.getElementById("castle-hud");
+    if (hud) hud.hidden = overview; // M exposes the entire castle, including the stairwell.
+    const overlayWidth = Math.min(width - 1, hud?.getBoundingClientRect?.().width || 0);
+    const visibleWidth = width - overlayWidth;
     camera.roundPixels = true;
-    const zoom = castleViewZoom(width, height, layout, overview);
+    const zoom = castleViewZoom(overview ? visibleWidth : width, height, layout, overview);
     camera.setZoom(zoom);
     // A small overview needs negative bounds so Phaser does not clamp its
     // centered scroll to the top-left. Labels share the castle's coordinates.
     const viewWidth = width / zoom, viewHeight = height / zoom;
+    const coveredWidth = Math.ceil(overlayWidth / zoom);
+    const offset = Math.round(overlayWidth / (2 * zoom));
     camera.setBounds(overview ? Math.min(0, (layout.width - viewWidth) / 2) : 0,
       overview ? Math.min(0, (layout.height - viewHeight) / 2) : 0,
-      Math.max(layout.width, viewWidth), Math.max(layout.height, viewHeight));
-    if (overview || !layout.rooms.length) camera.centerOn(Math.floor(layout.width / 2), Math.floor(layout.height / 2));
+      Math.max(layout.width, viewWidth) + coveredWidth, Math.max(layout.height, viewHeight));
+    if (overview || !layout.rooms.length) camera.centerOn(Math.floor(layout.width / 2) + offset, Math.floor(layout.height / 2));
     else {
       const target = party || { x: layout.rooms[0].x + 40, y: layout.rooms[0].y + 24 };
-      if (party && !reducedMotion) camera.startFollow(party, true, 1, 1);
-      camera.centerOn(Math.round(target.x), Math.round(target.y));
+      // Phaser subtracts its follow offset from the target before centering.
+      // The HUD's screen width becomes world units at the integer zoom.
+      if (party && !animations.isReducedMotion()) camera.startFollow(party, true, 1, 1, -offset || 0, 0);
+      camera.centerOn(Math.round(target.x) + offset, Math.round(target.y));
     }
     const description = browser.document.getElementById("map-rooms");
     if (description) description.textContent = world.rooms.map(room => `${room.area} ${room.id}: ${room.title} — ${room.state}`).join("\n");
-    const hud = browser.document.getElementById("castle-hud");
-    if (hud) hud.hidden = overview; // M exposes the entire castle, including the stairwell.
   }
   const onState = ({ detail }) => {
     world = worldFromRooms(detail.rooms, detail.areas, detail.doors);
     partyRoom = detail.active_room || detail.party_room || null;
-    animations.setState(detail); redraw();
+    animations.setState(detail, layoutWorld(world, overview)); redraw();
   };
   const onEvent = ({ detail }) => {
     world = projectEvent(world, detail);
-    animations.onEvent(detail);
     if (detail.type === "world_loaded") partyRoom = null;
     if (["room_entered", "attempt_started", "respawn"].includes(detail.type)) partyRoom = detail.room_id;
+    animations.onEvent(detail, layoutWorld(world, overview), partyRoom);
     redraw(); // No timeout or animation queue delaying chamber state.
   };
   browser.addEventListener("specvania:state", onState);
   browser.addEventListener("specvania:event", onEvent);
+  const onSettings = ({ detail }) => animations.setReducedMotion(detail.reducedMotion);
+  const onSpeed = ({ detail }) => animations.setReplaySpeed(detail.speed);
+  browser.addEventListener("specvania:settings", onSettings);
+  browser.addEventListener("specvania:replay-speed", onSpeed);
   const game = new Phaser.Game({
     type: Phaser.CANVAS, parent: host, width, height,
     pixelArt: true, roundPixels: true, backgroundColor: UI_COLORS.background,
@@ -217,11 +219,13 @@ export function mountMap(Phaser, host, browser = window) {
   };
   browser.addEventListener("resize", resize);
   resize();
-  return { destroy() {
+  return { setReducedMotion: animations.setReducedMotion,
+    setReplaySpeed: animations.setReplaySpeed, destroy() {
     browser.removeEventListener("specvania:state", onState);
     browser.removeEventListener("specvania:event", onEvent);
     browser.removeEventListener("resize", resize);
-    media.removeEventListener("change", motionChange);
+    browser.removeEventListener("specvania:settings", onSettings);
+    browser.removeEventListener("specvania:replay-speed", onSpeed);
     animations.destroy(); game.destroy(true);
   } };
 }

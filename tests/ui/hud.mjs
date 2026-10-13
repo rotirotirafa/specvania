@@ -225,7 +225,8 @@ if (["boss", "bugs", "motion", "integration"].includes(check)) {
     ui.event(closed); map.onEvent(closed); map.render(fake.scene,layout,"T04");
     assert.doesNotMatch(texts(ui.host), /Bell wheel missing/);
     assert.equal(monster.key, `${monsterForBug(events.find(event => event.type === "bug_opened").bug_id)}:defeated:0`); assert.equal(monster.destroyed,false);
-    assert.equal(fake.tweens.at(-1).options.targets, monster);
+    assert.equal(fake.tweens.at(-1).options.duration,400);
+    assert.equal(fake.tweens.at(-1).options.targets.t,0);
     fake.finish(); assert.equal(monster.destroyed,true);
     ui.state(snapshots[2]); assert.match(texts(ui.host), /Bell wheel missing/);
     ui.state(snapshots[3]); assert.doesNotMatch(texts(ui.host), /Bell wheel missing/);
@@ -239,14 +240,17 @@ if (["boss", "bugs", "motion", "integration"].includes(check)) {
       map.render(fake.scene,layout,"T01");
       const party = fake.images.filter(image => image.key.startsWith("warrior:"))[0];
       map.onEvent({type:"room_entered",room_id:"T02"}); map.render(fake.scene,layout,"T02");
-      if (!reduced) { assert.equal(party.key,"warrior:walk:0"); assert.equal(fake.tweens.length,3);
-        const walk = fake.tweens.find(tween => tween.options.targets === party);
-        walk.options.onUpdate?.({progress:0.3}); assert.equal(party.key,"warrior:walk:1"); fake.finish(); }
+      if (!reduced) { assert.equal(party.key,"warrior:idle:0"); assert.equal(fake.tweens.length,3);
+        const walk = fake.tweens[1];
+        walk.options.targets.t=0.3; walk.options.onUpdate?.();
+        assert.ok(Number.isInteger(party.x) && Number.isInteger(party.y));
+        assert.ok(party.y < layout.rooms.find(room => room.id === "T02").y + 24); fake.finish(); }
       else assert.equal(fake.tweens.length,0);
       map.onEvent({type:"respawn",room_id:"T02"}); map.render(fake.scene,layout,"T02");
-      const flash = fake.tweens.filter(tween => tween.options.alpha === 0.2);
-      assert.equal(flash.length,reduced ? 0 : 3);
+      const respawn = fake.tweens.filter(tween => !tween.stopped);
+      assert.equal(respawn.length,reduced ? 0 : 1);
       fake.finish();
+      assert.equal(party.x,layout.rooms.find(room => room.id === "T02").x + 8);
       const bug = events.find(event => event.type === "bug_opened");
       map.onEvent(bug); map.render(fake.scene,layout,"T02");
       const monster = fake.images.find(image => image.key === `${monsterForBug(events.find(event => event.type === "bug_opened").bug_id)}:idle:0`);
@@ -292,7 +296,9 @@ if (["boss", "bugs", "motion", "integration"].includes(check)) {
     socket.message({kind:"state",state:{rooms:[],party:[],bugs:[],bosses:[]}}); config.scene.create.call(fake.scene);
     for (const event of events) {
       socket.message({kind:"event",event});
-      const lastRoomPaint = fake.displayList.findLastIndex(item => item.fillRect);
+      // T31's sparkles, zzz and hit overlays are graphics above the actors.
+      const lastRoomPaint = fake.displayList.findLastIndex(item => typeof item.key === "string" &&
+        ["wall", "door", "stairs", "floor", "chest"].some(name => item.key.startsWith(name)));
       for (const image of fake.images.filter(image => !image.destroyed && image.visible !== false &&
         ["mage", "warrior", "paladin", ...MONSTERS].some(name => image.key.startsWith(`${name}:`)))) {
         assert.ok(fake.displayList.indexOf(image) > lastRoomPaint,"Room redraw hides a persistent sprite");

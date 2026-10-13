@@ -494,9 +494,9 @@ files: src/specvania/ui/static/map/animations.js, src/specvania/ui/static/map/sc
 The cast has one frame per character, so motion comes from tweens: hops while walking between chambers and down stairs; the Warrior's weapon swing on `action`; Mage sparkles while planning; the Paladin's shield on `review`; shake and a lost heart on a failed review; return to the chamber entrance on `respawn`; zzz while in `cooldown`; boss hit per passed scenario and defeat or escape on `boss_result`; chambers revealed one by one as a new world arrives; monster defeat on `bug_closed`. The event → animation mapping is a table in a code comment. `prefers-reduced-motion` and the reduced-motion setting replace tweens with instant state changes.
 
 Checklist:
-- [ ] Each listed event triggers its animation (mapping test with a fake scene)
-- [ ] Reduced motion disables every tween and keeps every state change visible
-- [ ] Replaying the demo at 4× keeps the animation queue bounded (test on the queue)
+- [x] Each listed event triggers its animation (mapping test with a fake scene)
+- [x] Reduced motion disables every tween and keeps every state change visible
+- [x] Replaying the demo at 4× keeps the animation queue bounded (test on the queue)
 
 ---
 

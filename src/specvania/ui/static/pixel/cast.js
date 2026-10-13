@@ -8,6 +8,7 @@ export const CREDIT = "Art: Kenney Tiny Dungeon · CC0 1.0";
 
 export const CAST = Object.freeze({
   mage: 84, warrior: 87, paladin: 96,
+  sword_long: 104, shield_round: 101,
   slime: 108, bat: 120, ghost: 121, spider: 122, rat: 123,
   cyclops: 109, red_crab: 110, hooded_figure: 111,
   back_wall: 40, wall_left: 57, wall_middle: 58, wall_right: 59,
