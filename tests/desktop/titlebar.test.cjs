@@ -18,7 +18,7 @@ test("pixel_title_bar_appears_only_in_desktop_and_does_not_read_control_token", 
       ...(isDesktop ? { specvaniaDesktop: { isDesktop: true, controlToken() { assert.fail("title bar requested control token"); } } } : {}),
     };
     global.document = {
-      getElementById(id) { return id === "connection" ? connection : runState; },
+      getElementById(id) { return id === "connection" ? connection : id === "run-state" ? runState : null; },
       createElement(tag) { return { tag, style: {}, setAttribute(name, value) { this[name] = value; } }; },
       body: { prepend(element) { elements.push(element); } },
       head: { append(element) { elements.push(element); } },

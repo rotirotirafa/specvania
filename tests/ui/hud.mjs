@@ -7,12 +7,14 @@ const check = process.argv[2];
 const { MONSTERS, monsterForBug } = await import(new URL("pixel/cast.js",base));
 // DOM/Phaser boundaries are faked; projections and mounting code are real.
 class Element {
-  constructor(tag) { this.tagName = tag; this.style = {}; this.children = []; this.attrs = {}; this.listeners = {}; this.textContent = ""; }
+  constructor(tag) { this.tagName = tag; this.style = {}; this.children = []; this.attrs = {}; this.dataset = {}; this.listeners = {}; this.textContent = ""; }
   append(...children) { for (const child of children) { child.parent = this; this.children.push(child); } }
   prepend(child) { child.parent = this; this.children.unshift(child); }
   replaceChildren(...children) { this.children = []; this.append(...children); }
   remove() { if (this.parent) this.parent.children = this.parent.children.filter(child => child !== this); }
   setAttribute(name, value) { this.attrs[name] = String(value); }
+  getAttribute(name) { return this.attrs[name] ?? null; }
+  removeAttribute(name) { delete this.attrs[name]; }
   addEventListener(name, fn) { this.listeners[name] = fn; }
   focus() {}
 }

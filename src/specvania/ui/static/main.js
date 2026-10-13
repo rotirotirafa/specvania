@@ -1,6 +1,7 @@
 import { t, onLanguageChange, i18n, bindDocument, connectLanguage } from "./i18n/index.js";
 // T14 transport; subsequent Map rooms project these state/event notifications.
 import { UI_COLORS } from "./pixel/palette.js";
+import { mountScreens } from "./screens/title.js";
 import { mountApproval } from "./hud/approval.js";
 
 i18n.initialize(window);
@@ -34,6 +35,10 @@ function connectRun() {
   socketUrl.protocol = "ws:";
   socketUrl.searchParams.set("view_token", viewToken || "");
   const socket = new WebSocket(socketUrl);
+  const screenHost = document.getElementById("screen-host");
+  const screens = screenHost ? mountScreens({host: screenHost, browser: window, socket}) : null;
+  // T34 mounts its Start expedition button by listening for this controller.
+  if (screens) window.dispatchEvent(new CustomEvent("specvania:screens-ready", {detail: screens}));
   mountApproval(socket);
   connectLanguage(socket);
   let connectionKey = "connection.connecting", current;

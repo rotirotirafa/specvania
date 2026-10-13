@@ -895,3 +895,43 @@ def test_planning_errors_surface_safe_typed_messages_only(
         assert instance.phase == "project_open"
         assert secret not in json.dumps(message)
         assert "PRIVATE-MODEL-OUTPUT" not in json.dumps(message)
+
+
+@pytest.mark.parametrize("token_budget", [0, -1, True, 1.5, "123", None])
+def test_start_run_token_budget_rejects_non_positive_or_non_integer(
+    token_budget: Any,
+) -> None:
+    with pytest.raises(ValidationError):
+        TypeAdapter(ControlMessage).validate_python(
+            {"kind": "start_run", "slug": "world", "token_budget": token_budget}
+        )
+
+
+@pytest.mark.parametrize("budget", [12345, None])
+def test_start_run_token_budget_override_is_run_only(
+    project: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    budget: int | None,
+) -> None:
+    prepare(project)
+    config_path = project / ".specvania/config.toml"
+    original = config_path.read_bytes()
+    instance = make_studio(
+        monkeypatch, [draft(), action(), review(), action(), review(), boss()]
+    )
+    with socket(instance) as ws:
+        ready(ws, instance, project)
+        send(ws, instance, "save_world", slug="build-work")
+        receive(ws, "studio_state", phase="world_ready")
+        fields = {"token_budget": budget} if budget is not None else {}
+        send(ws, instance, "start_run", slug="build-work", **fields)
+        while True:
+            message = ws.receive_json()
+            assert message["kind"] != "approval_rejected", message
+            if message["kind"] == "studio_state" and message["phase"] == "finished":
+                break
+        assert instance.snapshot().state.token_budget == (
+            budget if budget is not None else 1_000_000
+        )
+    assert config_path.read_bytes() == original
+    assert load_config(config_path).limits.token_budget == 1_000_000

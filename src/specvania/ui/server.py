@@ -20,7 +20,13 @@ from typing import Annotated, Literal
 import uvicorn
 from fastapi import FastAPI, Request, WebSocket
 from fastapi.responses import JSONResponse, Response
-from pydantic import AfterValidator, Field, TypeAdapter, ValidationError
+from pydantic import (
+    AfterValidator,
+    Field,
+    TypeAdapter,
+    ValidationError,
+    field_validator,
+)
 from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocketDisconnect
 
@@ -254,6 +260,15 @@ class StartRun(FrozenModel):
     kind: Literal["start_run"]
     slug: WorldSlug
     allow_dirty: bool = Field(default=False, strict=True)
+    token_budget: int | None = Field(default=None, strict=True, gt=0)
+
+    @field_validator("token_budget", mode="before")
+    @classmethod
+    def positive_budget(cls, value: object) -> object:
+        if value is None:
+            raise ValueError("Token budget must be a positive integer.")
+        return value
+
     control_token: str = Field(default="", repr=False, exclude=True)
 
 

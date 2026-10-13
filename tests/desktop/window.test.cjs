@@ -182,9 +182,9 @@ function loadPreload(args) {
   return { api: exposed, sent };
 }
 
-test("preload_exposes_only_isDesktop_controlToken_and_notify", () => {
+test("preload_exposes_only_T33_capabilities", () => {
   const { api, sent } = loadPreload(["--control-token", control]);
-  assert.deepEqual(Object.keys(api).sort(), ["controlToken", "isDesktop", "notify"]);
+  assert.deepEqual(Object.keys(api).sort(), ["controlToken", "isDesktop", "notify", "pickFolder", "settings", "studio"]);
   assert.equal(api.isDesktop, true);
   assert.equal(api.controlToken(), control);
   assert.ok(!JSON.stringify(api).includes(control));

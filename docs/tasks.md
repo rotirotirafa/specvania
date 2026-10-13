@@ -524,11 +524,11 @@ files: src/specvania/ui/static/screens/title.js, src/specvania/ui/static/screens
 Title: logo, New project, Open project, Watch demo, language, Settings and the Kenney credit. Project: native folder picker (preload `pickFolder()`), git check, init offer, the project's worlds and open bugs, Check the party (`probe_party`, green or red per model with latency). Settings: language, token budget, path to `specvania`, reduced motion; stored in the app's user-data folder and sent to the studio. Error: studio failed to start, missing API key (with where to set `NVIDIA_API_KEY`), connection lost. Every screen works with keyboard and mouse.
 
 Checklist:
-- [ ] Every screen is reachable and usable with the keyboard only
-- [ ] A folder outside a git work tree shows the reason; a git folder without `.specvania/` offers init
-- [ ] Settings persist across app restarts (Node test with a temporary user-data folder)
-- [ ] The missing-key error explains where to set the key and still offers Watch demo
-- [ ] The preload exposes only `isDesktop`, `controlToken`, `notify`, `pickFolder`, `settings` and `studio` status (asserted)
+- [x] Every screen is reachable and usable with the keyboard only
+- [x] A folder outside a git work tree shows the reason; a git folder without `.specvania/` offers init
+- [x] Settings persist across app restarts (Node test with a temporary user-data folder)
+- [x] The missing-key error explains where to set the key and still offers Watch demo
+- [x] The preload exposes only `isDesktop`, `controlToken`, `notify`, `pickFolder`, `settings` and `studio` status (asserted)
 
 ### T34 · Idea, Clarify and saving the map
 depends_on: T25, T28, T33

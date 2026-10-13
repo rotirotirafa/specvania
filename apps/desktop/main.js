@@ -3,8 +3,8 @@
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { mkdirSync, createWriteStream } = require("node:fs");
-const { launchStudio, quitStudio, readSettings, connectControl } = require(path.join(__dirname, "studio.cjs"));
-const { app, BrowserWindow, ipcMain, Notification, shell } = require("electron");
+const { launchStudio, quitStudio, readSettings, connectControl, readAppSettings, writeSettings } = require(path.join(__dirname, "studio.cjs"));
+const { app, BrowserWindow, ipcMain, Notification, shell, dialog } = require("electron");
 
 function argument(name, required = false) {
   const index = process.argv.indexOf(name);
@@ -34,6 +34,8 @@ async function openWindow() {
   let quitComplete = false;
   let controlToken = argument("--control-token");
   const launchUrl = argument("--url");
+  let startupUrl = "";
+  let studioStatus = { kind: "ready" };
   let target = launchUrl ? safeUrl(launchUrl, controlToken) : null;
   if (launchUrl && (!target || target.protocol !== "http:" || target.hostname !== "127.0.0.1")) {
     throw new Error("Desktop needs the loopback UI URL.");
@@ -55,6 +57,7 @@ async function openWindow() {
   });
   window.setAspectRatio(16 / 9);
   const sameOrigin = (value) => {
+    if (startupUrl && value === startupUrl) return true;
     const url = safeUrl(value, controlToken);
     return target !== null && url !== null && url.origin === target.origin;
   };
@@ -88,6 +91,30 @@ async function openWindow() {
       new Notification({ title: message.title, body: message.body }).show();
     }
   });
+  const trusted = event => event.sender === window.webContents && sameOrigin(event.senderFrame?.url);
+  const language = () => app.getLocale?.().toLowerCase().startsWith("pt") ? "pt-BR" : "en";
+  const handle = (channel, action) => ipcMain.handle?.(channel, (event, ...args) => {
+    if (!trusted(event)) throw new Error("Untrusted desktop request.");
+    return action(...args);
+  });
+  handle("specvania:pick-folder", async () => {
+    const result = await dialog.showOpenDialog(window, { properties: ["openDirectory"] });
+    return result.canceled ? null : result.filePaths[0] || null;
+  });
+  handle("specvania:settings-get", () => readAppSettings(app.getPath("userData"), language()));
+  handle("specvania:settings-set", value => {
+    if (controlToken && JSON.stringify(value)?.includes(controlToken)) throw new Error("Invalid settings.");
+    return writeSettings(app.getPath("userData"), value, language());
+  });
+  handle("specvania:studio", () => studioStatus);
+  let startStudio, restarting = false;
+  handle("specvania:studio-restart", () => {
+    if (!startStudio || quitting || restarting || studioStatus.kind === "starting") return;
+    restarting = true;
+    return quitStudio(lifecycle, {connect: connectControl}).then(() => {
+      if (!quitting) startStudio();
+    }).finally(() => {restarting = false;});
+  });
   if (target) {
     await window.loadURL(target.href);
   } else {
@@ -95,25 +122,34 @@ async function openWindow() {
     const logs = path.join(userData, "logs");
     mkdirSync(logs, { recursive: true });
     const logPath = path.join(logs, "studio.log");
-    const log = createWriteStream(logPath, { flags: "a", mode: 0o600 });
-    log.on("error", () => {});
-    lifecycle = launchStudio({
-      spawn, executable: readSettings(userData), logPath,
-      log: (data) => log.write(data),
-      open: (url, token) => {
-        controlToken = token;
-        target = safeUrl(url, token);
-        window.loadURL(target.href).catch(() => {
-          console.error("Cannot load the local studio game.");
-          app.quit();
-        });
-      },
-      error: (page) => {
-        controlToken = "";
-        window.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(page)).catch(() => {});
-      },
-    });
-    lifecycle.child?.once("exit", () => log.end());
+    startStudio = () => {
+      studioStatus = {kind: "starting"};
+      const log = createWriteStream(logPath, { flags: "a", mode: 0o600 });
+      log.on("error", () => {});
+      lifecycle = launchStudio({
+        spawn, executable: readSettings(userData), logPath,
+        log: (data) => log.write(data),
+        open: (url, token) => {
+          studioStatus = {kind: "ready"};
+          startupUrl = "";
+          controlToken = token;
+          target = safeUrl(url, token);
+          window.loadURL(target.href).catch(() => {
+            console.error("Cannot load the local studio game.");
+            app.quit();
+          });
+        },
+        error: (page, status) => {
+          controlToken = "";
+          target = null;
+          studioStatus = status;
+          startupUrl = "data:text/html;charset=utf-8," + encodeURIComponent(page);
+          window.loadURL(startupUrl).catch(() => {});
+        },
+      });
+      lifecycle.child?.once("exit", () => log.end());
+    };
+    startStudio();
   }
   app.on("before-quit", (event) => {
     if (!lifecycle || lifecycle.exited || quitComplete) return;

@@ -346,6 +346,8 @@ class Studio:
         root, config, key = self._settings()
         directory: Path | None = None
         if isinstance(message, StartRun):
+            if message.token_budget is not None:
+                config.limits.token_budget = message.token_budget
             directory = self._world_directory(message.slug)
             git = GitOps(root)
             git.head()

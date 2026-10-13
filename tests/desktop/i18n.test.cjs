@@ -69,6 +69,9 @@ const technical = new Set(`en pt-BR specvania.language specvania.settings text/j
   data-i18n data-i18n-aria [data-i18n] [data-i18n-aria] .webp .png
   art`.split(/\s+/));
 technical.add("waiting for player");
+// T33 DOM/input identifiers, screen names and control protocol values only.
+for (const value of `error.start screen-host missingKey inert aria-hidden screen-panel title-castle title-menu title-footer footer absolute true Tab settings init_project probe_party project_open world_ready ok timeout number select option checkbox text title specvania string project open_project probe_result start_run Escape keydown`.split(/\s+/)) technical.add(value);
+
 const exact = new Set([
   '"Press Start 2P", monospace', "SpecvaniaPixel, monospace", "@font-face { font-family: SpecvaniaPixel; src: url(\"./vendor/fonts/PressStart2P-Regular.ttf\"); }",
   "repeat(3, minmax(0, 1fr))", "32px minmax(0, 1fr)", "(prefers-reduced-motion: reduce)", "${}:idle:0", "${}:boss", "\\n", "${}:${}:${}",
@@ -76,7 +79,30 @@ const exact = new Set([
   "--${}", "Missing translation: ${}/${}", "role.${}", "status.${}", "room.${}", "event.${}", "responder.${}",
   ".", "heart:idle:0", "monster:${}", "boss:${}", "♥", "♡", "■", "□", "pre-wrap",
 ]);
+// Technical CSS only: reviewed T33 screen styles, without text content.
+exact.add(`#screen-host { position: fixed; inset: 32px 0 0; z-index: 3; overflow: auto; box-sizing: border-box; background: \${}; color: \${}; padding: 16px 24px; font: 12px/1.8 "Press Start 2P", monospace; display: flex; align-items: center; justify-content: center; }
+    #screen-host[hidden] { display: none; }
+    #screen-host .screen-panel { width: 720px; max-width: 100%; margin: auto; text-align: center; }
+    #screen-host button, #screen-host input, #screen-host select { box-sizing: border-box; font: inherit; color: \${}; background: \${}; border: 2px solid \${}; padding: 12px; }
+    #screen-host button { cursor: pointer; min-height: 48px; margin: 6px; } #screen-host button:disabled { opacity: 0.6; cursor: default; }
+    #screen-host :focus-visible { outline: 3px solid \${}; outline-offset: 2px; }
+    #screen-host label { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 16px; text-align: left; margin: 12px 0; }
+    #screen-host input, #screen-host select { width: 100%; min-width: 0; } #screen-host input[type=checkbox] { width: 24px; height: 24px; }
+    #screen-host h1 { color: \${}; font-size: 28px; line-height: 1.4; margin: 0 0 16px; }
+    #screen-host[data-screen=title] h1 { font-size: 36px; margin-bottom: 8px; }
+    #screen-host h2 { font-size: 16px; } #screen-host p { overflow-wrap: anywhere; }
+    #screen-host .title-castle { position: relative; margin: 0 auto 12px; }
+    #screen-host .title-menu { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    #screen-host .title-menu button { margin: 0; min-height: 52px; }
+    #screen-host .title-footer { margin-top: 16px; font-size: 8px; } #screen-host .title-footer p { margin: 4px 0 0; }
+    #screen-host .title-footer button { min-height: 32px; padding: 8px 16px; margin: 0 6px; }`);
+exact.add("button:not(:disabled), input, select");
+exact.add("\\0");
+exact.add('url("${}")');
+exact.add("${}px ${}px");
 const diagnostics = {
+  "screens/title.js": ["API key missing", "git work tree"], // Match non-secret studio errors, never render these fragments.
+
   "map/castle.js": ["Cyclic room doors", "Door has an unknown room"],
   "pixel/cast.js": ["Invalid area id: ${}", "Art: Kenney Tiny Dungeon · CC0 1.0"], // CREDIT is consumed only by the allowlisted developer gallery until T33.
   "pixel/textures.js": ["Kenney sheet is missing; call preloadTextures in preload()", "Unknown cast entry: ${}", "Could not create tile texture: ${}", "Invalid 16x16 sprite frame: ${}", "Could not create sprite texture: ${}", "Unknown palette symbol in ${}: ${}"],

@@ -1,22 +1,55 @@
 "use strict";
 
-const { readFileSync } = require("node:fs");
+const { readFileSync, mkdirSync, writeFileSync, renameSync } = require("node:fs");
 const path = require("node:path");
 
 function shellLaunch({ executable = "specvania", env = process.env, platform = process.platform }) {
   const quoted = "'" + executable.replaceAll("'", "'\\''") + "'";
   return { command: env.SHELL || (platform === "darwin" ? "/bin/zsh" : "/bin/bash"), args: ["-lic", `exec ${quoted} studio`] };
 }
-function readSettings(userData) {
-  try {
-    const settings = JSON.parse(readFileSync(path.join(userData, "settings.json"), "utf8"));
-    return typeof settings.specvaniaPath === "string" && settings.specvaniaPath.trim() && !settings.specvaniaPath.includes("\0")
-      ? settings.specvaniaPath : "specvania";
-  } catch { return "specvania"; }
+function validateSettings(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid settings.");
+  const allowed = ["language", "tokenBudget", "specvaniaPath", "reducedMotion"];
+  if (Object.keys(value).some(key => !allowed.includes(key))) throw new Error("Invalid settings.");
+  if ("language" in value && !["en", "pt-BR"].includes(value.language) ||
+      "tokenBudget" in value && (!Number.isSafeInteger(value.tokenBudget) || value.tokenBudget <= 0) ||
+      "specvaniaPath" in value && (typeof value.specvaniaPath !== "string" || !value.specvaniaPath.trim() || value.specvaniaPath.length > 4096 || value.specvaniaPath.includes("\0")) ||
+      "reducedMotion" in value && typeof value.reducedMotion !== "boolean") throw new Error("Invalid settings.");
+  return value;
 }
-function errorPage(reason, logPath) {
-  const escape = (value) => String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
-  return `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>specvania</title><h1>Cannot start studio</h1><p>${escape(reason)}</p><p>Log: ${escape(logPath)}</p>`;
+function readAppSettings(userData, language = "en") {
+  const defaults = { language, tokenBudget: 1000000, specvaniaPath: "specvania", reducedMotion: false };
+  try { return { ...defaults, ...validateSettings(JSON.parse(readFileSync(path.join(userData, "settings.json"), "utf8"))) }; }
+  catch { return defaults; }
+}
+function writeSettings(userData, patch, language = "en") {
+  const next = { ...readAppSettings(userData, language), ...validateSettings(patch) };
+  mkdirSync(userData, { recursive: true });
+  const temporary = path.join(userData, "settings.json.tmp");
+  writeFileSync(temporary, JSON.stringify(next), { mode: 0o600 });
+  renameSync(temporary, path.join(userData, "settings.json"));
+  return next;
+}
+function readSettings(userData) { return readAppSettings(userData).specvaniaPath; }
+/** Local error UI uses the same dictionaries/screens even when Python cannot start.
+ * T38 packaging must include this static tree next to the desktop resources.
+ */
+function errorPage(reasonKey, logPath) {
+  const root = path.resolve(__dirname, "../../src/specvania/ui/static");
+  const read = file => readFileSync(path.join(root, file), "utf8");
+  const nonce = require("node:crypto").randomBytes(16).toString("hex");
+  const json = value => JSON.stringify(value).replaceAll("<", "\\u003c");
+  const modules = ["i18n/index.js", "pixel/palette.js", "pixel/cast.js", "screens/project.js", "screens/settings.js", "screens/error.js", "screens/title.js"];
+  // Flatten only our import/export declarations; no remote module or eval.
+  const code = modules.map(file => (file === "pixel/cast.js" ? read(file).replace(/export const SHEET_URL = .*;/, `const SHEET_URL = ${json("data:image/png;base64," + readFileSync(path.join(root, "vendor/kenney-tiny-dungeon/tilemap_packed.png")).toString("base64"))};`) : read(file)).replace(/^import .*;$/gm, "").replace(/^export /gm, "")).join("\n");
+  const reason = JSON.parse(read("i18n/en.json"))[reasonKey] || reasonKey;
+  const escape = value => String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+  const palette = read("pixel/palette.js").match(/"K": "(#[a-f0-9]+)"/)[1];
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; font-src data:; img-src data:"><title>specvania</title><style>@font-face {font-family: "Press Start 2P"; src: url(data:font/ttf;base64,${readFileSync(path.join(root, "vendor/fonts/PressStart2P-Regular.ttf")).toString("base64")});} html, body {margin:0; min-height:100%; background:${palette};} #desktop-title-bar {position:fixed; inset:0 0 auto; height:32px; background:${palette}; -webkit-app-region:drag;}</style></head><body><header id="desktop-title-bar"></header><section id="screen-host"><p>${escape(reason)}</p><p>${escape(logPath)}</p></section><script nonce="${nonce}">
+const en = ${read("i18n/en.json")}; const ptBR = ${read("i18n/pt-BR.json")};
+${code}
+mountScreens({host: document.getElementById("screen-host"), browser: window, startup: ${json({reasonKey, logPath})}});
+</script></body></html>`;
 }
 function launchStudio({ spawn, env = process.env, platform = process.platform, executable = "specvania", timer = globalThis, logPath, log, open, error }) {
   const launch = shellLaunch({ executable, env, platform });
@@ -25,26 +58,26 @@ function launchStudio({ spawn, env = process.env, platform = process.platform, e
   const fail = (reason) => {
     if (settled) return;
     settled = true; timer.clearTimeout(timeout);
-    error(errorPage(reason, logPath));
+    error(errorPage(reason, logPath), {kind: "failed", reasonKey: reason, logPath});
     if (!lifecycle.exited) lifecycle.child?.kill();
   };
   try {
     lifecycle.child = spawn(launch.command, launch.args, { env: { ...env }, stdio: ["ignore", "pipe", "pipe"] });
-  } catch { fail("Studio could not be started."); return lifecycle; }
+  } catch { fail("error.startFailed"); return lifecycle; }
   const child = lifecycle.child;
-  timeout = timer.setTimeout(() => fail("Studio did not respond within 20 seconds."), 20000);
+  timeout = timer.setTimeout(() => fail("error.startTimeout"), 20000);
   child.stderr.on("data", log);
-  child.on("error", () => fail("Studio could not be started."));
+  child.on("error", () => fail("error.startFailed"));
   child.on("exit", () => {
     lifecycle.exited = true;
     if (lifecycle.quitting) return;
-    if (lifecycle.handshake) error(errorPage("Studio stopped.", logPath));
-    else fail("Studio exited before the handshake.");
+    if (lifecycle.handshake) error(errorPage("error.stopped", logPath), {kind: "failed", reasonKey: "error.stopped", logPath});
+    else fail("error.startExited");
   });
   child.stdout.on("data", (data) => {
     if (settled) return;
     receivedBytes += Buffer.byteLength(data);
-    if (receivedBytes > 16384) { fail("Studio sent an invalid handshake."); return; }
+    if (receivedBytes > 16384) { fail("error.startInvalid"); return; }
     pending += data.toString();
     while (!settled) {
       const end = pending.indexOf("\n");
@@ -57,7 +90,7 @@ function launchStudio({ spawn, env = process.env, platform = process.platform, e
           typeof value.view_token !== "string" || !value.view_token.trim() ||
           typeof value.control_token !== "string" || !value.control_token.trim() || value.view_token === value.control_token ||
           Object.keys(value).sort().join(",") !== "control_token,port,view_token") {
-        fail("Studio sent an invalid handshake."); return;
+        fail("error.startInvalid"); return;
       }
       settled = true; timer.clearTimeout(timeout); pending = "";
       lifecycle.handshake = value;
@@ -123,4 +156,4 @@ function connectControl(value, origin, request = require("node:http").request) {
   upgrade.end();
   return client;
 }
-module.exports = { shellLaunch, launchStudio, quitStudio, readSettings, errorPage, connectControl };
+module.exports = { shellLaunch, launchStudio, quitStudio, readSettings, errorPage, connectControl, readAppSettings, writeSettings };
