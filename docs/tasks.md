@@ -630,10 +630,10 @@ files: CONTRIBUTING.md, CODE_OF_CONDUCT.md, SECURITY.md, .github/ISSUE_TEMPLATE/
 D27: the repository's front door. `CONTRIBUTING.md` covers the local setup (uv, Node for the desktop checks, optional Postgres), the SDD contract (spec, rooms, gates G1–G10, deviations) and how to propose a room. Issue forms for a bug (version, OS, steps, `specvania doctor` output with the key redacted), a feature idea and a room proposal (area, depends_on, covers, files, checklist); blank issues disabled with a link to Discussions if enabled. The pull-request template lists the gates. `CODE_OF_CONDUCT.md` is the Contributor Covenant 2.1 with the owner's contact; `SECURITY.md` points to GitHub private vulnerability reporting; `FUNDING.yml` names `github: rotirotirafa`. The README (both languages) gains badges (CI, PyPI version, license) and short Contributing and Sponsor sections.
 
 Checklist:
-- [ ] Every issue form is valid YAML with the required fields, labels and a redaction reminder (test)
-- [ ] The pull-request template lists gates G1–G10 and the deviation rule
-- [ ] `CODE_OF_CONDUCT.md`, `SECURITY.md` and `FUNDING.yml` exist with the owner's contact and Sponsors handle
-- [ ] `README.md` and `README.pt-BR.md` keep the same section headings, including Contributing and Sponsor (test)
+- [x] Every issue form is valid YAML with the required fields, labels and a redaction reminder (test)
+- [x] The pull-request template lists gates G1–G10 and the deviation rule
+- [x] `CODE_OF_CONDUCT.md`, `SECURITY.md` and `FUNDING.yml` exist with the owner's contact and Sponsors handle
+- [x] `README.md` and `README.pt-BR.md` keep the same section headings, including Contributing and Sponsor (test)
 
 ### T40 · Release automation
 depends_on: T38

@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security policy and private reports
+    url: https://github.com/rotirotirafa/specvania/security/policy
+    about: Read the policy and report vulnerabilities privately; do not put live keys or tokens in public issues.

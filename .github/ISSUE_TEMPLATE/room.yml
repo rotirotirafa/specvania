@@ -1,0 +1,65 @@
+name: Room proposal
+description: Propose one bounded room with doors, scenario coverage and a verifiable checklist.
+title: "[Room]: "
+labels: [room-proposal, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Read [CONTRIBUTING.md](https://github.com/rotirotirafa/specvania/blob/main/CONTRIBUTING.md)
+        and [the world format](https://github.com/rotirotirafa/specvania/blob/main/docs/spec.md#7-world-format-v0-what-lint-enforces).
+        A proposal is reviewed before a room id is assigned and work is authorized.
+        Remove API keys and tokens from all examples, attachments and screenshots.
+        Use the [security policy](https://github.com/rotirotirafa/specvania/security/policy) for private vulnerability reports.
+  - type: input
+    id: area
+    attributes:
+      label: Area
+      description: Existing area id `A<n>` and title, or a proposed new area with its purpose.
+      placeholder: A11 · Launch
+    validations:
+      required: true
+  - type: input
+    id: title
+    attributes:
+      label: Room title
+      description: A short title naming the room's outcome; the maintainer assigns the room id.
+    validations:
+      required: true
+  - type: input
+    id: depends_on
+    attributes:
+      label: depends_on
+      description: Comma-separated room ids `T<nn>` whose doors must open first, or `none`.
+      placeholder: T38
+    validations:
+      required: true
+  - type: input
+    id: covers
+    attributes:
+      label: covers
+      description: Comma-separated scenario ids `S<n>` from the spec, or `none`; describe any proposed new scenario.
+      placeholder: S24
+    validations:
+      required: true
+  - type: textarea
+    id: files
+    attributes:
+      label: files
+      description: List the repository-relative file or folder paths this room is expected to touch, comma-separated.
+      placeholder: CONTRIBUTING.md, tests/test_community.py
+    validations:
+      required: true
+  - type: textarea
+    id: checklist
+    attributes:
+      label: Checklist
+      description: |
+        Write each item as a binary statement that is either true or false.
+        Name the test or command that would prove it; explicitly identify any
+        manual/owner check. Keep one bounded outcome per item.
+      placeholder: |
+        - [ ] The CLI exits non-zero for an unknown room id (test).
+        - [ ] The documented example passes specvania lint (command).
+    validations:
+      required: true

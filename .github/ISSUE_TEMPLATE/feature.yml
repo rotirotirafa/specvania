@@ -1,0 +1,32 @@
+name: Feature idea
+description: Explain a problem and an idea for improving specvania.
+title: "[Feature]: "
+labels: [enhancement, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the user need before the implementation. Remove API keys and
+        tokens from examples, logs, attachments and screenshots.
+        Report vulnerabilities privately through the [security policy](https://github.com/rotirotirafa/specvania/security/policy).
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Who encounters the problem, and what are they trying to do?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: Describe the behavior you want and how someone would know it works.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: What alternatives or workarounds have you considered? Write "none" if there are none.
+    validations:
+      required: true

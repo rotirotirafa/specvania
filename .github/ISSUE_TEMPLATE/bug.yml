@@ -1,0 +1,81 @@
+name: Bug report
+description: Report a reproducible problem in the app or CLI.
+title: "[Bug]: "
+labels: [bug, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Search existing reports first. Remove API keys and tokens from all text,
+        logs, attachments and screenshots before posting.
+        For a vulnerability, use the [security policy](https://github.com/rotirotirafa/specvania/security/policy)
+        to report privately instead of this public form.
+  - type: input
+    id: version
+    attributes:
+      label: specvania version
+      description: Paste the output of `specvania --version`; include the desktop app version if relevant.
+      placeholder: specvania 0.3.0
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      description: Include the OS version and architecture (for example, macOS on arm64).
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where does the bug occur?
+      options:
+        - Desktop app
+        - CLI
+        - Browser tab
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Give numbered steps and a minimal example using fake data and no secrets.
+      placeholder: |
+        1. Open ...
+        2. Select or run ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead? Redact secrets from any error messages or screenshots.
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Redacted specvania doctor output
+      description: |
+        Paste `specvania doctor` output after you redact the API key, view/control
+        tokens and credentials. Doctor contacts your configured provider when a
+        key is set; it is not an offline check. If it cannot run, explain why here.
+        Do not obtain or share a key just to file a report.
+      render: text
+    validations:
+      required: true
+  - type: checkboxes
+    id: redaction
+    attributes:
+      label: Confirm secrets are removed
+      options:
+        - label: I have removed the API key and all tokens and credentials from this report, doctor output, logs, attachments and screenshots.
+          required: true

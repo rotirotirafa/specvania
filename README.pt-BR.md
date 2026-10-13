@@ -1,5 +1,9 @@
 # specvania
 
+[![CI](https://github.com/rotirotirafa/specvania/actions/workflows/ci.yml/badge.svg)](https://github.com/rotirotirafa/specvania/actions/workflows/ci.yml)
+[![Versão no PyPI](https://img.shields.io/pypi/v/specvania.svg)](https://pypi.org/project/specvania/)
+[![Licença: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 [English](README.md) · [Português brasileiro](README.pt-BR.md)
 
 ## O que é
@@ -282,12 +286,20 @@ A demo incluída é sintética; uma gravação de uma execução real vai substi
 
 Versões, origem e licenças: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-## Contribuições e licenças
+## Como contribuir
 
 Explore a [spec](docs/spec.md) e as [salas](docs/tasks.md).
 Leia [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md) e o
 [protocolo de execução](.agent/execution-protocol.md). Contribuições seguem o
 mesmo contrato SDD que specvania executa.
+Use os [formulários](https://github.com/rotirotirafa/specvania/issues/new/choose)
+para relatar um bug, sugerir uma funcionalidade ou propor uma sala.
 
 [MIT](LICENSE). A arte do castelo vem de Kenney Tiny Dungeon (CC0), creditado acima.
 Sem afiliação com a NVIDIA.
+
+## Apoie o projeto
+
+Apoie a manutenção e o desenvolvimento pelo
+[GitHub Sponsors — @rotirotirafa](https://github.com/sponsors/rotirotirafa).
+Relatos de bugs, documentação e propostas de salas também são bem-vindos.

@@ -20,7 +20,8 @@ HEADING_PAIRS = (
     ("##", "Add reference prices", "Adicionar preços de referência"),
     ("##", "Real-run GIF", "GIF de uma execução real"),
     ("##", "Credits", "Créditos"),
-    ("##", "Contributing and licenses", "Contribuições e licenças"),
+    ("##", "Contributing", "Como contribuir"),
+    ("##", "Sponsor", "Apoie o projeto"),
 )
 
 
@@ -113,7 +114,7 @@ def test_readmes_install_commands_release_status_and_links(name: str) -> None:
 @pytest.mark.parametrize("name", ["README.md", "README.pt-BR.md"])
 def test_readmes_keep_internal_process_outside_visitor_sections(name: str) -> None:
     readme = (ROOT / name).read_text()
-    contributor_heading = localized_heading("Contributing and licenses", name)
+    contributor_heading = localized_heading("Contributing", name)
     visitor_sections = "".join(
         part
         for part in re.split(r"(?=^## )", readme, flags=re.MULTILINE)

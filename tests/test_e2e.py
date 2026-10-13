@@ -442,7 +442,7 @@ def test_contributing_records_sdd_contract_and_all_gates() -> None:
     for gate in range(1, 11):
         assert f"| G{gate} |" in contributing
     for requirement in (
-        "D1–D17",
+        "D1–D27",
         "one authorized room",
         "S-1–S-7",
         "next free DEV number",
