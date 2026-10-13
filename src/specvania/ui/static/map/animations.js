@@ -274,11 +274,11 @@ export function createMapAnimations(browser = window, onMotionChange = () => {})
     }
     for (const bug of openBugs(bestiary)) {
       const room = layout.rooms.find(room => room.id === bug.room_id); if (!room) continue;
-      const siblings = openBugs(bestiary).filter(other => other.room_id === room.id).sort((a, b) => a.bug_id.localeCompare(b.bug_id));
-      const index = siblings.findIndex(other => other.bug_id === bug.bug_id);
       const id = `monster:${bug.bug_id}`;
       if (actors.get(id)?.closing) discard(actors.get(id));
-      const a = actor(id, monsterForBug(bug.bug_id), point(room.x + room.width - 24 - Math.min(index, 2) * 16, room.y + 24));
+      // The party occupies x + 16 through x + 64. Reserve the far-edge tile
+      // for monsters; extra bugs share it instead of backing into party slots.
+      const a = actor(id, monsterForBug(bug.bug_id), point(room.x + room.width - 8, room.y + 24));
       attach(a);
     }
     restoreSnapshot();

@@ -435,6 +435,51 @@ function mountedHarness(h, { width = 960, height = 540, overlayWidth = 0 } = {})
   return { Phaser, camera, hud, keys, create: () => config.scene.create.call(h.scene), emit: (type, detail) => handlers.get(type)({ detail }), handlers };
 }
 
+test("open_bug_monster_bounds_never_intersect_party_in_the_same_chamber_at_both_window_sizes", async () => {
+  const { mountMap } = await load("map/scene.js");
+  const { MONSTERS, TILE_SIZE } = await load("pixel/cast.js");
+  for (const [width, height] of [[960, 540], [1280, 720]]) {
+    for (const reducedMotion of [false, true]) {
+      const h = harness({ mediaReduced: reducedMotion }), mounted = mountedHarness(h, { width, height });
+      const map = mountMap(mounted.Phaser, { clientWidth: width }, h.browser);
+      try {
+        mounted.emit("specvania:event", worldEvent); mounted.create(); h.drain();
+        // The demo leaves the party in T04 when event 43 opens its bug.
+        for (const event of demo.filter(event => event.seq > worldEvent.seq && event.seq <= 43)) {
+          mounted.emit("specvania:event", event); h.drain();
+        }
+        const assertBounds = count => {
+          mounted.camera.update();
+          const camera = mounted.camera;
+          const bounds = sprite => ({
+            left: (sprite.x - TILE_SIZE / 2 - camera.scrollX - width / 2) * camera.zoom + width / 2,
+            top: (sprite.y - TILE_SIZE / 2 - camera.scrollY - height / 2) * camera.zoom + height / 2,
+            right: (sprite.x + TILE_SIZE / 2 - camera.scrollX - width / 2) * camera.zoom + width / 2,
+            bottom: (sprite.y + TILE_SIZE / 2 - camera.scrollY - height / 2) * camera.zoom + height / 2,
+          });
+          const party = h.live().filter(item => ["mage", "warrior", "paladin"].includes(item.key?.split(":")[0]));
+          const monsters = h.live().filter(item => MONSTERS.includes(item.key?.split(":")[0]));
+          assert.equal(party.length, 3); assert.equal(monsters.length, count);
+          for (const monster of monsters) for (const member of party) {
+            const a = bounds(monster), b = bounds(member);
+            assert.ok(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom,
+              `${monster.key} overlaps ${member.key} at ${width}×${height}`);
+          }
+        };
+        assertBounds(1);
+        for (let i = 0; i < 4; i++) {
+          mounted.emit("specvania:event", { type: "bug_opened", bug_id: `extra-${i}`, room_id: "T04" });
+          assertBounds(i + 2);
+        }
+        // Returning to the chamber regroups all three party members.
+        mounted.emit("specvania:event", { type: "room_entered", room_id: "T04" }); h.drain(); assertBounds(5);
+        mounted.emit("specvania:event", { type: "bug_closed", bug_id: "extra-0", status: "fixed" });
+        h.drain(); assertBounds(4);
+      } finally { map.destroy(); }
+    }
+  }
+});
+
 test("follow_camera_keeps_last_floor_boss_arena_and_party_clear_of_dom_hud_at_both_window_sizes", async () => {
   const { mountMap } = await load("map/scene.js");
   const { layoutWorld, worldFromRooms } = await load("map/layout.js");
