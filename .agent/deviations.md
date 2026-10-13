@@ -24,7 +24,7 @@ Every change to the spec's intent, logged before the commit that introduces it. 
 **What changed:** Within a run, repeated failed boss evaluations reuse one bug per area/scenario without another `bug_opened`. A later passing evaluation closes that scenario's still-open bug from the same run as fixed with `fixed_by_run` and emits `bug_closed`; choosing skip keeps the bug open.
 **Why:** The T13 reviewer found duplicate monsters after repeated failures and stale monsters after a successful retry. Fake-provider tests cover fail/retry/fail, fail/retry/pass and fail/skip.
 **Impact:** T13 engine bug hooks, D17, S14 and T17 Bestiary. No schema migration or event field/type change.
-**Approved by:** pending (requested in the T13 reviewer verdict).
+**Approved by:** owner, 2026-10-12
 
 ### DEV-007 · 2026-10-12 · T13
 **What changed:** CLI `bug add` and `bug close --wontfix` write only the bugs table through the Ledger API, without events. After `world_loaded`, runs emit `bug_opened` for every open bug of their feature. The optional `spec_written.from_bug_id` field records the source bug in the feature's plan-run events; a finished run with every room cleared and none skipped closes each still-open linked bug with `fixed_by_run` and emits `bug_closed`. No migration.
@@ -36,7 +36,7 @@ Every change to the spec's intent, logged before the commit that introduces it. 
 **What changed:** Skipping a room saves its uncommitted tracked edits, deletions and non-ignored untracked files in a named local Git stash before continuing. The stable stash id is included in `room_skipped.reason`. Abort leaves the working tree in place for inspection.
 **Why:** The T11 reviewer identified that skipped partial work contaminated the next room's Paladin diff and commit. Temporary-repository tests cover review failure and both Warrior and Paladin router errors, stash recovery and abort preservation.
 **Impact:** T11 engine/GitOps, D7, S4 and S7. No event types or fields change; stash metadata stays within the existing 200-character reason limit.
-**Approved by:** pending
+**Approved by:** owner, 2026-10-12
 
 ### DEV-005 · 2026-10-12 · T11
 **What changed:** A failed boss pause offers retry / skip / abort; skip continues to the next area with the boss recorded as failed, no new event type. Retry evaluates the same area diff with fresh gate results; abort finishes the run with status aborted.
@@ -48,7 +48,7 @@ Every change to the spec's intent, logged before the commit that introduces it. 
 **What changed:** Rejected approval messages receive a non-secret `approval_rejected` WebSocket reply and leave the watching connection open. The view cookie is named `specvania_view_<port>` using the actual bound port. State/event transport envelopes optionally include a transient `approval_request` containing the full command and cwd; connecting during a pending approval restores its choice box without repeating a notification. Ledger events and their summary limits are unchanged.
 **Why:** The owner authorized the T14 rejection/cookie findings in T20. Desktop approval must display the command it authorizes, including text beyond the ledger's 200-character summaries, and must remain available when a window connects during a pending request. `tests/test_desktop_approval.py` proves rejection continuity, cookie isolation, broker execution/cancellation, full prompt delivery and reconnect behavior; `tests/desktop/approval.test.cjs` proves the matching UI behavior.
 **Impact:** T14/T20 UI transport, D8 and D16. Live callers register `UIServer.desktop_responder` in their ApprovalBroker alongside TerminalResponder; the existing explicit approval_responder hook remains supported. Tokens stay out of replies, prompts, ledger events and logs.
-**Approved by:** pending
+**Approved by:** owner, 2026-10-12
 
 ### DEV-003 · 2026-10-12 · T07
 **What changed:** Plan executions are stored as runs with kind='plan' via migration 0002 adding runs.kind. Successful plan runs have an empty branch, status finished and finished_at set; failed plans leave drafts without ledger records. Mage outputs accept one JSON object inside fences or prose, and invalid Clarify output receives up to two validation-error repairs before a clean failure.
@@ -60,7 +60,7 @@ Every change to the spec's intent, logged before the commit that introduces it. 
 **What changed:** Paladin room and boss outputs accept one JSON value inside fences or prose and receive up to two validation-error repair calls. Room checklist matching normalizes case, whitespace, checkbox markup and trailing punctuation, uses positional fallback for unmatched items when counts agree, ignores extras, and marks missing items not ok while preserving the room's original text and order. Gate summaries use the output tail; `GateRunner.run` returns transient `GateExecution(result, output_tail)` values bounded by `limits.observation_kb`, and failed-gate tails reach the Paladin and returned respawn feedback. Event fields and their 200-character limits are unchanged.
 **Why:** The T10 reviewer identified real-model formatting failures, brittle checklist text matching and loss of failure diagnostics at the end of gate output. Fake-provider tests prove extraction, repair limits and matching; subprocess tests prove tail preservation and bounded events.
 **Impact:** T10 reviewer/gates APIs and Paladin prompts; later T11 should pass GateExecution values to the reviewer and use returned feedback for respawn. This extends the D3 repair policy to the Paladin and retains D8 gate authorization and D13 observation bounds.
-**Approved by:** pending
+**Approved by:** owner, 2026-10-12
 
 ### DEV-001 · 2026-10-12 · T14
 **What changed:** httpx2 added to the allowed dev dependencies.
