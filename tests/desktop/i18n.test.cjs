@@ -126,8 +126,12 @@ const expeditionTechnical = new Set(`boss-hp transparent end end-metrics tokens_
   e end-commits expedition-dialog expedition-content expedition-actions ArrowLeft ArrowRight pause retry abort skip pause_decision`.split(/\s+/));
 for (const value of ["expedition-dialog boss-dialog", ".${}", "end.${}", "384px 352px", "pause.${}Help", "pause.${}"]) expeditionTechnical.add(value);
 diagnostics["screens/pause.js"] = ["stamina exhausted", "model chain exhausted", "boss failed"];
+// T37 control/DOM identifiers only; recorded prose uses dictionary templates.
+const replayTechnical = new Set(`specvaniaDesktop replay-bar replay-dialogue false replay_speed replay_pause close_replay skip retry abort pause`.split(/\s+/));
+for (const value of ["-", " ", "pause.${}"]) replayTechnical.add(value);
+technical.add("open_replay"); technical.add("replaying");
 function approved(value, file) {
-  return !value || Object.hasOwn(en, value) || Object.hasOwn(en, `event.${value}`) || technical.has(value) || file === "hud/room-panel.js" && panelTechnical.has(value) || /^(screens\/(pause|boss|end)\.js)$/.test(file) && expeditionTechnical.has(value) || exact.has(value) || diagnostics[file]?.includes(value)
+  return !value || Object.hasOwn(en, value) || Object.hasOwn(en, `event.${value}`) || technical.has(value) || file === "hud/room-panel.js" && panelTechnical.has(value) || /^(screens\/(pause|boss|end)\.js)$/.test(file) && expeditionTechnical.has(value) || file === "screens/replay.js" && replayTechnical.has(value) || exact.has(value) || diagnostics[file]?.includes(value)
     || /^specvania:[a-z-]+$/.test(value) // internal DOM event names
     || /^(\.\.\/|\.\/)[\w/.-]+$/.test(value) // local imports/assets only
     || /^\d+(px|%|px 0)?$/.test(value) || /^\d+(\.\d+)?$/.test(value) // CSS sizes and numeric formats
@@ -142,7 +146,7 @@ function scanJS(source, file) {
     // are also status/event keys. Check common sinks independently of allowlist.
     const before = source.slice(Math.max(0, start - 100), start);
     const visible = /(?:textContent\s*=|(?:label|text)\([^\n]*,|setAttribute\("aria-label",)\s*$/.test(before);
-    return (!approved(value, file) || visible && (technical.has(value) || expeditionTechnical.has(value) || diagnostics[file]?.includes(value)) && !["aria-label", "p", "h2", "h3", "div", "button", "span", "strong", "small"].includes(value));
+    return (!approved(value, file) || visible && (technical.has(value) || expeditionTechnical.has(value) || file === "screens/replay.js" && replayTechnical.has(value) || diagnostics[file]?.includes(value)) && !["aria-label", "p", "h2", "h3", "div", "button", "span", "strong", "small"].includes(value));
   }).map(({value}) => value);
 }
 function walk(directory) {
@@ -165,6 +169,8 @@ test("static_JS_and_HTML_have_no_untranslated_visible_literals", () => {
   // T36's new protocol identifiers are never accepted as direct UI labels.
   assert.ok(scanJS('node.textContent = "abort";', "screens/pause.js").length);
   assert.ok(scanJS('node.textContent = "stamina exhausted";', "screens/pause.js").length);
+  assert.ok(scanJS('node.textContent = "replay_speed";', "screens/replay.js").length);
+  assert.ok(scanJS('node.textContent = "retry";', "screens/replay.js").length);
   // Prove the scan rejects prose, single words and technical keys in text sinks.
   for (const source of ['const hint = "World map · M";', 'node.textContent = "running";', 'label(document, "h2", "Mage");', 'text("p", `Oops ${id}`);']) assert.ok(scanJS(source,"main.js").length, source);
 });

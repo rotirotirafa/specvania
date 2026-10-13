@@ -70,6 +70,14 @@
     .boss-dialog[data-transition=true] { animation: arena-enter 240ms steps(4, end); }
     @keyframes arena-enter { from { opacity: 0; } to { opacity: 1; } }
     @media (prefers-reduced-motion: reduce) { .boss-dialog { animation: none !important; } }
+    #replay-bar { position: fixed; z-index: 8; top: 32px; left: 12px; max-width: calc(100vw - 32px); box-sizing: border-box; border: 2px solid; padding: 8px; }
+    #replay-bar[hidden] { display: none; }
+    #replay-bar p { margin: 0 0 4px; font-size: 8px; }
+    #replay-bar button { font: inherit; color: var(--text); background: var(--background); border: 2px solid var(--border); margin: 2px; padding: 8px; cursor: pointer; }
+    #replay-bar [aria-pressed=true] { border-color: var(--accent); }
+    #replay-bar :focus-visible { outline: 3px solid var(--accent); }
+    #replay-dialogue { position: fixed; z-index: 4; left: 16px; right: 284px; bottom: 16px; max-height: calc(100vh - 160px); }
+    #replay-dialogue [aria-selected=true] { color: var(--accent); }
     @media (max-width: 640px) { .expedition-dialog { inset: 40px 8px 8px; padding: 8px; }
       .end-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .expedition-actions { gap: 4px; } .expedition-dialog button { padding: 8px; } }

@@ -1,0 +1,4 @@
+{"type": "model_call", "role": "mage", "model": "synthetic/mage", "tokens_in": 10, "tokens_out": 5, "latency": 1, "status": 200, "seq": 1, "run_id": "fixture-plan", "ts": "2026-10-13T00:00:00+00:00"}
+{"type": "clarify_question", "question_id": "Q1", "question": "Which lantern?", "options": ["Blue", "Green"], "default": "Blue", "seq": 2, "run_id": "fixture-plan", "ts": "2026-10-13T00:00:02+00:00"}
+{"type": "clarify_answer", "question_id": "Q1", "answer": "Green", "seq": 3, "run_id": "fixture-plan", "ts": "2026-10-13T00:00:04+00:00"}
+{"type": "spec_written", "feature": "synthetic-lantern", "spec_version": "fixture-version", "seq": 4, "run_id": "fixture-plan", "ts": "2026-10-13T00:00:06+00:00"}

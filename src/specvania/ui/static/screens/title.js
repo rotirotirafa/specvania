@@ -115,8 +115,11 @@ export function mountScreens({host, browser = window, socket, startup, watchDemo
     catch { show("project", t("project.pickerFailed")); }
   };
   const demo = () => {
-    const node = button("title.demo", () => {close(); watchDemo?.();}, !watchDemo);
-    if (!watchDemo) node.title = t("title.demoPending");
+    const available = !unavailable && socket?.readyState === 1 && Boolean(desktop?.controlToken?.());
+    const node = button("title.demo", () => {
+      if (watchDemo) {close(); watchDemo();}
+      else if (send("open_replay")) close();
+    }, !available);
     return node;
   };
   const ui = {document, t, restoreGame, dialogueLayout, palette: PALETTE, label, element, text, button, send, chooseFolder, demo,
@@ -179,9 +182,10 @@ export function mountScreens({host, browser = window, socket, startup, watchDemo
     if (value.kind === "studio_state" || value.kind === "state" && value.phase) {
       if (!studio) {studio = true; send("set_language", {language: settings.language}); show("title");}
       if (value.kind === "studio_state") project = value;
-      if (["running", "finished"].includes(value.phase)) {
+      if (["running", "finished", "replaying"].includes(value.phase)) {
         view.destroy?.(); view = {}; labels = []; close(); host.replaceChildren(); screen = "project"; return;
       }
+      if (value.phase === "idle") {project = {}; show("title"); return;}
       if (value.kind === "studio_state") {
         if (value.phase === "project_open") savedSlug = revealedSlug = null;
         if (value.phase === "world_ready" && savingSlug === value.world_slug) {savedSlug = savingSlug; savingSlug = null;}
@@ -222,7 +226,7 @@ export function mountScreens({host, browser = window, socket, startup, watchDemo
     if (startup) showError(startup);
     else if (screen === "title") show("title");
   }).catch(() => showError({reasonKey:"settings.invalid"}));
-  return { ready, showError, close, startRun(slug, allowDirty = false) {return send("start_run", {slug, allow_dirty: allowDirty, token_budget: settings.tokenBudget});},
+  return { ready, showError, close, showTitle() {project = {}; show("title");}, startRun(slug, allowDirty = false) {return send("start_run", {slug, allow_dirty: allowDirty, token_budget: settings.tokenBudget});},
     destroy() {view.destroy?.(); close(); destroyed = true; browser.removeEventListener("specvania:world-revealed", revealed); unsubscribe(); css.remove(); host.removeEventListener("keydown", keydown);
       socket?.removeEventListener("open", opened);
       socket?.removeEventListener("message", message); socket?.removeEventListener("close", closed); socket?.removeEventListener("error", closed);},

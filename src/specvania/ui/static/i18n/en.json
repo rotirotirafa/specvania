@@ -274,5 +274,18 @@
   "end.back": "Back to the castle",
   "boss.arenaHP": "Boss HP — one segment per scenario",
   "boss.arenaScenario": "{scenario}",
-  "approval.command": "{command}"
+  "approval.command": "{command}",
+  "status.replaying": "replaying",
+  "replay.title": "Recording playback",
+  "replay.watching": "Watching {name}",
+  "replay.finished": "Recording finished",
+  "replay.speed": "{speed}×",
+  "replay.pause": "Pause playback",
+  "replay.resume": "Resume playback",
+  "replay.back": "Back to title",
+  "replay.readonly": "Recorded dialogue · read only",
+  "replay.answer": "Recorded answer: {answer}",
+  "replay.choice": "Recorded choice: {choice} · {reason}",
+  "replay.feature": "Recorded world: {feature}",
+  "replay.keys": "1/2/4: speed · P: pause · Esc: title"
 }

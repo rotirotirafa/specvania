@@ -102,8 +102,8 @@ test("keyboard_only_title_project_settings_error_navigation_and_mouse",async()=>
     assert.equal(h.doc.activeElement.textContent,"Initialize project");h.key(" ");assert.equal(h.sent.at(-1).kind,"init_project");
     h.key("Escape");assert.equal(h.doc.activeElement.textContent,"New project");
     h.key("Tab");assert.equal(h.doc.activeElement.textContent,"Open project");h.key("Tab",true);assert.equal(h.doc.activeElement.textContent,"New project");
-    // Reach Settings solely by Tab, skipping disabled Watch demo.
-    for(let i=0;i<2;i++)h.key("Tab");assert.equal(h.doc.activeElement.textContent,"Settings");h.key("Enter");
+    // Reach Settings solely by Tab, including enabled Watch demo.
+    for(let i=0;i<3;i++)h.key("Tab");assert.equal(h.doc.activeElement.textContent,"Settings");h.key("Enter");
     assert.match(text(h.host),/takes effect on the next app start/);
     const controls=flat(h.host).filter(n=>["input","select"].includes(n.tagName));
     controls[0].value="pt-BR";controls[0].dispatch("change");await h.tick();assert.match(text(h.host),/Configurações/);
@@ -116,7 +116,7 @@ test("keyboard_only_title_project_settings_error_navigation_and_mouse",async()=>
     h.key("Escape");h.button("EN").click();await h.tick();h.button("Open project").click();await h.tick();
     h.message({kind:"approval_rejected",reason:"API key missing; check the configured environment variable."});
     assert.match(text(h.host),/NVIDIA_API_KEY/);assert.match(text(h.host),/~\/.zshrc/);assert.match(text(h.host),/restart the app/);
-    assert.ok(h.button("Watch demo").disabled);assert.match(h.button("Watch demo").title,/demo/);
+    assert.equal(h.button("Watch demo").disabled,false);
     h.key("Escape");assert.ok(h.button("New project"));
     h.socket.emit("close");assert.match(text(h.host),/Connection lost/);h.key("Escape");
     h.screens.showError({reasonKey:"error.startFailed",logPath:"/safe/studio.log"});assert.match(text(h.host),/\/safe\/studio.log/);h.key("Escape");
@@ -204,12 +204,12 @@ function focusCycle(h, expected) {
 test("each_screen_focus_cycle_excludes_underlying_game_and_hud_and_restores_them",async()=>{
   const h=await harness();try {
     assert.equal(h.game.getAttribute("inert"),"");assert.equal(h.hud.getAttribute("aria-hidden"),"true");
-    focusCycle(h,["New project","Open project","Settings","PT","EN"]);
+    focusCycle(h,["New project","Open project","Watch demo","Settings","PT","EN"]);
     h.button("Open project").click();await h.tick();
     h.message({kind:"studio_state",phase:"project_open",project:{path:"/repo",initialized:true},worlds:[],open_bugs:0});
     focusCycle(h,["Choose folder","New expedition","Check the party","Settings","Back"]);
     h.button("Settings").click();focusCycle(h,["select","number","text","checkbox","Back"]);
-    h.screens.showError({kind:"missingKey"});focusCycle(h,["Settings","Back"]);
+    h.screens.showError({kind:"missingKey"});focusCycle(h,["Watch demo","Settings","Back"]);
     h.screens.showError({reasonKey:"error.stopped"});focusCycle(h,["Restart studio","Settings"]);
     h.screens.close();assert.equal(h.host.hidden,true);
     assert.equal(h.game.getAttribute("inert"),null);assert.equal(h.hud.getAttribute("aria-hidden"),null);

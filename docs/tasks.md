@@ -582,9 +582,9 @@ files: src/specvania/ui/studio.py, src/specvania/ui/static/screens/title.js, src
 Watch demo asks the studio (`open_replay`) to play a bundled recording — `real-run` when present, otherwise the synthetic `demo` — through the same game screens. A recording may hold a plan stream and a run stream, played in sequence, so the Clarify answers and approvals appear as they happened. Speed 1×, 2× or 4×, changeable during playback, and pause. No API key, no project and no network.
 
 Checklist:
-- [ ] Watch demo works with no API key, no project and the network disabled
-- [ ] Speed 1, 2 and 4 change the pace (fake clock test) and can change during playback
-- [ ] A recording with a plan stream and a run stream plays both in order, showing the recorded Clarify answers and approvals
+- [x] Watch demo works with no API key, no project and the network disabled
+- [x] Speed 1, 2 and 4 change the pace (fake clock test) and can change during playback
+- [x] A recording with a plan stream and a run stream plays both in order, showing the recorded Clarify answers and approvals
 
 ---
 

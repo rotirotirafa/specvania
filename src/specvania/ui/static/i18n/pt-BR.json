@@ -274,5 +274,18 @@
   "end.back": "Voltar ao castelo",
   "boss.arenaHP": "Vida do chefe — um segmento por cenário",
   "boss.arenaScenario": "{scenario}",
-  "approval.command": "{command}"
+  "approval.command": "{command}",
+  "status.replaying": "reproduzindo",
+  "replay.title": "Reprodução da gravação",
+  "replay.watching": "Assistindo a {name}",
+  "replay.finished": "Gravação concluída",
+  "replay.speed": "{speed}×",
+  "replay.pause": "Pausar reprodução",
+  "replay.resume": "Retomar reprodução",
+  "replay.back": "Voltar ao título",
+  "replay.readonly": "Diálogo gravado · somente leitura",
+  "replay.answer": "Resposta gravada: {answer}",
+  "replay.choice": "Escolha gravada: {choice} · {reason}",
+  "replay.feature": "Mundo gravado: {feature}",
+  "replay.keys": "1/2/4: velocidade · P: pausar · Esc: título"
 }

@@ -2,6 +2,7 @@ import { t, onLanguageChange, i18n, bindDocument, connectLanguage } from "./i18n
 // T14 transport; subsequent Map rooms project these state/event notifications.
 import { UI_COLORS } from "./pixel/palette.js";
 import { mountScreens } from "./screens/title.js";
+import { mountReplay } from "./screens/replay.js";
 import { mountApproval } from "./hud/approval.js";
 import { mountPause } from "./screens/pause.js";
 import { mountBoss } from "./screens/boss.js";
@@ -60,13 +61,14 @@ function connectRun() {
   socketUrl.searchParams.set("view_token", viewToken || "");
   const socket = new WebSocket(socketUrl);
   const screenHost = document.getElementById("screen-host");
-  const screens = screenHost ? mountScreens({host: screenHost, browser: window, socket}) : null;
+  let screens;
+  if (screenHost) mountReplay(socket, {browser: window, back: () => screens?.showTitle()});
+  else {
+    mountApproval(socket); mountPause(socket); mountBoss(socket); mountEnd(socket);
+  }
+  screens = screenHost ? mountScreens({host: screenHost, browser: window, socket}) : null;
   // T34 mounts its Start expedition button by listening for this controller.
   if (screens) window.dispatchEvent(new CustomEvent("specvania:screens-ready", {detail: screens}));
-  mountApproval(socket);
-  mountPause(socket);
-  mountBoss(socket);
-  mountEnd(socket);
   connectLanguage(socket);
   let connectionKey = "connection.connecting", current;
   function render() {
@@ -91,7 +93,7 @@ function connectRun() {
       if (message.phase) {
         window.dispatchEvent(new CustomEvent("specvania:studio-state", { detail: message }));
       }
-      if (message.state?.run_id) {
+      if (message.state?.run_id || message.replay) {
         window.dispatchEvent(new CustomEvent("specvania:state", { detail: message.state }));
       }
     } else if (message.kind === "event") {

@@ -2,6 +2,7 @@
 
 import os
 from collections.abc import Callable, Sequence
+from importlib.resources import as_file, files
 from pathlib import Path
 from threading import Condition, RLock, Thread
 from threading import Event as ThreadEvent
@@ -47,12 +48,17 @@ from specvania.sdd.world import WorldParseError, parse_world
 from specvania.ui.server import (
     ClarifyPrompt,
     ClarifyReply,
+    CloseReplay,
     ControlError,
     InitProject,
     OpenProject,
+    OpenReplay,
     PauseReply,
     ProbeParty,
     ProbeResult,
+    ReplayPause,
+    ReplaySpeed,
+    ReplayStatus,
     SaveWorld,
     SetLanguage,
     Shutdown,
@@ -64,6 +70,7 @@ from specvania.ui.server import (
     StudioProject,
     StudioState,
     UIServer,
+    load_recording,
 )
 
 
@@ -108,6 +115,10 @@ class Studio:
         self._cancelled = ThreadEvent()
         self._worker: Thread | None = None
         self._job: Thread | None = None
+        self._replay_worker: Thread | None = None
+        self._replay_stop = ThreadEvent()
+        self._replay: ReplayStatus | None = None
+        self._replay_state = RunState()
         self._abort: Callable[[], None] | None = None
         self._run_state: Callable[[], RunState] = RunState
         self._project: StudioProject | None = None
@@ -140,6 +151,8 @@ class Studio:
     def code_repository(self) -> tuple[Path | None, Path | None]:
         """The code view follows the studio's open project and selected world."""
         with self._lock:
+            if self._replay is not None:
+                return None, None
             return (
                 Path(self._project.path) if self._project else None,
                 self._code_world,
@@ -150,18 +163,29 @@ class Studio:
             message = StateMessage(
                 phase=self.phase,
                 state=self._run_state(),
-                approval_request=self.server.desktop_responder.pending,
+                replay=self._replay,
+                approval_request=(
+                    self.server._approval_prompt(self._replay_state.dialogue)
+                    if self._replay
+                    and isinstance(self._replay_state.dialogue, ApprovalRequested)
+                    else self.server.desktop_responder.pending
+                ),
             )
             self._safe(message.model_dump_json())
             return message
 
     def info(self) -> StudioState | None:
         with self._lock:
-            if self._project is None and self._language_override is None:
+            if (
+                self._project is None
+                and self._language_override is None
+                and self._replay is None
+            ):
                 return None
             message = StudioState(
                 phase=self.phase,
-                project=self._project,
+                project=None if self._replay else self._project,
+                replay=self._replay,
                 language=self._language,
                 worlds=self._worlds,
                 world=self._world if self.phase == "world_ready" else None,
@@ -272,6 +296,7 @@ class Studio:
                 "world_ready": ("running", "project_open"),
                 "running": ("finished",),
                 "finished": ("project_open",),
+                "replaying": (),
             }
             if phase not in next_phase[self.phase]:
                 raise StudioError("Studio message does not fit the current phase.")
@@ -489,8 +514,147 @@ class Studio:
         self._job = worker
         worker.start()
 
+    def _open_replay(self, message: OpenReplay) -> None:
+        # Bundled names only; no caller-controlled filesystem access or project IO.
+        examples = files("specvania").joinpath("examples")
+        name = message.name or (
+            "real-run" if examples.joinpath("real-run").is_dir() else "demo"
+        )
+        with as_file(examples.joinpath(name)) as directory:
+            streams = load_recording(directory, guard=self.guard)
+        self._replay_stop.clear()
+        feature = next(
+            (
+                event.feature
+                for _, events in streams
+                for event in events
+                if event.type == "run_started"
+            ),
+            name,
+        )
+        self._replay = ReplayStatus(name=name, feature=feature, stream=streams[0][0])
+        self._replay_state = RunState()
+        self._run_state = lambda: self._replay_state
+        self.phase = "replaying"
+        self.server.run_id = ""
+        self.server.publish_studio_state()
+
+        def play() -> None:
+            previous: Event | None = None
+            if not self._replay_wait(2.0):
+                return
+            for index, (stream_name, events) in enumerate(streams):
+                with self._condition:
+                    if self._replay_stop.is_set():
+                        return
+                    assert self._replay is not None
+                    self._replay = self._replay.model_copy(
+                        update={"stream": stream_name, "dialogue": None}
+                    )
+                    if index:
+                        self._replay_state = RunState()
+                        self.server.publish_studio_state()
+                played: list[Event] = []
+                for event in events:
+                    gap = (
+                        min(2.0, max(0.0, (event.ts - previous.ts).total_seconds()))
+                        if previous is not None
+                        else 0.0
+                    )
+                    if not self._replay_wait(gap):
+                        return
+                    with self._condition:
+                        self._condition.wait_for(
+                            lambda: (
+                                self._replay_stop.is_set()
+                                or self._replay is None
+                                or not self._replay.paused
+                            )
+                        )
+                        if self._replay_stop.is_set():
+                            return
+                        played.append(event)
+                        self._replay_state = fold_events(played)
+                        self.server.run_id = event.run_id
+                        assert self._replay is not None
+                        if event.type in (
+                            "clarify_question",
+                            "clarify_answer",
+                            "approval_requested",
+                            "approval_answered",
+                            "run_paused",
+                            "room_skipped",
+                            "attempt_started",
+                            "stamina_restored",
+                            "run_finished",
+                        ):
+                            self._replay = self._replay.model_copy(
+                                update={"dialogue": event}
+                            )
+                        self.server.publish_replay_event(event)
+                    previous = event
+            with self._condition:
+                if not self._replay_stop.is_set() and self._replay is not None:
+                    self._replay = self._replay.model_copy(update={"finished": True})
+                    self.server.publish_studio_info()
+
+        worker = Thread(target=play, name="specvania-studio-replay", daemon=True)
+        self._replay_worker = worker
+        worker.start()
+
+    def _replay_wait(self, seconds: float) -> bool:
+        """Consume recorded time in short Clock slices, using the current speed.
+
+        Pause blocks on controls instead of spinning a FakeClock. A speed change
+        takes effect within one 50 ms slice, including a currently playing gap.
+        """
+        remaining = seconds
+        while True:
+            with self._condition:
+                self._condition.wait_for(
+                    lambda: (
+                        self._replay_stop.is_set()
+                        or self._replay is None
+                        or not self._replay.paused
+                    )
+                )
+                if self._replay_stop.is_set() or self._replay is None:
+                    return False
+                if remaining <= 1e-9:
+                    return True
+                speed = self._replay.speed
+                duration = min(0.05, remaining / speed)
+            self.clock.sleep(duration)
+            remaining -= duration * speed
+
+    def _close_replay(self) -> None:
+        with self._condition:
+            if self._replay is None:
+                raise StudioError("Replay unavailable.")
+            self._replay_stop.set()
+            self._condition.notify_all()
+            worker = self._replay_worker
+        if worker is not None:
+            worker.join()
+        with self._condition:
+            self._replay_worker, self._replay = None, None
+            self._project = None
+            self._world, self._world_slug, self._code_world = None, None, None
+            self._question, self._pause, self._error = None, None, None
+            self._worlds, self._open_bugs = (), 0
+            self._replay_state = RunState()
+            self._run_state = RunState
+            self.server.run_id = ""
+            self.phase = "idle"
+            self.server.publish_studio_state()
+
     def control(self, message: StudioControl) -> bool | ProbeResult:
+        if isinstance(message, CloseReplay):
+            self._close_replay()
+            return True
         if isinstance(message, Shutdown):
+            if self._replay is not None:
+                self._close_replay()
             with self._lock:
                 worker, abort = self._worker or self._job, self._abort or self._cancel
             if worker is not None and worker.is_alive():
@@ -532,6 +696,9 @@ class Studio:
             self.server.publish_studio_info()
             return None
         phases: dict[str, tuple[StudioPhase, ...]] = {
+            "open_replay": ("idle", "project_open"),
+            "replay_speed": ("replaying",),
+            "replay_pause": ("replaying",),
             "open_project": ("idle", "project_open", "world_ready", "finished"),
             "init_project": ("project_open",),
             "start_plan": ("project_open",),
@@ -547,7 +714,18 @@ class Studio:
             message, (ClarifyReply, PauseReply)
         ):
             raise StudioError("The studio already has an active plan or run.")
-        if isinstance(message, OpenProject):
+        if isinstance(message, OpenReplay):
+            self._open_replay(message)
+        elif isinstance(message, (ReplaySpeed, ReplayPause)):
+            assert self._replay is not None
+            self._replay = self._replay.model_copy(
+                update={"speed": message.speed}
+                if isinstance(message, ReplaySpeed)
+                else {"paused": message.paused}
+            )
+            self.server.publish_studio_info()
+            self._condition.notify_all()
+        elif isinstance(message, OpenProject):
             try:
                 root = GitOps(Path(message.path).resolve()).root.resolve()
             except (GitError, OSError):

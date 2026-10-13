@@ -181,7 +181,13 @@ def _cap_room_code(response: RoomCode, candidates: Iterator[RoomCodeFile]) -> Ro
 
 
 type StudioPhase = Literal[
-    "idle", "project_open", "planning", "world_ready", "running", "finished"
+    "idle",
+    "project_open",
+    "planning",
+    "world_ready",
+    "running",
+    "finished",
+    "replaying",
 ]
 
 
@@ -197,6 +203,16 @@ class StudioProject(FrozenModel):
     initialized: bool
 
 
+class ReplayStatus(FrozenModel):
+    name: str
+    feature: str = ""
+    speed: Literal[1, 2, 4] = 1
+    paused: bool = False
+    finished: bool = False
+    stream: Literal["events", "plan", "run"] = "events"
+    dialogue: Event | None = None
+
+
 class StudioState(FrozenModel):
     kind: Literal["studio_state"] = "studio_state"
     phase: StudioPhase
@@ -209,6 +225,7 @@ class StudioState(FrozenModel):
     clarify_request: ClarifyPrompt | None = None
     pause_request: ShortText | None = None
     error: ShortText | None = None
+    replay: ReplayStatus | None = None
 
 
 class ControlError(UIServerError):
@@ -221,6 +238,9 @@ class StateMessage(FrozenModel):
     kind: Literal["state"] = "state"
     state: RunState
     phase: StudioPhase | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    replay: ReplayStatus | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
     approval_request: ApprovalRequest | None = None
@@ -236,6 +256,37 @@ class ApprovalAnswer(FrozenModel):
     kind: Literal["approval_answer"]
     request_id: ShortText
     answer: bool = Field(strict=True)
+    control_token: str = Field(default="", repr=False, exclude=True)
+
+
+class OpenReplay(FrozenModel):
+    kind: Literal["open_replay"]
+    name: Literal["demo", "real-run"] | None = None
+    control_token: str = Field(default="", repr=False, exclude=True)
+
+
+class ReplaySpeed(FrozenModel):
+    kind: Literal["replay_speed"]
+    speed: Literal[1, 2, 4]
+
+    @field_validator("speed", mode="before")
+    @classmethod
+    def integer_speed(cls, value: object) -> object:
+        if type(value) is not int:
+            raise ValueError("Use replay speed 1, 2 or 4.")
+        return value
+
+    control_token: str = Field(default="", repr=False, exclude=True)
+
+
+class ReplayPause(FrozenModel):
+    kind: Literal["replay_pause"]
+    paused: bool = Field(strict=True)
+    control_token: str = Field(default="", repr=False, exclude=True)
+
+
+class CloseReplay(FrozenModel):
+    kind: Literal["close_replay"]
     control_token: str = Field(default="", repr=False, exclude=True)
 
 
@@ -326,6 +377,10 @@ class SetLanguage(FrozenModel):
 
 type StudioControl = (
     Shutdown
+    | OpenReplay
+    | ReplaySpeed
+    | ReplayPause
+    | CloseReplay
     | OpenProject
     | InitProject
     | StartPlan
@@ -353,20 +408,53 @@ def _matches(candidate: str | None, expected: str) -> bool:
     )
 
 
+def load_recording(
+    directory: Path, *, guard: RedactionGuard
+) -> tuple[tuple[Literal["events", "plan", "run"], tuple[Event, ...]], ...]:
+    """Two independent projections, in plan/run order, or one legacy stream."""
+    names: tuple[Literal["events", "plan", "run"], ...] = (
+        ("plan", "run") if (directory / "plan.jsonl").exists() else ("events",)
+    )
+    return tuple(
+        (name, load_replay(directory / f"{name}.jsonl", guard=guard)) for name in names
+    )
+
+
+def validate_replay(events: Sequence[Event]) -> None:
+    # A run boundary resets seq; do not rewrite recorded ids or event payloads.
+    groups: dict[str, list[Event]] = {}
+    previous = ""
+    for event in events:
+        if event.run_id != previous and event.run_id in groups:
+            raise StateFoldError("Replay run streams must be consecutive.")
+        groups.setdefault(event.run_id, []).append(event)
+        previous = event.run_id
+    for group in groups.values():
+        fold_events(group)
+
+
 def load_replay(
     source: str | Path, *, guard: RedactionGuard, ledger: Ledger | None = None
 ) -> tuple[Event, ...]:
-    """Read a portable JSONL stream or a run through the public Ledger API."""
+    """Read a portable stream/directory or a run through the Ledger API."""
     try:
+        if isinstance(source, Path) and source.is_dir():
+            return tuple(
+                event
+                for _, stream in load_recording(source, guard=guard)
+                for event in stream
+            )
         if isinstance(source, Path) or source.endswith(".jsonl"):
             events = decode_events(Path(source).read_text(encoding="utf-8"), guard)
         elif ledger is not None:
             events = tuple(ledger.list_events(source))
         else:
             raise UIServerError("Replay of a run id requires a ledger.")
+        if not events:
+            raise UIServerError("Cannot replay an empty event stream.")
         for event in events:
             guard.validate(event)
-        fold_events(events)
+        validate_replay(events)
         return events
     except (OSError, UnicodeError, EventStreamError, LedgerError, StateFoldError):
         raise UIServerError(
@@ -420,7 +508,7 @@ class UIServer:
         self.studio_snapshot = studio_snapshot
         self.control_responder = control_responder
         self._state_lock = RLock()
-        self._state_queues: list[Queue[StateMessage | StudioState]] = []
+        self._state_queues: list[Queue[StateMessage | StudioState | EventMessage]] = []
         self._serving: uvicorn.Server | None = None
         self.guard = guard
         self.clock = clock
@@ -429,7 +517,7 @@ class UIServer:
         self.bus = bus
         self.live_snapshot = live_snapshot
         self.replay = tuple(replay) if replay is not None else None
-        self.speed = speed
+        self.speed: Literal[1, 2, 4] = speed
         self.port = port
         # The live caller registers this instance in its ApprovalBroker alongside
         # TerminalResponder; replay never accepts answers, even with a token.
@@ -442,12 +530,8 @@ class UIServer:
         if self.replay is not None:
             for event in self.replay:
                 guard.validate(event)
-                if event.run_id != run_id:
-                    raise UIServerError(
-                        "Replay events must belong to the selected run."
-                    )
             try:
-                fold_events(self.replay)
+                validate_replay(self.replay)
             except StateFoldError:
                 raise UIServerError(
                     "Replay sequences must be strictly increasing."
@@ -471,6 +555,13 @@ class UIServer:
                     queue.put(message)
                     if info is not None:
                         queue.put(info)
+
+    def publish_replay_event(self, event: Event) -> None:
+        self.guard.validate(event)
+        message = EventMessage(event=event)
+        with self._state_lock:
+            for queue in self._state_queues:
+                queue.put(message)
 
     def publish_studio_info(self) -> None:
         if self.studio_info is not None and (message := self.studio_info()) is not None:
@@ -883,7 +974,7 @@ class UIServer:
             if self.replay is None and self.bus
             else None
         )
-        state_queue: Queue[StateMessage | StudioState] | None = None
+        state_queue: Queue[StateMessage | StudioState | EventMessage] | None = None
         if self.studio_snapshot is not None:
             state_queue = Queue()
             with self._state_lock:
@@ -924,6 +1015,9 @@ class UIServer:
                     if initial is not None
                     else StateMessage(
                         state=state,
+                        replay=ReplayStatus(name="recording", speed=self.speed)
+                        if self.replay is not None
+                        else None,
                         approval_request=self._approval_prompt(pending)
                         if pending
                         else None,
@@ -974,11 +1068,20 @@ class UIServer:
         websocket: WebSocket,
         subscription: Subscription | None,
         seq: int,
-        state_queue: Queue[StateMessage | StudioState] | None = None,
+        state_queue: Queue[StateMessage | StudioState | EventMessage] | None = None,
     ) -> None:
         if subscription is None:
             previous: Event | None = None
             for event in self.replay or ():
+                if previous is not None and event.run_id != previous.run_id:
+                    await websocket.send_json(
+                        StateMessage(
+                            state=RunState(),
+                            replay=ReplayStatus(
+                                name="recording", speed=self.speed, stream="run"
+                            ),
+                        ).model_dump(mode="json")
+                    )
                 if previous is not None:
                     gap = max(0.0, (event.ts - previous.ts).total_seconds())
                     # Cap recorded idle gaps before applying playback speed.
@@ -989,7 +1092,9 @@ class UIServer:
                 previous = event
             return
         loop = asyncio.get_running_loop()
-        queue: asyncio.Queue[Event | StateMessage | StudioState] = asyncio.Queue()
+        queue: asyncio.Queue[Event | StateMessage | StudioState | EventMessage] = (
+            asyncio.Queue()
+        )
         stopped = ThreadEvent()
 
         def bridge() -> None:
@@ -1016,7 +1121,7 @@ class UIServer:
                     await websocket.send_json(event.model_dump(mode="json"))
                     seq = event.state.seq
                     continue
-                if isinstance(event, StudioState):
+                if isinstance(event, (StudioState, EventMessage)):
                     await websocket.send_json(event.model_dump(mode="json"))
                     continue
                 if self.studio_snapshot is not None and event.run_id != self.run_id:
@@ -1053,6 +1158,12 @@ class UIServer:
             answer = message.model_copy(update={"control_token": ""})
             try:
                 if isinstance(answer, ApprovalAnswer):
+                    if (
+                        self.studio_snapshot
+                        and self.studio_snapshot().replay is not None
+                    ):
+                        await reject("control unavailable")
+                        continue
                     accepted = await asyncio.to_thread(self.approval_responder, answer)
                 elif self.control_responder is not None:
                     accepted = await asyncio.to_thread(self.control_responder, answer)

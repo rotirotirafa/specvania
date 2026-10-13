@@ -646,7 +646,7 @@ def create_app() -> typer.Typer:
                 resource = files("specvania").joinpath("examples/demo/events.jsonl")
                 with as_file(resource) as path:
                     events = load_replay(path, guard=guard)
-            elif source.endswith(".jsonl"):
+            elif source.endswith(".jsonl") or Path(source).is_dir():
                 events = load_replay(Path(source), guard=guard)
             else:
                 root = Path.cwd()
