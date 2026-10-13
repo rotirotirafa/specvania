@@ -1,0 +1,243 @@
+{
+  "name": "Release",
+  "on": {
+    "push": {
+      "tags": [
+        "v*.*.*"
+      ]
+    },
+    "workflow_dispatch": {}
+  },
+  "permissions": {
+    "contents": "read"
+  },
+  "jobs": {
+    "check": {
+      "runs-on": "ubuntu-latest",
+      "outputs": {
+        "version": "${{ steps.versions.outputs.version }}"
+      },
+      "steps": [
+        {
+          "name": "actions/checkout v4.4.0",
+          "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "with": {
+            "persist-credentials": false
+          }
+        },
+        {
+          "name": "astral-sh/setup-uv v6.8.0",
+          "uses": "astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e",
+          "with": {
+            "python-version": "3.12"
+          }
+        },
+        {
+          "id": "versions",
+          "name": "Check release versions",
+          "run": "python - <<'PYTHON'\nimport json\nimport os\nfrom pathlib import Path\nimport re\nimport tomllib\n\nversion = tomllib.loads(Path(\"pyproject.toml\").read_text())[\"project\"][\"version\"]\ndesktop = json.loads(Path(\"apps/desktop/package.json\").read_text())[\"version\"]\nif not isinstance(version, str) or not re.fullmatch(r\"(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\", version):\n    raise SystemExit(\"Expected a release version X.Y.Z in pyproject.toml\")\nif desktop != version:\n    raise SystemExit(\"pyproject.toml and apps/desktop/package.json versions disagree\")\nif os.environ[\"GITHUB_EVENT_NAME\"] == \"push\":\n    if os.environ[\"GITHUB_REF\"] != f\"refs/tags/v{version}\" or os.environ[\"GITHUB_REF_NAME\"] != f\"v{version}\":\n        raise SystemExit(\"Tag, pyproject.toml and apps/desktop/package.json versions disagree\")\nelif os.environ[\"GITHUB_EVENT_NAME\"] != \"workflow_dispatch\":\n    raise SystemExit(\"Expected a version tag push or a manual build\")\nwith open(os.environ[\"GITHUB_OUTPUT\"], \"a\") as output:\n    output.write(f\"version={version}\\n\")\nPYTHON"
+        },
+        {
+          "name": "Extract changelog section",
+          "env": {
+            "VERSION": "${{ steps.versions.outputs.version }}"
+          },
+          "run": "awk -v version=\"$VERSION\" '/^## / { if (found) exit; found = ($2 == \"[\" version \"]\") } found { print } END { if (!found) exit 1 }' CHANGELOG.md > release-notes.md"
+        }
+      ]
+    },
+    "build-python": {
+      "needs": "check",
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "name": "actions/checkout v4.4.0",
+          "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "with": {
+            "persist-credentials": false
+          }
+        },
+        {
+          "name": "astral-sh/setup-uv v6.8.0",
+          "uses": "astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e",
+          "with": {
+            "python-version": "3.12"
+          }
+        },
+        {
+          "name": "Build sdist and wheel",
+          "run": "uv build"
+        },
+        {
+          "name": "actions/upload-artifact v4.6.2",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "python-dist",
+            "path": "dist/*.tar.gz\ndist/*.whl",
+            "if-no-files-found": "error"
+          }
+        }
+      ]
+    },
+    "publish-pypi": {
+      "if": "github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')",
+      "needs": [
+        "check",
+        "build-python"
+      ],
+      "runs-on": "ubuntu-latest",
+      "environment": "pypi",
+      "permissions": {
+        "id-token": "write"
+      },
+      "steps": [
+        {
+          "name": "actions/download-artifact v4.3.0",
+          "uses": "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093",
+          "with": {
+            "name": "python-dist",
+            "path": "dist"
+          }
+        },
+        {
+          "name": "pypa/gh-action-pypi-publish v1.14.2",
+          "uses": "pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33"
+        }
+      ]
+    },
+    "build-desktop": {
+      "needs": "check",
+      "runs-on": "${{ matrix.os }}",
+      "strategy": {
+        "fail-fast": false,
+        "matrix": {
+          "include": [
+            {
+              "os": "macos-latest",
+              "platform": "mac",
+              "arch": "arm64",
+              "extension": "dmg"
+            },
+            {
+              "os": "macos-latest",
+              "platform": "mac",
+              "arch": "x64",
+              "extension": "dmg"
+            },
+            {
+              "os": "ubuntu-latest",
+              "platform": "linux",
+              "arch": "x64",
+              "extension": "AppImage"
+            }
+          ]
+        }
+      },
+      "defaults": {
+        "run": {
+          "working-directory": "apps/desktop"
+        }
+      },
+      "env": {
+        "CSC_IDENTITY_AUTO_DISCOVERY": "false"
+      },
+      "steps": [
+        {
+          "name": "actions/checkout v4.4.0",
+          "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "with": {
+            "persist-credentials": false
+          }
+        },
+        {
+          "name": "actions/setup-node v4.4.0",
+          "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+          "with": {
+            "node-version": "22",
+            "cache": "npm",
+            "cache-dependency-path": "apps/desktop/package-lock.json"
+          }
+        },
+        {
+          "name": "Install pinned desktop dependencies",
+          "run": "npm ci"
+        },
+        {
+          "name": "Generate app icon",
+          "run": "npm run make-icon"
+        },
+        {
+          "name": "Build unsigned installer without publishing",
+          "run": "./node_modules/.bin/electron-builder --${{ matrix.platform }} --${{ matrix.arch }} --publish never"
+        },
+        {
+          "name": "actions/upload-artifact v4.6.2",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "desktop-${{ matrix.platform }}-${{ matrix.arch }}",
+            "path": "apps/desktop/dist/specvania-*-${{ matrix.arch }}.${{ matrix.extension }}",
+            "if-no-files-found": "error"
+          }
+        }
+      ]
+    },
+    "release": {
+      "if": "github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')",
+      "needs": [
+        "check",
+        "build-python",
+        "publish-pypi",
+        "build-desktop"
+      ],
+      "runs-on": "ubuntu-latest",
+      "permissions": {
+        "contents": "write"
+      },
+      "steps": [
+        {
+          "name": "actions/checkout v4.4.0",
+          "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "with": {
+            "persist-credentials": false
+          }
+        },
+        {
+          "name": "actions/download-artifact v4.3.0",
+          "uses": "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093",
+          "with": {
+            "name": "python-dist",
+            "path": "artifacts"
+          }
+        },
+        {
+          "name": "actions/download-artifact v4.3.0",
+          "uses": "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093",
+          "with": {
+            "pattern": "desktop-*",
+            "path": "artifacts",
+            "merge-multiple": true
+          }
+        },
+        {
+          "name": "Generate SHA256SUMS",
+          "run": "cd artifacts\nsha256sum -- specvania-*.tar.gz specvania-*.whl specvania-*-arm64.dmg specvania-*-x64.dmg specvania-*-x64.AppImage > SHA256SUMS"
+        },
+        {
+          "name": "Extract changelog section",
+          "env": {
+            "VERSION": "${{ needs.check.outputs.version }}"
+          },
+          "run": "awk -v version=\"$VERSION\" '/^## / { if (found) exit; found = ($2 == \"[\" version \"]\") } found { print } END { if (!found) exit 1 }' CHANGELOG.md > release-notes.md"
+        },
+        {
+          "name": "Create GitHub Release",
+          "env": {
+            "GITHUB_TOKEN": "${{ secrets.GITHUB_TOKEN }}",
+            "GH_REPO": "${{ github.repository }}"
+          },
+          "run": "gh release create \"$GITHUB_REF_NAME\" --verify-tag --title \"$GITHUB_REF_NAME\" --notes-file release-notes.md artifacts/*.tar.gz artifacts/*.whl artifacts/*.dmg artifacts/*.AppImage artifacts/SHA256SUMS"
+        }
+      ]
+    }
+  }
+}

@@ -1,17 +1,59 @@
 {
   "name": "CI",
-  "on": {"push": {}, "pull_request": {}},
-  "permissions": {"contents": "read"},
+  "on": {
+    "push": {
+      "branches": [
+        "main"
+      ]
+    },
+    "pull_request": {}
+  },
+  "permissions": {
+    "contents": "read"
+  },
   "jobs": {
     "wheel": {
       "runs-on": "ubuntu-latest",
       "steps": [
-        {"uses": "actions/checkout@v4"},
-        {"uses": "astral-sh/setup-uv@v6", "with": {"python-version": "3.12"}},
-        {"name": "Install test tools", "run": "uv sync --locked"},
-        {"name": "Build wheel", "run": "uv build"},
-        {"name": "Inspect bundled resources", "run": "uv run pytest -q tests/test_e2e.py tests/test_wheel.py -k built_wheel"},
-        {"name": "Wheel CLI smoke test", "run": "uvx --from dist/*.whl specvania replay demo --help"}
+        {
+          "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "name": "actions/checkout v4.4.0",
+          "with": {
+            "persist-credentials": false
+          }
+        },
+        {
+          "uses": "astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e",
+          "with": {
+            "python-version": "3.12"
+          },
+          "name": "astral-sh/setup-uv v6.8.0"
+        },
+        {
+          "name": "Install test tools",
+          "run": "uv sync --locked"
+        },
+        {
+          "name": "Build wheel",
+          "run": "uv build"
+        },
+        {
+          "name": "Inspect bundled resources",
+          "run": "uv run pytest -q tests/test_e2e.py tests/test_wheel.py -k built_wheel"
+        },
+        {
+          "name": "Wheel CLI smoke test",
+          "run": "uvx --from dist/*.whl specvania replay demo --help"
+        },
+        {
+          "name": "actions/upload-artifact v4.6.2",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "python-dist",
+            "path": "dist/*.tar.gz\ndist/*.whl",
+            "if-no-files-found": "error"
+          }
+        }
       ]
     },
     "postgres-e2e": {
@@ -20,12 +62,37 @@
         "SPECVANIA_TEST_DATABASE_URL": "postgresql+psycopg://specvania:specvania@localhost:5432/specvania"
       },
       "steps": [
-        {"uses": "actions/checkout@v4"},
-        {"uses": "astral-sh/setup-uv@v6", "with": {"python-version": "3.12"}},
-        {"name": "Start optional ledger", "run": "docker compose up -d --wait postgres"},
-        {"name": "Install Postgres extra", "run": "uv sync --locked --extra postgres"},
-        {"name": "G9 · CLI end-to-end", "run": "uv run pytest -q -rs tests/test_e2e.py"},
-        {"name": "Stop ledger", "if": "always()", "run": "docker compose down"}
+        {
+          "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "name": "actions/checkout v4.4.0",
+          "with": {
+            "persist-credentials": false
+          }
+        },
+        {
+          "uses": "astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e",
+          "with": {
+            "python-version": "3.12"
+          },
+          "name": "astral-sh/setup-uv v6.8.0"
+        },
+        {
+          "name": "Start optional ledger",
+          "run": "docker compose up -d --wait postgres"
+        },
+        {
+          "name": "Install Postgres extra",
+          "run": "uv sync --locked --extra postgres"
+        },
+        {
+          "name": "G9 \u00b7 CLI end-to-end",
+          "run": "uv run pytest -q -rs tests/test_e2e.py"
+        },
+        {
+          "name": "Stop ledger",
+          "if": "always()",
+          "run": "docker compose down"
+        }
       ]
     },
     "postgres": {
@@ -34,20 +101,60 @@
         "SPECVANIA_TEST_DATABASE_URL": "postgresql+psycopg://specvania:specvania@localhost:5432/specvania"
       },
       "steps": [
-        {"uses": "actions/checkout@v4"},
-        {"uses": "astral-sh/setup-uv@v6", "with": {"python-version": "3.12"}},
-        {"name": "Install Postgres extra", "run": "uv sync --locked --extra postgres"},
-        {"name": "Start optional ledger", "run": "docker compose up -d --wait postgres"},
-        {"name": "G9 · Ledger contract", "run": "uv run pytest -q -rs tests/test_ledger.py"},
-        {"name": "Stop ledger", "if": "always()", "run": "docker compose down"}
+        {
+          "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "name": "actions/checkout v4.4.0",
+          "with": {
+            "persist-credentials": false
+          }
+        },
+        {
+          "uses": "astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e",
+          "with": {
+            "python-version": "3.12"
+          },
+          "name": "astral-sh/setup-uv v6.8.0"
+        },
+        {
+          "name": "Install Postgres extra",
+          "run": "uv sync --locked --extra postgres"
+        },
+        {
+          "name": "Start optional ledger",
+          "run": "docker compose up -d --wait postgres"
+        },
+        {
+          "name": "G9 \u00b7 Ledger contract",
+          "run": "uv run pytest -q -rs tests/test_ledger.py"
+        },
+        {
+          "name": "Stop ledger",
+          "if": "always()",
+          "run": "docker compose down"
+        }
       ]
     },
     "desktop-check": {
       "runs-on": "ubuntu-latest",
       "steps": [
-        {"uses": "actions/checkout@v4"},
-        {"uses": "actions/setup-node@v4", "with": {"node-version": "22"}},
-        {"name": "G10 · Desktop check", "run": "npm --prefix apps/desktop run check"}
+        {
+          "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "name": "actions/checkout v4.4.0",
+          "with": {
+            "persist-credentials": false
+          }
+        },
+        {
+          "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+          "with": {
+            "node-version": "22"
+          },
+          "name": "actions/setup-node v4.4.0"
+        },
+        {
+          "name": "G10 \u00b7 Desktop check",
+          "run": "npm --prefix apps/desktop run check"
+        }
       ]
     },
     "checks": {
@@ -55,21 +162,126 @@
       "strategy": {
         "fail-fast": false,
         "matrix": {
-          "os": ["ubuntu-latest", "macos-latest"],
-          "python-version": ["3.12", "3.13"]
+          "os": [
+            "ubuntu-latest",
+            "macos-latest"
+          ],
+          "python-version": [
+            "3.12",
+            "3.13"
+          ]
         }
       },
       "steps": [
-        {"uses": "actions/checkout@v4"},
         {
-          "uses": "astral-sh/setup-uv@v6",
-          "with": {"python-version": "${{ matrix.python-version }}"}
+          "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "name": "actions/checkout v4.4.0",
+          "with": {
+            "persist-credentials": false
+          }
         },
-        {"name": "Install", "run": "uv sync --locked"},
-        {"name": "G1 · Lint", "run": "uv run ruff check ."},
-        {"name": "G2 · Format", "run": "uv run ruff format --check ."},
-        {"name": "G3 · Types", "run": "uv run pyright"},
-        {"name": "G4 · Tests", "run": "uv run pytest -q"}
+        {
+          "uses": "astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e",
+          "with": {
+            "python-version": "${{ matrix.python-version }}"
+          },
+          "name": "astral-sh/setup-uv v6.8.0"
+        },
+        {
+          "name": "Install",
+          "run": "uv sync --locked"
+        },
+        {
+          "name": "G1 \u00b7 Lint",
+          "run": "uv run ruff check ."
+        },
+        {
+          "name": "G2 \u00b7 Format",
+          "run": "uv run ruff format --check ."
+        },
+        {
+          "name": "G3 \u00b7 Types",
+          "run": "uv run pyright"
+        },
+        {
+          "name": "G4 \u00b7 Tests",
+          "run": "uv run pytest -q"
+        }
+      ]
+    },
+    "build-desktop": {
+      "runs-on": "${{ matrix.os }}",
+      "strategy": {
+        "fail-fast": false,
+        "matrix": {
+          "include": [
+            {
+              "os": "macos-latest",
+              "platform": "mac",
+              "arch": "arm64",
+              "extension": "dmg"
+            },
+            {
+              "os": "macos-latest",
+              "platform": "mac",
+              "arch": "x64",
+              "extension": "dmg"
+            },
+            {
+              "os": "ubuntu-latest",
+              "platform": "linux",
+              "arch": "x64",
+              "extension": "AppImage"
+            }
+          ]
+        }
+      },
+      "defaults": {
+        "run": {
+          "working-directory": "apps/desktop"
+        }
+      },
+      "env": {
+        "CSC_IDENTITY_AUTO_DISCOVERY": "false"
+      },
+      "steps": [
+        {
+          "name": "actions/checkout v4.4.0",
+          "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "with": {
+            "persist-credentials": false
+          }
+        },
+        {
+          "name": "actions/setup-node v4.4.0",
+          "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+          "with": {
+            "node-version": "22",
+            "cache": "npm",
+            "cache-dependency-path": "apps/desktop/package-lock.json"
+          }
+        },
+        {
+          "name": "Install pinned desktop dependencies",
+          "run": "npm ci"
+        },
+        {
+          "name": "Generate app icon",
+          "run": "npm run make-icon"
+        },
+        {
+          "name": "Build unsigned installer without publishing",
+          "run": "./node_modules/.bin/electron-builder --${{ matrix.platform }} --${{ matrix.arch }} --publish never"
+        },
+        {
+          "name": "actions/upload-artifact v4.6.2",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "desktop-${{ matrix.platform }}-${{ matrix.arch }}",
+            "path": "apps/desktop/dist/specvania-*-${{ matrix.arch }}.${{ matrix.extension }}",
+            "if-no-files-found": "error"
+          }
+        }
       ]
     }
   }

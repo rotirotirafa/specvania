@@ -2,7 +2,7 @@
 
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const { readFileSync, mkdtempSync, rmSync, mkdirSync, copyFileSync, writeFileSync } = require("node:fs");
+const { readFileSync, mkdtempSync, rmSync, mkdirSync, copyFileSync, writeFileSync, existsSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
@@ -168,9 +168,11 @@ fs.writeFileSync(process.env.SPECVANIA_BUILD_RECORD, JSON.stringify(process.argv
 });
 
 test("release_workflow_builds_each_platform_then_uploads_all_release_artifacts", () => {
-  const workflow = json(path.join(root, ".github/workflows/desktop-release.yml"));
-  assert.deepEqual(workflow.on, { push: { tags: ["desktop-v*"] } });
-  const build = workflow.jobs.build;
+  assert.equal(existsSync(path.join(root, ".github/workflows/desktop-release.yml")), false);
+  const workflow = json(path.join(root, ".github/workflows/release.yml"));
+  assert.deepEqual(workflow.on, { push: { tags: ["v*.*.*"] }, workflow_dispatch: {} });
+  const build = workflow.jobs["build-desktop"];
+  assert.equal(build.needs, "check");
   assert.equal(build["runs-on"], "${{ matrix.os }}");
   assert.deepEqual(build.strategy.matrix.include, [
     { os: "macos-latest", platform: "mac", arch: "arm64", extension: "dmg" },
@@ -180,20 +182,26 @@ test("release_workflow_builds_each_platform_then_uploads_all_release_artifacts",
   assert.equal(build.env.CSC_IDENTITY_AUTO_DISCOVERY, "false");
   assert.equal(build.defaults.run["working-directory"], "apps/desktop");
   const commands = build.steps.filter((step) => step.run).map((step) => step.run);
-  assert.deepEqual(commands, ["npm ci", "npm run check", "npm run make-icon", "npm run dist:${{ matrix.platform }} -- --${{ matrix.arch }}"]);
-  const upload = build.steps.find((step) => step.uses === "actions/upload-artifact@v4");
+  assert.deepEqual(commands, ["npm ci", "npm run make-icon", "./node_modules/.bin/electron-builder --${{ matrix.platform }} --${{ matrix.arch }} --publish never"]);
+  const upload = build.steps.find((step) => step.uses?.startsWith("actions/upload-artifact@"));
   assert.equal(upload.with.path, "apps/desktop/dist/specvania-*-${{ matrix.arch }}.${{ matrix.extension }}");
   assert.equal(upload.with["if-no-files-found"], "error");
   assert.equal(upload.with.name, "desktop-${{ matrix.platform }}-${{ matrix.arch }}");
   const release = workflow.jobs.release;
-  assert.equal(release.needs, "build");
+  assert.deepEqual(release.needs, ["check", "build-python", "publish-pypi", "build-desktop"]);
+  assert.equal(release.if, "github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')");
   assert.deepEqual(release.permissions, { contents: "write" });
-  const download = release.steps.find((step) => step.uses === "actions/download-artifact@v4");
+  const download = release.steps.find((step) => step.uses?.startsWith("actions/download-artifact@") && step.with.pattern === "desktop-*");
   assert.equal(download.with.path, "artifacts");
   assert.equal(download.with["merge-multiple"], true);
-  const publish = release.steps.find((step) => step.uses === "softprops/action-gh-release@v2");
-  assert.equal(publish.with.files, "artifacts/specvania-*.dmg\nartifacts/specvania-*.AppImage");
-  assert.equal(publish.with.fail_on_unmatched_files, true);
+  const checksums = release.steps.find((step) => step.name === "Generate SHA256SUMS");
+  for (const pattern of ["specvania-*-arm64.dmg", "specvania-*-x64.dmg", "specvania-*-x64.AppImage"]) {
+    assert.ok(checksums.run.includes(pattern), pattern);
+  }
+  const publish = release.steps.find((step) => step.name === "Create GitHub Release");
+  assert.ok(release.steps.indexOf(checksums) < release.steps.indexOf(publish));
+  assert.equal(publish.env.GITHUB_TOKEN, "${{ secrets.GITHUB_TOKEN }}");
+  assert.equal(publish.run, 'gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --notes-file release-notes.md artifacts/*.tar.gz artifacts/*.whl artifacts/*.dmg artifacts/*.AppImage artifacts/SHA256SUMS');
 });
 
 test("desktop_readme_documents_unsigned_installation_and_discovery", () => {

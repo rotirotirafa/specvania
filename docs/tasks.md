@@ -643,10 +643,12 @@ files: .github/workflows/release.yml, .github/workflows/ci.yml, CHANGELOG.md, py
 D26: a workflow on tags `v*.*.*` builds the sdist and wheel with `uv build`, checks that the tag, `pyproject.toml` and `apps/desktop/package.json` agree, publishes to PyPI through trusted publishing (`id-token: write`, no secret), builds the desktop app on macOS (dmg arm64 and x64) and Linux (AppImage), and creates the GitHub Release with the artifacts, `SHA256SUMS` and the version's section of `CHANGELOG.md` (Keep a Changelog). The same build jobs run on pull requests without publishing. `CHANGELOG.md` starts with 0.3.0.
 
 Checklist:
-- [ ] The release workflow publishes only on a version tag, uses trusted publishing and stores no token (test on the workflow file)
-- [ ] A test fails when the tag, `pyproject.toml` and `apps/desktop/package.json` disagree
-- [ ] Pull requests build the sdist, wheel and desktop artifacts without publishing (workflow test; CI run owner-checked)
-- [ ] `CHANGELOG.md` has a 0.3.0 section the release job extracts (test)
+- [x] The release workflow publishes only on a version tag, uses trusted publishing and stores no token (test on the workflow file)
+- [x] A test fails when the tag, `pyproject.toml` and `apps/desktop/package.json` disagree
+- [x] Pull requests build the sdist, wheel and desktop artifacts without publishing (workflow test; CI run owner-checked)
+- [x] `CHANGELOG.md` has a 0.3.0 section the release job extracts (test)
+
+The pull-request checkbox records workflow-test evidence only; the hosted CI run remains the owner's check.
 
 ### T41 · Demo and launch kit
 depends_on: T23, T39, T40
