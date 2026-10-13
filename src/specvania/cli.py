@@ -379,6 +379,7 @@ def create_app() -> typer.Typer:
                         bus=bus,
                         live_snapshot=snapshot,
                         port=config.ui.port,
+                        repository_root=root,
                     )
                     start_run_ui(
                         server,
@@ -494,6 +495,8 @@ def create_app() -> typer.Typer:
                                 ledger=ledger,
                                 bus=bus,
                                 port=config.ui.port,
+                                repository_root=git.root,
+                                world_directory=directory.resolve(),
                             )
                             start_run_ui(
                                 server,
@@ -612,6 +615,7 @@ def create_app() -> typer.Typer:
         guard = RedactionGuard()
         clock = SystemClock()
         config = Config()
+        code_root: Path | None = None
         try:
             if source == "demo":
                 resource = files("specvania").joinpath("examples/demo/events.jsonl")
@@ -626,6 +630,10 @@ def create_app() -> typer.Typer:
                     root, config.ledger, clock=clock, guard=guard
                 ) as ledger:
                     events = load_replay(source, guard=guard, ledger=ledger)
+                    recorded_run = ledger.get_run(source)
+                    feature = ledger.get_feature(recorded_run.feature_id)
+                    project = ledger.get_project(feature.project_id)
+                    code_root = Path(project.repo_root)
             if not events:
                 raise UIServerError("Cannot replay an empty event stream.")
             server = UIServer(
@@ -633,6 +641,7 @@ def create_app() -> typer.Typer:
                 clock=clock,
                 run_id=events[0].run_id,
                 replay=events,
+                repository_root=code_root,
                 speed=1 if speed == "1" else 2 if speed == "2" else 4,
             )
 

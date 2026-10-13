@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import codecs
 import contextlib
 import hmac
 import logging
+import re
 import secrets
 import socket
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Iterator, Sequence
 from pathlib import Path
 from queue import Empty, Queue
 from threading import Event as ThreadEvent
@@ -23,6 +25,7 @@ from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocketDisconnect
 
 from specvania.agent.approval import ApprovalRequest, DesktopResponder
+from specvania.agent.sandbox import Sandbox, SandboxRefusal
 from specvania.clock import Clock
 from specvania.ledger import Ledger, LedgerError
 from specvania.run.bus import EventBus, Subscription
@@ -34,8 +37,10 @@ from specvania.run.events import (
     SecretLeakError,
     ShortText,
 )
+from specvania.run.gitops import GitError, GitOps
 from specvania.run.jsonl import EventStreamError, decode_events
-from specvania.run.state import RunState, StateFoldError, fold_events
+from specvania.run.state import RoomState, RunState, StateFoldError, fold_events
+from specvania.sdd.world import WorldParseError, parse_world
 from specvania.ui.launcher import open_browser
 
 
@@ -55,6 +60,88 @@ class TokenLogFormatter(logging.Formatter):
 
 class UIServerError(Exception):
     """An invalid replay or unavailable local UI that the player can fix."""
+
+
+class RoomCodeError(UIServerError):
+    """A repository or room is unavailable; never carries Git diagnostics."""
+
+
+class RoomCodeFile(FrozenModel):
+    path: str
+    status: str
+    content: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    diff: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    truncated: bool = False
+
+
+class RoomCode(FrozenModel):
+    room_id: str
+    kind: Literal["commit", "working", "files"]
+    commit: str | None = None
+    files: tuple[RoomCodeFile, ...] = ()
+    truncated: bool = False
+    reason: str | None = None
+
+
+def _cap_body(body: str, limit: int, marker: str) -> str:
+    # Reserve the marker inside the cap, and never cut a UTF-8 code point.
+    suffix = f"\n… truncated by specvania ({marker} cap)\n"
+    prefix = body.encode("utf-8")[: max(0, limit - len(suffix.encode("utf-8")))]
+    return prefix.decode("utf-8", errors="ignore") + suffix
+
+
+def _cap_room_code(response: RoomCode, candidates: Iterator[RoomCodeFile]) -> RoomCode:
+    """Bound the encoded JSON, including escaping, metadata and the marker."""
+    files: list[RoomCodeFile] = []
+    for file in candidates:
+        key = "diff" if file.diff is not None else "content"
+        body = file.diff if file.diff is not None else file.content or ""
+        if len(body.encode("utf-8")) > 200_000:
+            body = _cap_body(body, 200_000, "200 kB")
+            file = file.model_copy(update={key: body, "truncated": True})
+        proposed = response.model_copy(
+            update={
+                "files": tuple([*files, file]),
+                "truncated": response.truncated or file.truncated,
+            }
+        )
+        if len(proposed.model_dump_json().encode("utf-8")) <= 1_000_000:
+            files.append(file)
+            response = proposed
+            continue
+        # Binary search the prefix using actual JSON size (quotes/newlines escape).
+        low, high = 0, len(body.encode("utf-8"))
+        best: RoomCode | None = None
+        while low <= high:
+            limit = (low + high) // 2
+            shortened = file.model_copy(
+                update={key: _cap_body(body, limit, "1 MB"), "truncated": True}
+            )
+            proposed = response.model_copy(
+                update={"files": tuple([*files, shortened]), "truncated": True}
+            )
+            if len(proposed.model_dump_json().encode("utf-8")) <= 1_000_000:
+                best, low = proposed, limit + 1
+            else:
+                high = limit - 1
+        if best is not None:
+            return best
+        # Metadata alone can fill the response: put the marker on the last file.
+        while files:
+            last = files.pop()
+            last_key = "diff" if last.diff is not None else "content"
+            marked = last.model_copy(
+                update={last_key: _cap_body("", 0, "1 MB"), "truncated": True}
+            )
+            proposed = response.model_copy(
+                update={"files": tuple([*files, marked]), "truncated": True}
+            )
+            if len(proposed.model_dump_json().encode("utf-8")) <= 1_000_000:
+                return proposed
+        return response.model_copy(
+            update={"files": (), "truncated": True, "reason": _cap_body("", 0, "1 MB")}
+        )
+    return response
 
 
 type StudioPhase = Literal[
@@ -248,6 +335,9 @@ class UIServer:
         studio_snapshot: Callable[[], StateMessage] | None = None,
         control_responder: Callable[[StudioControl], bool] | None = None,
         studio_info: Callable[[], StudioState | None] | None = None,
+        repository_root: Path | None = None,
+        world_directory: Path | None = None,
+        code_repository: Callable[[], tuple[Path | None, Path | None]] | None = None,
     ) -> None:
         if speed not in (1, 2, 4) or not 0 <= port <= 65535:
             raise UIServerError("Use replay speed 1, 2 or 4 and a valid local port.")
@@ -258,6 +348,9 @@ class UIServer:
         ):
             raise UIServerError("Live UI requires an event bus and a run snapshot.")
         self.studio_info = studio_info
+        self.repository_root = repository_root
+        self.world_directory = world_directory
+        self.code_repository = code_repository
         self.studio_snapshot = studio_snapshot
         self.control_responder = control_responder
         self._state_lock = RLock()
@@ -392,11 +485,172 @@ class UIServer:
             )
             return response
 
+        @app.get("/api/rooms/{room_id}/code")
+        def room_code(room_id: str) -> Response:
+            try:
+                result = self.room_code(room_id)
+            except RoomCodeError as error:
+                return JSONResponse({"detail": str(error)}, status_code=404)
+            return JSONResponse(result.model_dump(mode="json"))
+
         app.websocket("/ws")(self._websocket)
         app.mount(
             "/", StaticFiles(directory=Path(__file__).parent / "static", html=True)
         )
         return app
+
+    def _redact_code(self, text: str) -> str:
+        return self.guard.redact(text)
+
+    def room_code(self, room_id: str) -> RoomCode:
+        """Read repository bodies only here, never through events or the ledger."""
+        root, directory = (
+            self.code_repository()
+            if self.code_repository is not None
+            else (self.repository_root, self.world_directory)
+        )
+        if root is None:
+            raise RoomCodeError("Repository unavailable for this view.")
+        if re.fullmatch(r"T\d{2,}", room_id, flags=re.ASCII) is None:
+            raise RoomCodeError("Room unavailable in the current world.")
+        try:
+            if self.studio_snapshot is not None:
+                state = self.studio_snapshot().state
+            else:
+                snapshot = (
+                    self.replay
+                    if self.replay is not None
+                    else self.live_snapshot()
+                    if self.live_snapshot is not None
+                    else self.ledger.list_events(self.run_id)
+                    if self.ledger
+                    else ()
+                )
+                state = fold_events(snapshot)
+            git = GitOps(root)
+            sandbox = Sandbox(git.root)
+            progress = next((room for room in state.rooms if room.id == room_id), None)
+            if state.rooms and progress is None:
+                raise RoomCodeError("Room unavailable in the current world.")
+            commit = (
+                progress.commit
+                if progress and progress.state == RoomState.CLEARED
+                else None
+            )
+            kind: Literal["commit", "working", "files"] = (
+                "commit"
+                if commit
+                else "working"
+                if progress and progress.state == RoomState.ACTIVE
+                else "files"
+            )
+            directory = directory or (
+                git.root / ".specvania/specs" / state.feature if state.feature else None
+            )
+            world = None
+            if kind == "files" and directory is not None:
+                # Validate the documents before parsing: they too can be symlinks.
+                safe_directory = sandbox.resolve(str(directory.absolute()))
+                for name in ("spec.md", "tasks.md"):
+                    sandbox.resolve(str(safe_directory / name))
+                world = parse_world(safe_directory)
+            room = (
+                next((room for room in world.rooms if room.id == room_id), None)
+                if world
+                else None
+            )
+            if not state.rooms and room is None:
+                raise RoomCodeError("Room unavailable in the current world.")
+            response = RoomCode(room_id=room_id, kind=kind, commit=commit)
+            if kind == "files":
+                if room is None:
+                    raise RoomCodeError("Room files unavailable in the current world.")
+                selected: set[str] = set()
+                available = git.code_files()
+                for entry in room.files:
+                    try:
+                        path = sandbox.resolve(entry)
+                    except SandboxRefusal:
+                        continue
+                    name = path.relative_to(git.root).as_posix()
+                    if path.is_dir():
+                        prefix = "" if name == "." else name + "/"
+                        selected.update(
+                            candidate
+                            for candidate in available
+                            if candidate.startswith(prefix)
+                        )
+                    elif path.is_file():
+                        selected.add(name)
+                paths = tuple((name, "file") for name in sorted(selected))
+            else:
+                paths = git.code_paths(commit)
+
+            def bodies() -> Iterator[RoomCodeFile]:
+                for name, status in paths:
+                    try:
+                        path = sandbox.resolve(name)
+                    except SandboxRefusal:
+                        continue
+                    truncated = False
+                    margin = 0
+                    if kind == "files":
+                        if not path.is_file():
+                            continue
+                        # Include secret lookahead and a UTF-8 code point/probe.
+                        margin = self.guard.max_secret_bytes + 5
+                        read_limit = 200_000 + margin
+                        with path.open("rb") as stream:
+                            data = stream.read(read_limit)
+                        truncated = len(data) == read_limit
+                        try:
+                            if b"\0" in data:
+                                body = "Binary file (content omitted).\n"
+                                truncated = False
+                            else:
+                                body = codecs.getincrementaldecoder("utf-8")().decode(
+                                    data, final=not truncated
+                                )
+                        except UnicodeError:
+                            body = "Binary file (content omitted).\n"
+                            truncated = False
+                        key = "content"
+                    else:
+                        body = git.code_diff(name, commit=commit)
+                        key = "diff"
+                    redacted = self._redact_code(body)
+                    if truncated:
+                        # Redaction can shrink the body and bring an incomplete
+                        # secret at the read boundary inside the output cap.
+                        # Discard the lookahead after redaction, before capping.
+                        encoded = redacted.encode("utf-8")
+                        redacted = encoded[: max(0, len(encoded) - margin)].decode(
+                            "utf-8", errors="ignore"
+                        )
+                        redacted = _cap_body(redacted, 200_000, "200 kB")
+                    yield RoomCodeFile(
+                        path=self._redact_code(name),
+                        status=status,
+                        content=redacted if key == "content" else None,
+                        diff=redacted if key == "diff" else None,
+                        truncated=truncated,
+                    )
+
+            return _cap_room_code(response, bodies())
+        except GitError as error:
+            raise RoomCodeError(str(error)) from None
+        except (
+            OSError,
+            UnicodeError,
+            SandboxRefusal,
+            WorldParseError,
+            LedgerError,
+            StateFoldError,
+            SecretLeakError,
+        ):
+            raise RoomCodeError(
+                "Room code unavailable; check repository and world files."
+            ) from None
 
     async def _websocket(self, websocket: WebSocket) -> None:
         if not _matches(websocket.query_params.get("view_token"), self.view_token):

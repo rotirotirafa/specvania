@@ -354,7 +354,7 @@ class SecretLeakError(ValueError):
 
 
 class RedactionGuard:
-    """Reject, rather than rewrite, events containing registered secrets."""
+    """Reject secret-bearing events and redact transient text using one registry."""
 
     def __init__(self) -> None:
         self._secrets: set[str] = set()
@@ -374,3 +374,21 @@ class RedactionGuard:
         with self._lock:
             if any(secret in serialized for secret in self._secrets):
                 raise SecretLeakError("Event rejected: contains a registered secret")
+
+    def redact(self, text: str, replacement: str = "[redacted]") -> str:
+        """Replace longest secrets first; fail closed if JSON would still leak."""
+        with self._lock:
+            for secret in sorted(self._secrets, key=len, reverse=True):
+                text = text.replace(secret, replacement)
+            serialized = json.dumps(text, ensure_ascii=False)
+            if any(secret in serialized for secret in self._secrets):
+                return ""
+            return text
+
+    @property
+    def max_secret_bytes(self) -> int:
+        """Lookahead needed for literal and JSON-escaped UTF-8 secret values."""
+        with self._lock:
+            return max(
+                (len(secret.encode("utf-8")) for secret in self._secrets), default=0
+            )

@@ -235,6 +235,29 @@ def test_guards_are_isolated_and_reject_empty_registration() -> None:
         second.register("")
 
 
+@pytest.mark.parametrize("ensure_ascii", [False, True])
+def test_redaction_guard_redacts_literal_and_json_escaped_secrets(
+    ensure_ascii: bool,
+) -> None:
+    guard = RedactionGuard()
+    secret = 'fake"\\\nclé'
+    guard.register("fake")
+    guard.register(secret)
+    escaped = json.dumps(secret, ensure_ascii=ensure_ascii)[1:-1]
+    assert guard.redact(f"safe {secret} {escaped} fake") == (
+        "safe [redacted] [redacted] [redacted]"
+    )
+    assert guard.redact(secret, replacement="hidden") == "hidden"
+
+
+def test_redaction_guard_redact_fails_closed_on_serialized_leaks() -> None:
+    guard = RedactionGuard()
+    guard.register(r"fake\nkey")
+    assert guard.redact("fake\nkey") == ""
+    guard.register("redacted")
+    assert guard.redact(r"fake\nkey") == ""
+
+
 def test_fake_clock_advances_without_wall_clock_waits() -> None:
     start = datetime(2026, 10, 12, tzinfo=UTC)
     clock: Clock = FakeClock(start)

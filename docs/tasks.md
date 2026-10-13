@@ -419,11 +419,11 @@ files: src/specvania/ui/server.py, src/specvania/ui/studio.py, src/specvania/run
 `GET /api/rooms/<id>/code` (view token) returns, for a cleared room, the files changed by its commit and the commit diff; for the active room, the working-tree diff against the attempt base; for any other room, the files listed in its `files:` line with their current content. Every path passes the Sandbox rules (D12: no `.git/`, ignored or secret paths, nothing outside the root) and every body passes the redaction guard. Caps: 200 kB per file and 1 MB per response, truncated with a visible marker. When the repository is not available (a replay of an exported run), the endpoint answers 404 with a reason.
 
 Checklist:
-- [ ] A cleared room returns its commit's files and diff; the active room returns the working diff
-- [ ] `.git/`, `.env`, ignored files and paths outside the root are never returned (one test per case)
-- [ ] Files and responses above the caps are truncated with the marker
-- [ ] A token value written into a repository file is redacted in the response
-- [ ] Requests without the view token get 401
+- [x] A cleared room returns its commit's files and diff; the active room returns the working diff
+- [x] `.git/`, `.env`, ignored files and paths outside the root are never returned (one test per case)
+- [x] Files and responses above the caps are truncated with the marker
+- [x] A token value written into a repository file is redacted in the response
+- [x] Requests without the view token get 401
 
 ### T27 · Stamina as a token budget and the party probe
 depends_on: T25

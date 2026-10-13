@@ -98,6 +98,7 @@ class Studio:
         self._abort: Callable[[], None] | None = None
         self._run_state: Callable[[], RunState] = RunState
         self._project: StudioProject | None = None
+        self._code_world: Path | None = None
         self._worlds: tuple[str, ...] = ()
         self._open_bugs = 0
         self._question: ClarifyPrompt | None = None
@@ -114,8 +115,17 @@ class Studio:
             studio_snapshot=self.snapshot,
             studio_info=self.info,
             control_responder=self.control,
+            code_repository=self.code_repository,
         )
         self.server.desktop_responder = _StudioResponder(self._cancelled)
+
+    def code_repository(self) -> tuple[Path | None, Path | None]:
+        """The code view follows the studio's open project and selected world."""
+        with self._lock:
+            return (
+                Path(self._project.path) if self._project else None,
+                self._code_world,
+            )
 
     def snapshot(self) -> StateMessage:
         with self._lock:
@@ -322,11 +332,13 @@ class Studio:
                     "Git tree is dirty; cancel or start with allow_dirty.",
                     dirty_paths=dirty,
                 )
+            self._code_world = directory
         elif not message.idea.strip():
             raise StudioError("Give the Mage a non-empty idea.")
         self._cancelled.clear()
         self._error = None
         if isinstance(message, StartPlan):
+            self._code_world = None
             self.transition("planning")
 
         def execute() -> None:
@@ -500,6 +512,7 @@ class Studio:
                 self._project, self._worlds, self._open_bugs = previous
                 raise
             self._error = None
+            self._code_world = None
             if self.phase != "project_open":
                 self.transition("project_open")
             else:
@@ -528,6 +541,7 @@ class Studio:
             if directory.name not in self._worlds:
                 raise StudioError("World unavailable.")
             GitOps(Path(self._project.path)).save_world(message.slug)
+            self._code_world = directory
             self._refresh()
             if self.phase == "project_open":
                 self.transition("world_ready")

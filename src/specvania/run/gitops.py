@@ -1,5 +1,6 @@
 """Local Git operations for a run; no remote or destructive operations."""
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -15,12 +16,16 @@ class GitOps:
         self.root = directory.resolve()
         self.root = Path(self._git("rev-parse", "--show-toplevel").strip())
 
-    def _git(self, *args: str, allowed_codes: tuple[int, ...] = (0,)) -> str:
+    def _git(
+        self,
+        *args: str,
+        allowed_codes: tuple[int, ...] = (0,),
+        binary_marker: bool = False,
+    ) -> str:
         try:
             result = subprocess.run(
                 ["git", "-C", str(self.root), *args],
                 capture_output=True,
-                text=True,
                 check=False,
             )
         except OSError:
@@ -31,7 +36,14 @@ class GitOps:
                 f"Git {args[0]} failed; check repository state, "
                 "identity and permissions."
             )
-        return result.stdout
+        if binary_marker:
+            if b"\0" in result.stdout:
+                return "Binary file (diff omitted).\n"
+            try:
+                return result.stdout.decode("utf-8")
+            except UnicodeError:
+                return "Binary file (diff omitted).\n"
+        return result.stdout.decode("utf-8")
 
     def check(self, *, allow_dirty: bool = False) -> None:
         self.head()  # A run needs an existing HEAD, not an unborn repository.
@@ -80,6 +92,86 @@ class GitOps:
 
     def head(self) -> str:
         return self._git("rev-parse", "HEAD").strip()
+
+    def code_paths(self, commit: str | None = None) -> tuple[tuple[str, str], ...]:
+        """Read changed paths without rename pairs containing protected names."""
+        if commit is not None:
+            if re.fullmatch(r"[0-9a-fA-F]{7,64}", commit) is None:
+                raise GitError("Git commit unavailable; check repository state.")
+            records = self._git(
+                "show",
+                "--format=",
+                "--name-status",
+                "-z",
+                "--no-renames",
+                "--no-ext-diff",
+                "--no-textconv",
+                commit,
+                "--",
+            )
+        else:
+            records = self._git(
+                "diff",
+                "--name-status",
+                "-z",
+                "--no-renames",
+                "--no-ext-diff",
+                "--no-textconv",
+                "HEAD",
+                "--",
+            )
+        parts = records.split("\0")
+        paths = [(parts[i + 1], parts[i]) for i in range(0, len(parts) - 1, 2)]
+        if commit is None:
+            paths.extend((name, "A") for name in self._paths("--others"))
+        return tuple(sorted(set(paths)))
+
+    def code_diff(self, path: str, *, commit: str | None = None) -> str:
+        """One Sandbox-approved path; external diff and textconv never run."""
+        options = (
+            "--no-ext-diff",
+            "--no-textconv",
+            "--no-renames",
+            "--no-color",
+            "--no-relative",
+            "--src-prefix=a/",
+            "--dst-prefix=b/",
+        )
+        if commit is not None:
+            return self._git(
+                "--literal-pathspecs",
+                "show",
+                "--format=",
+                *options,
+                commit,
+                "--",
+                path,
+                binary_marker=True,
+            )
+        if path in self._paths("--others"):
+            return self._git(
+                "diff",
+                *options,
+                "--no-index",
+                "--",
+                "/dev/null",
+                path,
+                allowed_codes=(0, 1),
+                binary_marker=True,
+            )
+        return self._git(
+            "--literal-pathspecs",
+            "diff",
+            *options,
+            "HEAD",
+            "--",
+            path,
+            binary_marker=True,
+        )
+
+    def code_files(self) -> tuple[str, ...]:
+        """Tracked and non-ignored untracked candidates; caller applies Sandbox."""
+        return tuple(sorted(set(self._paths("--cached", "--others"))))
 
     def origin_url(self) -> str:
         """Read local remote metadata only; a missing origin never blocks a run."""
