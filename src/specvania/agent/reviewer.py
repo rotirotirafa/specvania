@@ -11,6 +11,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, RootModel, ValidationError
 
 from specvania.agent.gates import GateExecution
+from specvania.agent.prompts import language_messages
 from specvania.agent.sandbox import Sandbox, SandboxRefusal
 from specvania.clock import Clock
 from specvania.provider.client import ChatMessage
@@ -197,7 +198,10 @@ class Reviewer:
             ChatMessage(role="user", content=json.dumps(payload, ensure_ascii=False)),
         ]
         for attempt in range(3):
-            output = self._router.complete(Role.PALADIN, messages).content
+            output = self._router.complete(
+                Role.PALADIN,
+                lambda: language_messages(messages, self._router.ui.language),
+            ).content
             try:
                 result = model.model_validate_json(extract_json_value(output, shape))
                 if validate is not None:

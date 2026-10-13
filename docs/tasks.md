@@ -448,10 +448,10 @@ files: src/specvania/config.py, src/specvania/sdd/planner.py, src/specvania/sdd/
 D22: `[ui] language` is `"en"` or `"pt-BR"` (default `"en"`); the studio's `set_language{language}` overrides it for the session. Mage, Warrior and Paladin prompts get one instruction to write human-facing text — Clarify questions and options, spec prose, room titles and checklist items, the Warrior's `thought`, the Paladin's feedback — in the chosen language, and to keep code, identifiers, file paths, commit message prefixes and world-format keywords in English. A change applies from the next model call.
 
 Checklist:
-- [ ] The chosen language reaches every Mage, Warrior and Paladin prompt (fake provider captures the messages)
-- [ ] A world written in Brazilian Portuguese by the fake Mage passes `specvania lint`
-- [ ] `set_language` during a run applies from the next model call
-- [ ] Unknown language values are rejected by the config and by the studio
+- [x] The chosen language reaches every Mage, Warrior and Paladin prompt (fake provider captures the messages)
+- [x] A world written in Brazilian Portuguese by the fake Mage passes `specvania lint`
+- [x] `set_language` during a run applies from the next model call
+- [x] Unknown language values are rejected by the config and by the studio
 
 ---
 

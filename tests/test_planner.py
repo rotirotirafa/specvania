@@ -573,7 +573,15 @@ def test_context_uses_markdown_resources_and_safe_truncated_map(tmp_path: Path) 
             assert context["documents"][name] == f"context from {name}"
         for index, name in [(0, "clarify.md"), (1, "spec.md")]:
             prompt = files("specvania.sdd").joinpath("prompts", name).read_text()
-            assert provider.calls[index].messages[0].content == prompt
+            instruction = (
+                files("specvania.agent.prompts")
+                .joinpath("language.md")
+                .read_text()
+                .replace("{language}", "English")
+            )
+            assert provider.calls[index].messages[0].content == (
+                prompt.rstrip() + "\n\n" + instruction
+            )
         assert result.directory.is_dir()
 
 

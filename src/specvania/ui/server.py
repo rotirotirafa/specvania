@@ -27,6 +27,7 @@ from starlette.websockets import WebSocketDisconnect
 from specvania.agent.approval import ApprovalRequest, DesktopResponder
 from specvania.agent.sandbox import Sandbox, SandboxRefusal
 from specvania.clock import Clock
+from specvania.config import Language
 from specvania.ledger import Ledger, LedgerError
 from specvania.run.bus import EventBus, Subscription
 from specvania.run.events import (
@@ -165,6 +166,7 @@ class StudioState(FrozenModel):
     kind: Literal["studio_state"] = "studio_state"
     phase: StudioPhase
     project: StudioProject | None
+    language: Language = "en"
     worlds: tuple[ShortText, ...] = ()
     open_bugs: int = Field(default=0, ge=0)
     clarify_request: ClarifyPrompt | None = None
@@ -260,6 +262,12 @@ class PauseReply(FrozenModel):
     control_token: str = Field(default="", repr=False, exclude=True)
 
 
+class SetLanguage(FrozenModel):
+    kind: Literal["set_language"]
+    language: Language
+    control_token: str = Field(default="", repr=False, exclude=True)
+
+
 type StudioControl = (
     Shutdown
     | OpenProject
@@ -269,6 +277,7 @@ type StudioControl = (
     | SaveWorld
     | StartRun
     | PauseReply
+    | SetLanguage
 )
 type ControlMessage = Annotated[
     ApprovalAnswer | StudioControl, Field(discriminator="kind")

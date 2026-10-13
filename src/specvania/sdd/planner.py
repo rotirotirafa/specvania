@@ -11,6 +11,7 @@ from typing import Annotated
 
 from pydantic import Field, ValidationError, model_validator
 
+from specvania.agent.prompts import language_messages
 from specvania.agent.sandbox import Sandbox, SandboxRefusal
 from specvania.bugs import source_bug
 from specvania.clock import Clock
@@ -86,7 +87,9 @@ def _clarify(router: Router, context: dict[str, object]) -> Clarification:
         ChatMessage(role="user", content=json.dumps(context)),
     ]
     for attempt in range(3):
-        output = router.complete(Role.MAGE, messages).content
+        output = router.complete(
+            Role.MAGE, lambda: language_messages(messages, router.ui.language)
+        ).content
         try:
             return Clarification.model_validate_json(extract_json_value(output, "{"))
         except (ModelOutputError, ValidationError) as error:
@@ -285,7 +288,9 @@ def plan(
         with TemporaryDirectory(prefix=".plan-", dir=directory) as temporary:
             staging = Path(temporary)
             for attempt in range(3):
-                reply = router.complete(Role.MAGE, messages)
+                reply = router.complete(
+                    Role.MAGE, lambda: language_messages(messages, router.ui.language)
+                )
                 try:
                     draft = Draft.model_validate_json(
                         extract_json_value(reply.content, "{")

@@ -11,7 +11,14 @@ from specvania.agent.gates import GateError
 from specvania.agent.sandbox import Sandbox, SandboxRefusal
 from specvania.bugs import BugError, open_bug_ledger
 from specvania.clock import Clock
-from specvania.config import Config, ConfigError, initialize_config, load_config
+from specvania.config import (
+    Config,
+    ConfigError,
+    Language,
+    UIConfig,
+    initialize_config,
+    load_config,
+)
 from specvania.ledger import Ledger, LedgerError
 from specvania.provider.client import (
     ChatMessage,
@@ -42,6 +49,7 @@ from specvania.ui.server import (
     OpenProject,
     PauseReply,
     SaveWorld,
+    SetLanguage,
     Shutdown,
     StartPlan,
     StartRun,
@@ -106,6 +114,9 @@ class Studio:
         self._pause: RunPaused | None = None
         self._choice: PauseDecision | None = None
         self._error: str | None = None
+        self._language: Language = "en"
+        self._language_override: Language | None = None
+        self._active_ui: UIConfig | None = None
         self.guard, self.clock = guard, clock
         self.server = UIServer(
             guard=guard,
@@ -139,11 +150,12 @@ class Studio:
 
     def info(self) -> StudioState | None:
         with self._lock:
-            if self._project is None:
+            if self._project is None and self._language_override is None:
                 return None
             message = StudioState(
                 phase=self.phase,
                 project=self._project,
+                language=self._language,
                 worlds=self._worlds,
                 open_bugs=self._open_bugs,
                 clarify_request=self._question,
@@ -212,9 +224,16 @@ class Studio:
         self._worlds = tuple(worlds)
         self._open_bugs = 0
         if self._project.initialized:
+            if self._active_ui is None:
+                self._language = (
+                    self._language_override
+                    or load_config(root / ".specvania/config.toml").ui.language
+                )
             ledger, bugs = open_bug_ledger(root, clock=self.clock, guard=self.guard)
             with ledger:
                 self._open_bugs = len(bugs.list())
+        elif self._language_override is None:
+            self._language = "en"
         self._safe(self._project.model_dump_json())
         self._safe("\n".join(self._worlds))
 
@@ -308,6 +327,8 @@ class Studio:
             raise StudioError("Initialize this project before planning or running.")
         root = Path(self._project.path)
         config = load_config(root / ".specvania/config.toml")
+        if self._language_override is not None:
+            config.ui.language = self._language_override
         key = os.environ.get(config.provider.api_key_env, "")
         if not key.strip():
             raise StudioError(
@@ -337,6 +358,8 @@ class Studio:
             raise StudioError("Give the Mage a non-empty idea.")
         self._cancelled.clear()
         self._error = None
+        self._active_ui = config.ui
+        self._language = config.ui.language
         if isinstance(message, StartPlan):
             self._code_world = None
             self.transition("planning")
@@ -410,6 +433,7 @@ class Studio:
                 )
             finally:
                 with self._lock:
+                    self._active_ui = None
                     self._run_state = lambda: final_state
                     self._question, self._answer, self._pause, self._choice = (
                         None,
@@ -481,6 +505,12 @@ class Studio:
         return True
 
     def _control(self, message: StudioControl) -> None:
+        if isinstance(message, SetLanguage) and not self.stopped.is_set():
+            self._language_override = self._language = message.language
+            if self._active_ui is not None:
+                self._active_ui.language = message.language
+            self.server.publish_studio_info()
+            return
         phases: dict[str, tuple[StudioPhase, ...]] = {
             "open_project": ("idle", "project_open", "world_ready", "finished"),
             "init_project": ("project_open",),

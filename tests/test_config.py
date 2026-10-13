@@ -62,7 +62,7 @@ def test_init_defaults_match_binding_decisions(repository: Path) -> None:
             "sqlite_path": ".specvania/ledger.db",
             "database_url_env": "SPECVANIA_DATABASE_URL",
         },
-        "ui": {"host": "127.0.0.1", "port": 0, "mode": "auto"},
+        "ui": {"host": "127.0.0.1", "port": 0, "mode": "auto", "language": "en"},
         "desktop": {},
     }
     assert tomllib.loads(path.read_text()) == expected
@@ -165,6 +165,7 @@ def test_custom_config_round_trips_without_reordering(tmp_path: Path) -> None:
         "host": "127.0.0.1",
         "port": 8765,
         "mode": "desktop",
+        "language": "en",
     }
     assert config.desktop.path == "/Applications/specvania.app"
 

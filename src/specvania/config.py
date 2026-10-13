@@ -14,6 +14,7 @@ type NonEmptyText = Annotated[
 type EnvName = Annotated[str, StringConstraints(pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")]
 type ModelChain = Annotated[list[NonEmptyText], Field(min_length=1)]
 type PositiveInt = Annotated[int, Field(strict=True, gt=0)]
+type Language = Literal["en", "pt-BR"]
 
 
 class ConfigError(Exception):
@@ -70,6 +71,7 @@ class LedgerConfig(ConfigModel):
 
 
 class UIConfig(ConfigModel):
+    language: Language = "en"
     host: Literal["127.0.0.1"] = "127.0.0.1"
     # Zero asks the operating system to allocate an available local port.
     port: Annotated[int, Field(strict=True, ge=0, le=65535)] = 0

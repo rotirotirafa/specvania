@@ -20,6 +20,7 @@ from specvania.agent.actions import (
     summarize_args,
 )
 from specvania.agent.approval import ApprovalError
+from specvania.agent.prompts import language_messages
 from specvania.agent.sandbox import Sandbox, SandboxRefusal
 from specvania.agent.tools import Observation, ToolError, Tools
 from specvania.clock import Clock
@@ -216,7 +217,10 @@ class Executor:
             action: Action | None = None
             for repair in range(3):
                 try:
-                    output = self._router.complete(Role.WARRIOR, messages).content
+                    output = self._router.complete(
+                        Role.WARRIOR,
+                        lambda: language_messages(messages, self._router.ui.language),
+                    ).content
                 except ProviderError as error:
                     return self._failed(step, "router_error", str(error))
                 messages.append(ChatMessage(role="assistant", content=output))

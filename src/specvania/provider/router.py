@@ -44,6 +44,7 @@ class Router:
         limiter: RateLimiter | None = None,
     ) -> None:
         self.provider = provider
+        self.ui = config.ui
         self._clock = clock
         self._run_id = run_id
         self._emit = emit
@@ -93,7 +94,11 @@ class Router:
                 return 0
         return max(0, seconds) if math.isfinite(seconds) else 0
 
-    def complete(self, role: Role, messages: Sequence[ChatMessage]) -> Completion:
+    def complete(
+        self,
+        role: Role,
+        messages: Sequence[ChatMessage] | Callable[[], Sequence[ChatMessage]],
+    ) -> Completion:
         with self._lock:
             chain = self._chains[role]
             while self._index[role] < len(chain):
@@ -103,7 +108,9 @@ class Router:
                 failure: ProviderError | None = None
                 reply: Completion | None = None
                 try:
-                    reply = self.provider.complete(model, messages)
+                    reply = self.provider.complete(
+                        model, messages() if callable(messages) else messages
+                    )
                 except ProviderError as error:
                     failure = error
                 self._emit(
