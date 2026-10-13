@@ -1,6 +1,7 @@
 import { PALETTE, AREA_COLORS, UI_COLORS } from "../pixel/palette.js";
 import { registerTextures, textureKey } from "../pixel/textures.js";
 import { worldFromRooms, layoutWorld, integerDisplayZoom } from "./layout.js";
+import { createMapAnimations } from "./animations.js";
 
 /** Geometric marks and literal labels encode state even with all color removed. */
 export function roomAppearance(state) {
@@ -67,6 +68,7 @@ export function mountMap(Phaser, host, browser = window) {
   let overview = false;
   let partyRoom = null;
   const objects = [];
+  const animations = createMapAnimations(browser);
   const media = browser.matchMedia("(prefers-reduced-motion: reduce)");
   let reducedMotion = media.matches;
   const motionChange = event => {
@@ -109,13 +111,9 @@ export function mountMap(Phaser, host, browser = window) {
         const ink = room.state === "cleared" ? PALETTE.K : PALETTE.W;
         text(room.x + 8, room.y + 5, room.id, ink);
         text(room.x + 8, room.y + 17, room.state, ink);
-        if (room.state === "active") {
-          ["mage", "warrior", "paladin"].forEach((role, index) => {
-            objects.push(scene.add.image(room.x + 16 + index * 20, room.y + 36, textureKey(role, "idle")));
-          });
-        }
       }
     }
+    animations.render(scene, layout, world.rooms.some(room => room.state === "active") ? partyRoom : null);
     const camera = scene.cameras.main;
     camera.stopFollow();
     camera.setZoom(1);
@@ -134,11 +132,13 @@ export function mountMap(Phaser, host, browser = window) {
   }
   const onState = ({ detail }) => {
     world = worldFromRooms(detail.rooms);
-    partyRoom = detail.active_room || null;
+    partyRoom = detail.active_room || detail.party_room || null;
+    animations.setState(detail);
     redraw();
   };
   const onEvent = ({ detail }) => {
     world = projectEvent(world, detail);
+    animations.onEvent(detail);
     if (["room_entered", "attempt_started", "respawn"].includes(detail.type)) partyRoom = detail.room_id;
     redraw(); // No timeout or animation queue delaying room state.
   };
@@ -167,6 +167,7 @@ export function mountMap(Phaser, host, browser = window) {
     browser.removeEventListener("specvania:event", onEvent);
     browser.removeEventListener("resize", resize);
     media.removeEventListener("change", motionChange);
+    animations.destroy();
     game.destroy(true);
   } };
 }

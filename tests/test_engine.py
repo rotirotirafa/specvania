@@ -1174,3 +1174,34 @@ def test_engine_project_records_local_origin_without_network(
     project = harness.ledger.get_project(feature.project_id)
     assert project.repo_root == str(harness.root.resolve())
     assert project.origin_url == origin
+
+
+@pytest.mark.parametrize("priced", [False, True])
+def test_run_started_supplies_configured_lives_and_optional_prices(
+    harness: Harness, priced: bool
+) -> None:
+    if priced:
+        (harness.root / ".specvania/pricing.toml").write_text(
+            '[[prices]]\nmodel = "w1"\ninput_per_mtok = 2.5\n'
+            'output_per_mtok = 5\ncurrency = "USD"\n'
+            'source_url = "https://example.invalid/pricing"\n'
+            'checked_on = "2026-10-12"\n'
+        )
+    directory = write_world(harness.root, [("T01", "A1", ())])
+    engine = harness.engine([*success("T01"), boss()], settings=config(lives=5))
+    engine.run(directory)
+    started = next(
+        event
+        for event in harness.ledger.list_events(engine.run_id)
+        if event.type == "run_started"
+    )
+    assert started.lives == 5
+    if priced:
+        assert len(started.prices) == 1
+        price = started.prices[0]
+        assert price.model == "w1"
+        assert str(price.input_per_mtok) == "2.5"
+        assert price.output_per_mtok == 5
+        assert price.currency == "USD"
+    else:
+        assert started.prices == ()

@@ -285,12 +285,12 @@ files: src/specvania/ui/static/hud/party.js, src/specvania/ui/static/hud/dialogu
 Party panel: per character the current model id, status (idle / thinking / acting / cooldown / waiting for player), stamina bar from the limiter budget, cooldown countdown, coins when priced or tokens otherwise, lives as hearts. Dialogue box at the bottom shows the latest `thought`, action, review feedback or approval request in RPG text style. Monsters stand in the rooms of open bugs; the Bestiary panel lists open bugs of the feature. Animations: walk between rooms, respawn flash, boss HP bar with one segment per scenario, monster defeated on `bug_closed`.
 
 Checklist:
-- [ ] Each status maps from specific events (mapping table in a code comment)
-- [ ] A `fallback` event updates the character's model id on screen
-- [ ] Boss HP loses exactly one segment per passed scenario
-- [ ] `bug_opened` places a monster in its room and the Bestiary; `bug_closed` plays the defeat animation and removes it
-- [ ] Without the control token, approval requests show "waiting for player — answer in the terminal or desktop window"
-- [ ] `prefers-reduced-motion` disables walk, flash and defeat animations
+- [x] Each status maps from specific events (mapping table in a code comment)
+- [x] A `fallback` event updates the character's model id on screen
+- [x] Boss HP loses exactly one segment per passed scenario
+- [x] `bug_opened` places a monster in its room and the Bestiary; `bug_closed` plays the defeat animation and removes it
+- [x] Without the control token, approval requests show "waiting for player — answer in the terminal or desktop window"
+- [x] `prefers-reduced-motion` disables walk, flash and defeat animations
 
 ### T18 · `replay` and synthetic demo
 depends_on: T14, T16

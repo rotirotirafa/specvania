@@ -14,6 +14,12 @@ Every change to the spec's intent, logged before the commit that introduces it. 
 
 ## Entries
 
+### DEV-009 · 2026-10-12 · T17
+**What changed:** Optional `run_started.lives` and `run_started.prices` carry the configured lives limit and reference model rates/currency to the HUD. The engine reads T12's local pricing file; absent metadata uses D13's three lives and tokens only. RunState preserves this metadata and the latest dialogue event for reconnects. Stamina is an explicitly labeled estimate: a cooldown empties the shared bar, which recovers linearly over its duration; overlapping cooldowns use the lowest recovery fraction.
+**Why:** Existing events omit the configurable lives limit, pricing and limiter availability. The reviewer authorized lives/prices wiring; the owner authorized deterministic cooldown-derived stamina. Round-trip, engine and Node tests cover old streams and HUD projections.
+**Impact:** T17, run/events.py, run/engine.py, run/state.py, D6, D11, D13 and S9. No new dependency, event type or CLI edit. Prices in the event are reference rates only; the HUD presents no invented price.
+**Approved by:** reviewer under the owner's wiring delegation.
+
 ### DEV-008 · 2026-10-12 · T13
 **What changed:** Within a run, repeated failed boss evaluations reuse one bug per area/scenario without another `bug_opened`. A later passing evaluation closes that scenario's still-open bug from the same run as fixed with `fixed_by_run` and emits `bug_closed`; choosing skip keeps the bug open.
 **Why:** The T13 reviewer found duplicate monsters after repeated failures and stale monsters after a successful retry. Fake-provider tests cover fail/retry/fail, fail/retry/pass and fail/skip.

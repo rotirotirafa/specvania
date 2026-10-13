@@ -7,6 +7,9 @@ export function mountApproval(socket, { window = globalThis.window, document = g
   let choices = [];
   let status;
   let connected = true;
+  const waitingHint = () => window.specvaniaDesktop?.controlToken?.()
+    ? "waiting for player"
+    : "waiting for player — answer in the terminal or desktop window";
 
   const text = (tag, value) => {
     const element = document.createElement(tag);
@@ -31,7 +34,7 @@ export function mountApproval(socket, { window = globalThis.window, document = g
       overflowWrap: "anywhere", boxShadow: `4px 4px ${UI_COLORS.background}`,
     });
     panel.append(text("h2", "Warrior requests approval"), text("pre", request.command), text("p", `cwd: ${request.cwd}`));
-    status = text("p", "waiting for player — answer in the terminal or desktop window");
+    status = text("p", waitingHint());
     panel.append(status);
     if (token && connected) {
       for (const [label, answer] of [["Allow", true], ["Deny", false]]) {
@@ -89,7 +92,7 @@ export function mountApproval(socket, { window = globalThis.window, document = g
       notify(event);
     } else if (message.kind === "approval_rejected" && status) {
       disable();
-      status.textContent = "waiting for player — answer in the terminal or desktop window";
+      status.textContent = waitingHint();
     }
   });
   socket.addEventListener("close", () => {

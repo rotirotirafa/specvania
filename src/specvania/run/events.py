@@ -5,6 +5,7 @@ can represent an event awaiting append. Consumers receive assigned sequences.
 """
 
 import json
+from decimal import Decimal
 from enum import StrEnum
 from threading import RLock
 from typing import Annotated, Literal
@@ -36,10 +37,25 @@ class EventBase(FrozenModel):
     seq: NonNegativeInt
 
 
+class ModelPrice(FrozenModel):
+    """Optional reference rates for the HUD; configured prices, never defaults."""
+
+    model: ShortText
+    input_per_mtok: Annotated[Decimal, Field(ge=0, allow_inf_nan=False)]
+    output_per_mtok: Annotated[Decimal, Field(ge=0, allow_inf_nan=False)]
+    currency: ShortText
+
+
 class RunStarted(EventBase):
     type: Literal["run_started"] = "run_started"
     feature: ShortText
     branch: ShortText
+    lives: PositiveInt | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    prices: tuple[ModelPrice, ...] = Field(
+        default=(), exclude_if=lambda value: not value
+    )
 
 
 class RoomInfo(FrozenModel):

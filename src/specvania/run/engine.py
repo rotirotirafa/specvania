@@ -16,6 +16,7 @@ from specvania.bugs import Bugs
 from specvania.clock import Clock
 from specvania.config import Config
 from specvania.ledger.repo import Ledger, RunIdTakenError, generate_run_id
+from specvania.pricing import load_pricing
 from specvania.provider.client import Provider, ProviderError
 from specvania.provider.router import Router
 from specvania.run.bus import EventBus
@@ -24,6 +25,7 @@ from specvania.run.events import (
     BossStarted,
     BugClosed,
     Event,
+    ModelPrice,
     Respawn,
     RoomCleared,
     RoomEntered,
@@ -348,6 +350,7 @@ class Engine:
         world = validate_directory(directory)
         self.world = world
         self.git.check(allow_dirty=allow_dirty)
+        pricing = load_pricing(self.git.root / ".specvania/pricing.toml")
         try:
             spec_md = (directory / "spec.md").read_text(encoding="utf-8")
             tasks_md = (directory / "tasks.md").read_text(encoding="utf-8")
@@ -377,7 +380,23 @@ class Engine:
                     ) from None
         branch = f"specvania/{self.run_id}"
         self.git.create_branch(self.run_id)
-        self.emit(RunStarted(**self._fields(), feature=feature.slug, branch=branch))
+        self.emit(
+            RunStarted(
+                **self._fields(),
+                feature=feature.slug,
+                branch=branch,
+                lives=self.config.limits.lives,
+                prices=tuple(
+                    ModelPrice(
+                        model=price.model,
+                        input_per_mtok=price.input_per_mtok,
+                        output_per_mtok=price.output_per_mtok,
+                        currency=price.currency,
+                    )
+                    for price in pricing.prices
+                ),
+            )
+        )
         payload = build_world_payload(world)
         self.emit(WorldLoaded(**self._fields(), **payload.model_dump()))
         for bug in self.bugs.list():

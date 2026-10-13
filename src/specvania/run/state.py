@@ -1,13 +1,20 @@
 """Deterministic run projections; no clock, I/O or shared mutable state."""
 
 from collections.abc import Iterable
+from datetime import datetime, timedelta
 from enum import StrEnum
 from typing import Literal
 
 from specvania.run.events import (
+    Action,
+    ApprovalAnswered,
+    ApprovalRequested,
     BossScenario,
     Event,
     FrozenModel,
+    ModelPrice,
+    PositiveInt,
+    Review,
     Role,
     RoomInfo,
 )
@@ -27,6 +34,7 @@ class RoomProgress(RoomInfo):
     attempt: int = 0
     commit: str | None = None
     feedback: str | None = None
+    failed_attempts: int = 0
 
 
 class ModelMetrics(FrozenModel):
@@ -39,13 +47,17 @@ class ModelMetrics(FrozenModel):
     fallbacks: int = 0
 
 
+type PartyStatus = Literal[
+    "idle", "thinking", "acting", "cooldown", "waiting for player"
+]
+
+
 class PartyMember(FrozenModel):
     role: Role
     model: str
-    status: Literal["idle", "thinking", "acting", "cooldown", "waiting for player"] = (
-        "idle"
-    )
+    status: PartyStatus = "idle"
     cooldown_seconds: float = 0
+    cooldown_duration: float = 0
 
 
 class BossProgress(FrozenModel):
@@ -78,10 +90,58 @@ class RunState(FrozenModel):
     party: tuple[PartyMember, ...] = ()
     bosses: tuple[BossProgress, ...] = ()
     bugs: tuple[BugProgress, ...] = ()
+    lives: PositiveInt | None = None
+    prices: tuple[ModelPrice, ...] = ()
+    dialogue: Action | Review | ApprovalRequested | ApprovalAnswered | None = None
+    party_room: str | None = None
 
 
 class StateFoldError(ValueError):
     """One projection accepts one run in strictly increasing sequence order."""
+
+
+def _party_statuses(event: Event) -> dict[Role, PartyStatus]:
+    """Snapshot counterpart of hud/party.js's documented event mapping."""
+    match event.type:
+        case "room_entered":
+            return {Role.WARRIOR: "thinking", Role.MAGE: "idle", Role.PALADIN: "idle"}
+        case "attempt_started" | "respawn" | "tool_refused":
+            return {Role.WARRIOR: "thinking"}
+        case "model_call" | "fallback":
+            return {event.role: "thinking"}
+        case "cooldown":
+            return {event.role: "cooldown"}
+        case "action":
+            return {Role.WARRIOR: "idle" if event.action == "finish" else "acting"}
+        case "gate_result":
+            return {Role.WARRIOR: "idle", Role.PALADIN: "thinking"}
+        case "review":
+            return {Role.WARRIOR: "idle", Role.PALADIN: "idle"}
+        case "room_cleared" | "room_failed" | "room_skipped":
+            return {Role.WARRIOR: "idle"}
+        case "approval_requested":
+            return {Role.WARRIOR: "waiting for player"}
+        case "approval_answered":
+            return {Role.WARRIOR: "acting"}
+        case "clarify_question":
+            return {Role.MAGE: "waiting for player"}
+        case "clarify_answer":
+            return {Role.MAGE: "thinking"}
+        case "spec_written":
+            return {Role.MAGE: "idle"}
+        case "boss_started":
+            return {Role.PALADIN: "thinking", Role.MAGE: "idle", Role.WARRIOR: "idle"}
+        case "boss_scenario":
+            return {Role.PALADIN: "acting"}
+        case "boss_result":
+            return {Role.PALADIN: "idle"}
+        case "run_paused" | "run_finished":
+            return {
+                role: "waiting for player" if event.type == "run_paused" else "idle"
+                for role in Role
+            }
+        case _:
+            return {}
 
 
 def fold_events(events: Iterable[Event]) -> RunState:
@@ -96,12 +156,15 @@ def fold_events(events: Iterable[Event]) -> RunState:
     party: dict[Role, PartyMember] = {}
     bosses: dict[str, BossProgress] = {}
     bugs: dict[str, BugProgress] = {}
+    cooldown_ends: dict[Role, datetime] = {}
     for event in events:
         if state.run_id is not None and event.run_id != state.run_id:
             raise StateFoldError("Cannot fold events from different runs")
         if event.seq <= state.seq:
             raise StateFoldError("Fold events must have increasing assigned seq")
         state = state.model_copy(update={"run_id": event.run_id, "seq": event.seq})
+        if isinstance(event, Action | Review | ApprovalRequested | ApprovalAnswered):
+            state = state.model_copy(update={"dialogue": event})
         match event.type:
             case "run_started":
                 state = state.model_copy(
@@ -110,6 +173,8 @@ def fold_events(events: Iterable[Event]) -> RunState:
                         "feature": event.feature,
                         "branch": event.branch,
                         "reason": None,
+                        "lives": event.lives,
+                        "prices": event.prices,
                     }
                 )
             case "world_loaded":
@@ -132,17 +197,31 @@ def fold_events(events: Iterable[Event]) -> RunState:
                 )
                 match event.type:
                     case "room_entered":
-                        room = room.model_copy(update={"state": RoomState.ACTIVE})
+                        room = room.model_copy(
+                            update={
+                                "state": RoomState.ACTIVE,
+                                "failed_attempts": 0
+                                if state.party_room != event.room_id
+                                else room.failed_attempts,
+                            }
+                        )
                         state = state.model_copy(
                             update={
                                 "active_room": event.room_id,
                                 "status": "running",
                                 "reason": None,
+                                "party_room": event.room_id,
                             }
                         )
                     case "attempt_started":
                         room = room.model_copy(
-                            update={"state": RoomState.ACTIVE, "attempt": event.attempt}
+                            update={
+                                "state": RoomState.ACTIVE,
+                                "attempt": event.attempt,
+                                "failed_attempts": 0
+                                if event.attempt == 1
+                                else max(room.failed_attempts, event.attempt - 1),
+                            }
                         )
                     case "respawn":
                         room = room.model_copy(
@@ -158,7 +237,13 @@ def fold_events(events: Iterable[Event]) -> RunState:
                         )
                     case "room_failed":
                         room = room.model_copy(
-                            update={"state": RoomState.FAILED, "feedback": event.reason}
+                            update={
+                                "state": RoomState.FAILED,
+                                "feedback": event.reason,
+                                "failed_attempts": max(
+                                    room.failed_attempts, room.attempt or 1
+                                ),
+                            }
                         )
                     case "room_skipped":
                         room = room.model_copy(
@@ -168,7 +253,16 @@ def fold_events(events: Iterable[Event]) -> RunState:
                             }
                         )
                     case "review":
-                        room = room.model_copy(update={"feedback": event.feedback})
+                        room = room.model_copy(
+                            update={
+                                "feedback": event.feedback,
+                                "failed_attempts": max(
+                                    room.failed_attempts, room.attempt or 1
+                                )
+                                if event.verdict == "fail"
+                                else room.failed_attempts,
+                            }
+                        )
                 rooms[event.room_id] = room
                 if event.type in ("room_cleared", "room_failed", "room_skipped"):
                     state = state.model_copy(update={"active_room": None})
@@ -185,11 +279,13 @@ def fold_events(events: Iterable[Event]) -> RunState:
                 )
                 party[event.role] = PartyMember(role=event.role, model=event.model)
             case "cooldown":
+                cooldown_ends[event.role] = event.ts + timedelta(seconds=event.seconds)
                 party[event.role] = PartyMember(
                     role=event.role,
                     model=event.model,
                     status="cooldown",
                     cooldown_seconds=event.seconds,
+                    cooldown_duration=event.seconds,
                 )
             case "fallback":
                 metrics = models.get(
@@ -234,6 +330,20 @@ def fold_events(events: Iterable[Event]) -> RunState:
                 state = state.model_copy(
                     update={"status": event.status, "reason": None, "active_room": None}
                 )
+        for role, status in _party_statuses(event).items():
+            member = party.get(role, PartyMember(role=role, model=""))
+            party[role] = member.model_copy(update={"status": status})
+            if status != "cooldown":
+                cooldown_ends.pop(role, None)
+                party[role] = party[role].model_copy(update={"cooldown_seconds": 0})
+        for role, end in cooldown_ends.items():
+            remaining = max(0, (end - event.ts).total_seconds())
+            party[role] = party[role].model_copy(
+                update={
+                    "cooldown_seconds": remaining,
+                    "status": "cooldown" if remaining else "thinking",
+                }
+            )
         for room_id, room in rooms.items():
             if room.state in (RoomState.LOCKED, RoomState.OPEN):
                 is_open = all(
