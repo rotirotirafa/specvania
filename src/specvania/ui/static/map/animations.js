@@ -1,3 +1,4 @@
+import { monsterForBug } from "../pixel/cast.js";
 import { textureKey } from "../pixel/textures.js";
 import { bestiaryFromState, projectBestiary, openBugs } from "../hud/bestiary.js";
 
@@ -80,7 +81,7 @@ export function createMapAnimations(browser = window) {
           if (reduced || !scene.tweens || layout.overview) {
             monster.sprite.destroy(); monsters.delete(id);
           } else {
-            texture(monster.sprite,textureKey("monster","defeated"));
+            texture(monster.sprite,textureKey(monsterForBug(id),"defeated"));
             scene.tweens.add({targets:monster.sprite,alpha:0,duration:400,
               onComplete:() => { monster.sprite.destroy(); if (monsters.get(id) === monster) monsters.delete(id); }});
           }
@@ -96,7 +97,7 @@ export function createMapAnimations(browser = window) {
         const x = room.x + room.width - 10;
         const y = room.y + (layout.overview ? Math.floor(room.height / 2) : Math.min(room.height - 8, 10 + index * 16));
         if (!monster) {
-          monster = {sprite:scene.add.image(x,y,textureKey("monster","idle")),closing:false};
+          monster = {sprite:scene.add.image(x,y,textureKey(monsterForBug(bug.bug_id),"idle")),closing:false};
           monsters.set(bug.bug_id,monster);
         }
         position(monster.sprite,{x,y}); monster.sprite.setVisible?.(!layout.overview);

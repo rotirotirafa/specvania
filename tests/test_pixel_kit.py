@@ -19,10 +19,6 @@ ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "src/specvania/ui/static"
 PARTY = ("mage", "warrior", "paladin")
 SPRITE_NAMES = (
-    *PARTY,
-    "boss",
-    "monster",
-    "door",
     *(f"room_a{number}" for number in range(1, 11)),
     "heart",
     "coin",
@@ -64,15 +60,20 @@ def test_sprite_inventory_matches_room_and_world_areas(sprites: Sprites) -> None
     }
 
 
-@pytest.mark.parametrize("name", PARTY)
-def test_party_has_idle_walk_act_rest_frames(sprites: Sprites, name: str) -> None:
-    assert set(sprites[name]) == {"idle", "walk", "act", "rest"}
-    # Motion states need distinct poses, not repeated copies of an idle frame.
-    for state in ("walk", "act"):
-        assert len({tuple(frame) for frame in sprites[name][state]}) >= 2
-    assert (
-        len({tuple(frame) for frames in sprites[name].values() for frame in frames}) > 4
+@pytest.mark.parametrize("name,index", tuple(zip(PARTY, (84, 87, 96), strict=True)))
+def test_party_uses_kenney_tile_for_legacy_idle_walk_act_rest_keys(
+    name: str, index: int
+) -> None:
+    source = (STATIC / "pixel/cast.js").read_text()
+    assert re.search(rf"\b{name}: {index}\b", source)
+    aliases = cast(
+        dict[str, dict[str, list[str]]],
+        definition("cast.js", "LEGACY_CAST", "freezeAliases"),
     )
+    assert set(aliases[name]) == {"idle", "walk", "act", "rest"}
+    assert aliases[name]["walk"] == [name, name]
+    assert aliases[name]["act"] == [name, name]
+    assert all(entry == name for frames in aliases[name].values() for entry in frames)
 
 
 @pytest.mark.parametrize("name", SPRITE_NAMES)
@@ -86,17 +87,23 @@ def test_no_state_has_identical_consecutive_frames(sprites: Sprites, name: str) 
             )
 
 
-@pytest.mark.parametrize("name", ("boss", "monster"))
-def test_boss_and_monster_have_distinct_idle_and_defeated_frames(
-    sprites: Sprites, name: str
+@pytest.mark.parametrize("name,entry", (("boss", "cyclops"), ("monster", "slime")))
+def test_boss_and_monster_legacy_keys_use_pack_tile_for_existing_fade(
+    name: str, entry: str
 ) -> None:
-    assert set(sprites[name]) == {"idle", "defeated"}
-    assert sprites[name]["idle"] != sprites[name]["defeated"]
+    aliases = cast(
+        dict[str, dict[str, list[str]]],
+        definition("cast.js", "LEGACY_CAST", "freezeAliases"),
+    )
+    assert aliases[name] == {"idle": [entry], "defeated": [entry]}
 
 
-def test_door_has_distinct_locked_and_open_frames(sprites: Sprites) -> None:
-    assert set(sprites["door"]) == {"locked", "open"}
-    assert sprites["door"]["locked"] != sprites["door"]["open"]
+def test_door_has_distinct_locked_and_open_pack_tiles() -> None:
+    aliases = cast(
+        dict[str, dict[str, list[str]]],
+        definition("cast.js", "LEGACY_CAST", "freezeAliases"),
+    )
+    assert aliases["door"] == {"locked": ["door_closed"], "open": ["door_open_middle"]}
 
 
 @pytest.mark.parametrize("name", SPRITE_NAMES)
@@ -149,19 +156,14 @@ class Gallery(HTMLParser):
         self.elements.append((tag, dict(attrs)))
 
 
-def test_gallery_includes_every_sprite_and_every_frame(sprites: Sprites) -> None:
+def test_gallery_includes_every_cast_entry() -> None:
     source = (STATIC / "sprites.html").read_text()
-    gallery = Gallery(source)
-    names = [
-        attrs["data-sprite"] for _, attrs in gallery.elements if "data-sprite" in attrs
-    ]
-    assert len(names) == len(sprites)
-    assert set(names) == set(sprites)
-    # No frame filter or hand-picked subset: render each state and each frame.
-    assert "Object.entries(SPRITES[name])" in source
-    assert "frames.forEach((frame, index)" in source
-    assert "textureKey(name, state, index)" in source
-    assert "appendChild(card)" in source
+    assert "Object.entries(CAST)" in source
+    assert "card.dataset.cast = name" in source
+    assert "`${name} · tile ${index}`" in source
+    assert 'textureKey(name, "idle")' in source
+    assert "gallery.appendChild(card)" in source
+    assert "preloadTextures(this)" in source
     assert "registerTextures(this)" in source
 
 
@@ -171,7 +173,7 @@ def test_gallery_has_exact_integer_scales_and_nearest_neighbor_settings() -> Non
     assert {
         (attrs.get("data-scale"), attrs.get("width"), attrs.get("height"))
         for attrs in canvases
-    } == {("1", "16", "16"), ("2", "32", "32"), ("4", "64", "64")}
+    } == {("2", "32", "32"), ("3", "48", "48")}
     for setting in (
         "pixelArt: true",
         "roundPixels: true",
@@ -184,11 +186,17 @@ def test_gallery_has_exact_integer_scales_and_nearest_neighbor_settings() -> Non
     assert "canvas.width, canvas.height" in source
 
 
-def test_texture_loader_registers_all_frames_without_binary_art() -> None:
+def test_texture_loader_registers_kenney_cast_and_retained_pixel_frames() -> None:
     source = (STATIC / "pixel/textures.js").read_text()
     for setting in (
         'from "./palette.js"',
         'from "./sprites.js"',
+        'from "./cast.js"',
+        "scene.load.spritesheet",
+        "frameWidth: TILE_SIZE, frameHeight: TILE_SIZE, margin: 0, spacing: 0",
+        "Object.keys(CAST)",
+        "Object.entries(LEGACY_CAST)",
+        "context.drawImage(source",
         "Object.entries(SPRITES)",
         "Object.entries(states)",
         "frames.forEach",
@@ -203,6 +211,8 @@ def test_texture_loader_registers_all_frames_without_binary_art() -> None:
     assert "imageSmoothingEnabled = false" in source
     for path in (*sorted((STATIC / "pixel").glob("*.js")), STATIC / "sprites.html"):
         text = path.read_text()
+        if path.name == "cast.js":
+            text = text.replace("../vendor/kenney-tiny-dungeon/tilemap_packed.png", "")
         assert not re.search(
             r"\.(?:png|gif|jpe?g|webp|svg)\b|data:image|https?://", text
         )

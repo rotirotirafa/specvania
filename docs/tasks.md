@@ -466,11 +466,11 @@ files: src/specvania/ui/static/vendor/kenney-tiny-dungeon/, src/specvania/ui/sta
 D10: vendor the pack's packed 16×16 tilesheet and its `License.txt` (CC0). `cast.js` maps names to tile indices: Mage 84, Warrior 87, Paladin 96; monsters from 108, 120, 121, 122 and 123, chosen by a stable hash of the bug id; bosses from 109, 110 and 111 by area; walls, back-wall bricks, floors, doors, stairs, banners, chests and grates. `textures.js` slices the sheet into Phaser textures. The code-drawn sprites in `sprites.js` are removed once nothing references them. `sprites.html` shows the whole cast. The app icon is generated from the Mage tile with Node built-ins only.
 
 Checklist:
-- [ ] The pack and its license are vendored and listed in `THIRD_PARTY_NOTICES.md`
-- [ ] Every cast entry resolves to a tile inside the sheet (Node test)
-- [ ] The same bug id always gets the same monster
-- [ ] `sprites.html` shows every cast entry at 2× and 3× without blur
-- [ ] The app icon is generated from the pack with Node built-ins only
+- [x] The pack and its license are vendored and listed in `THIRD_PARTY_NOTICES.md`
+- [x] Every cast entry resolves to a tile inside the sheet (Node test)
+- [x] The same bug id always gets the same monster
+- [x] `sprites.html` shows every cast entry at 2× and 3× without blur
+- [x] The app icon is generated from the pack with Node built-ins only
 
 ### T30 · Castle layout and room states
 depends_on: T16, T29

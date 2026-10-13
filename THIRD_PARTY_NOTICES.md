@@ -1,10 +1,25 @@
 # Third-party notices
 
-The pixel strings in `src/specvania/ui/static/pixel/sprites.js` are original
-specvania art authored for T15. No sprites or images from games or asset packs
-are included. The third-party runtime and font below are vendored, unmodified,
-and loaded locally. Source URLs here describe provenance; the web app does not
-request them.
+Art is vendored from Kenney Tiny Dungeon (CC0). Transitional HUD and area
+pixel strings in `src/specvania/ui/static/pixel/sprites.js` are original
+specvania art from T15, retained until their replacing rooms. The pack,
+third-party runtime and font below are vendored, unmodified and loaded locally.
+Source URLs describe provenance; the web app does not request them.
+
+## Kenney Tiny Dungeon
+
+- Name: Kenney Tiny Dungeon
+- Version: **1.0**
+- Author: Kenney
+- Source: https://kenney.nl/assets/tiny-dungeon
+- Archive: `kenney_tiny-dungeon.zip`
+- Archive SHA-256: `c109438ab06f65fd80f9b2686a4cf9c7c11dc64444b47333ec71d602f8bb5fc7`
+- File: `src/specvania/ui/static/vendor/kenney-tiny-dungeon/tilemap_packed.png`
+  (the archive's `Tilemap/tilemap_packed.png`, 192×176, 12×11 tiles, 16×16 pixels)
+- Sheet SHA-256: `d24e60a41e4ac7a745c0304dfde121143688557f40215f23221c29cfe683825f`
+- License: **CC0 1.0**; the unmodified pack notice is shipped as
+  `src/specvania/ui/static/vendor/kenney-tiny-dungeon/License.txt`
+- Credit: `Art: Kenney Tiny Dungeon · CC0 1.0` (optional under CC0, shown in the gallery)
 
 ## Phaser
 
@@ -73,5 +88,5 @@ The font and its OFL notice are distributed together without modification.
 - License: **MIT**; upstream license:
   https://github.com/electron-userland/electron-builder/blob/v26.15.3/LICENSE
 
-The desktop icon is generated from the original specvania pixel kit described
-above and introduces no third-party art.
+The desktop icon is generated from the Mage tile (84) of the Kenney Tiny
+Dungeon sheet above using only Node built-ins; no additional art is included.

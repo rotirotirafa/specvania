@@ -47,7 +47,7 @@ function decodePng(png) {
   };
 }
 
-test("icon_cli_generates_deterministic_valid_png_from_pixel_kit", async () => {
+test("icon_cli_generates_deterministic_valid_png_from_kenney_mage", async () => {
   const directory = mkdtempSync(path.join(tmpdir(), "specvania-icon-"));
   try {
     const output = path.join(directory, "resources/icon.png");
@@ -63,22 +63,36 @@ test("icon_cli_generates_deterministic_valid_png_from_pixel_kit", async () => {
     assert.equal(decoded.width, 1024);
     assert.equal(decoded.height, 1024);
     assert.equal(decoded.pixels.length, 1024 * (1024 * 4 + 1));
-    const { SPRITES } = await import(pathToFileURL(path.join(root, "src/specvania/ui/static/pixel/sprites.js")));
-    const { PALETTE } = await import(pathToFileURL(path.join(root, "src/specvania/ui/static/pixel/palette.js")));
-    const frame = SPRITES.mage.idle[0];
-    const colors = new Set(Object.values(PALETTE).filter(Boolean));
+    const { CAST } = await import(pathToFileURL(path.join(root, "src/specvania/ui/static/pixel/cast.js")));
+    // Independent decoding of this exact vendored indexed sheet. Every sheet
+    // row uses PNG filter 0; never derive expected pixels from the icon script.
+    const sheet = readFileSync(path.join(root, "src/specvania/ui/static/vendor/kenney-tiny-dungeon/tilemap_packed.png"));
+    assert.equal(sheet[24], 8); assert.equal(sheet[25], 3); assert.equal(sheet[28], 0);
+    const width = sheet.readUInt32BE(16), height = sheet.readUInt32BE(20);
+    const idat = []; let palette, transparency, offset = 8;
+    while (offset < sheet.length) {
+      const length = sheet.readUInt32BE(offset), type = sheet.toString("ascii", offset + 4, offset + 8);
+      const data = sheet.subarray(offset + 8, offset + 8 + length);
+      if (type === "PLTE") palette = data;
+      if (type === "tRNS") transparency = data;
+      if (type === "IDAT") idat.push(data);
+      offset += length + 12;
+    }
+    const indices = inflateSync(Buffer.concat(idat));
+    assert.equal(indices.length, height * (width + 1));
+    for (let y = 0; y < height; y++) assert.equal(indices[y * (width + 1)], 0);
+    const tileX = (CAST.mage % (width / 16)) * 16, tileY = Math.floor(CAST.mage / (width / 16)) * 16;
     let opaque = 0;
     let transparent = 0;
     for (let y = 0; y < 1024; y++) {
       const row = y * (1024 * 4 + 1);
       assert.equal(decoded.pixels[row], 0);
       for (let x = 0; x < 1024; x++) {
-        const symbol = frame[Math.floor(y / 64)][Math.floor(x / 64)];
+        const sourceX = tileX + Math.floor(x / 64), sourceY = tileY + Math.floor(y / 64);
+        const index = indices[sourceY * (width + 1) + 1 + sourceX];
         const pixel = decoded.pixels.subarray(row + 1 + x * 4, row + 5 + x * 4);
-        const rgb = `#${pixel.subarray(0, 3).toString("hex")}`;
-        assert.ok(colors.has(rgb), rgb);
-        assert.equal(rgb, PALETTE[symbol] ?? PALETTE.K);
-        assert.equal(pixel[3], symbol === "." ? 0 : 255);
+        assert.deepEqual(pixel.subarray(0, 3), palette.subarray(index * 3, index * 3 + 3));
+        assert.equal(pixel[3], transparency[index] ?? 255);
         if (pixel[3]) opaque++; else transparent++;
       }
     }
@@ -118,7 +132,8 @@ test("build_scripts_generate_icon_and_forward_platform_arch_without_publishing",
     // Only the external builder boundary is replaced; no download or install.
     for (const file of [
       "apps/desktop/package.json", "apps/desktop/scripts/make-icon.mjs",
-      "src/specvania/ui/static/pixel/sprites.js", "src/specvania/ui/static/pixel/palette.js",
+      "src/specvania/ui/static/pixel/cast.js",
+      "src/specvania/ui/static/vendor/kenney-tiny-dungeon/tilemap_packed.png",
     ]) {
       const target = path.join(directory, file);
       mkdirSync(path.dirname(target), { recursive: true });

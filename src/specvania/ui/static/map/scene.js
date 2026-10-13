@@ -1,5 +1,5 @@
 import { PALETTE, AREA_COLORS, UI_COLORS } from "../pixel/palette.js";
-import { registerTextures, textureKey } from "../pixel/textures.js";
+import { preloadTextures, registerTextures, textureKey } from "../pixel/textures.js";
 import { worldFromRooms, layoutWorld, integerDisplayZoom } from "./layout.js";
 import { createMapAnimations } from "./animations.js";
 
@@ -148,7 +148,7 @@ export function mountMap(Phaser, host, browser = window) {
     type: Phaser.CANVAS, parent: host, width: 320, height: 180,
     pixelArt: true, roundPixels: true, backgroundColor: UI_COLORS.background,
     scale: { mode: Phaser.Scale.NONE, zoom: 1 }, audio: { noAudio: true }, banner: false,
-    scene: { create() {
+    scene: { preload() { preloadTextures(this); }, create() {
       scene = this;
       registerTextures(this);
       this.input.keyboard.on("keydown-M", event => {

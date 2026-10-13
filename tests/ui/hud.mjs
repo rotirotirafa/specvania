@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 const { events, snapshots } = JSON.parse(fs.readFileSync(0, "utf8"));
 const base = pathToFileURL(`${process.cwd()}/src/specvania/ui/static/`);
 const check = process.argv[2];
+const { MONSTERS, monsterForBug } = await import(new URL("pixel/cast.js",base));
 // DOM/Phaser boundaries are faked; projections and mounting code are real.
 class Element {
   constructor(tag) { this.tagName = tag; this.style = {}; this.children = []; this.attrs = {}; this.listeners = {}; this.textContent = ""; }
@@ -216,13 +217,13 @@ if (["boss", "bugs", "motion", "integration"].includes(check)) {
     ui.state({feature:"synthetic-demo",bugs:state.bugs});
     assert.match(texts(ui.host), /Bell wheel missing/); assert.doesNotMatch(texts(ui.host), /foreign/);
     map.setState({feature:"synthetic-demo",bugs:state.bugs}); map.render(fake.scene, layout, "T04");
-    const monster = fake.images.find(image => image.key === "monster:idle:0"); assert.ok(monster);
+    const monster = fake.images.find(image => image.key === `${monsterForBug(events.find(event => event.type === "bug_opened").bug_id)}:idle:0`); assert.ok(monster);
     const room = layout.rooms.find(room => room.id === "T04");
     assert.ok(monster.x > room.x && monster.x < room.x + room.width && monster.y > room.y && monster.y < room.y + room.height);
     const closed = events.find(event => event.type === "bug_closed");
     ui.event(closed); map.onEvent(closed); map.render(fake.scene,layout,"T04");
     assert.doesNotMatch(texts(ui.host), /Bell wheel missing/);
-    assert.equal(monster.key, "monster:defeated:0"); assert.equal(monster.destroyed,false);
+    assert.equal(monster.key, `${monsterForBug(events.find(event => event.type === "bug_opened").bug_id)}:defeated:0`); assert.equal(monster.destroyed,false);
     assert.equal(fake.tweens.at(-1).options.targets, monster);
     fake.finish(); assert.equal(monster.destroyed,true);
     ui.state(snapshots[2]); assert.match(texts(ui.host), /Bell wheel missing/);
@@ -247,7 +248,7 @@ if (["boss", "bugs", "motion", "integration"].includes(check)) {
       fake.finish();
       const bug = events.find(event => event.type === "bug_opened");
       map.onEvent(bug); map.render(fake.scene,layout,"T02");
-      const monster = fake.images.find(image => image.key === "monster:idle:0");
+      const monster = fake.images.find(image => image.key === `${monsterForBug(events.find(event => event.type === "bug_opened").bug_id)}:idle:0`);
       map.onEvent(events.find(event => event.type === "bug_closed")); map.render(fake.scene,layout,"T02");
       assert.equal(monster.destroyed,reduced);
       if (!reduced) { fake.finish(); assert.equal(monster.destroyed,true); }
@@ -297,9 +298,9 @@ if (["boss", "bugs", "motion", "integration"].includes(check)) {
       if (event.type === "fallback") assert.match(texts(ui.host), /synthetic\/warrior-backup/);
       if (event.type === "bug_opened") {
         assert.match(texts(ui.host),/Bell wheel missing/);
-        assert.ok(fake.images.some(image => !image.destroyed && image.key === "monster:idle:0"));
+        assert.ok(fake.images.some(image => !image.destroyed && image.key === `${monsterForBug(events.find(event => event.type === "bug_opened").bug_id)}:idle:0`));
       }
-      if (event.type === "bug_closed") assert.ok(fake.images.filter(image => image.key.startsWith("monster:")).every(image => image.destroyed));
+      if (event.type === "bug_closed") assert.ok(fake.images.filter(image => MONSTERS.some(name => image.key.startsWith(`${name}:`))).every(image => image.destroyed));
     }
     assert.match(texts(ui.host), /The bell needs a replacement wheel/);
     assert.ok(flatten(ui.host).some(node => node.attrs.role === "meter" && node.attrs["aria-valuenow"] === "0"));
