@@ -353,25 +353,34 @@ class Ledger:
 
         Planning buffers events before creating this finished row; unsuccessful
         plans have no ledger records. Execution rows still start as running.
+        Generated ids get up to five attempts; explicit ids fail immediately
+        on collision so callers can preserve their branch and event identities.
         """
         now = self._clock.now()
-        identifier = run_id or generate_run_id(self._clock)
-        return self._add(
-            self._schema.runs,
-            {
-                "id": identifier,
-                "feature_id": feature_id,
-                "spec_version_id": spec_version_id,
-                "branch": branch,
-                "kind": kind,
-                "status": "finished" if kind == "plan" else "running",
-                "started_at": now,
-                "finished_at": now if kind == "plan" else None,
-            },
-            Run,
-            self._schema.runs.c.id == identifier,
-            identity_error=RunIdTakenError,
-        )
+        attempts = 5 if run_id is None else 1
+        for attempt in range(attempts):
+            identifier = generate_run_id(self._clock) if run_id is None else run_id
+            try:
+                return self._add(
+                    self._schema.runs,
+                    {
+                        "id": identifier,
+                        "feature_id": feature_id,
+                        "spec_version_id": spec_version_id,
+                        "branch": branch,
+                        "kind": kind,
+                        "status": "finished" if kind == "plan" else "running",
+                        "started_at": now,
+                        "finished_at": now if kind == "plan" else None,
+                    },
+                    Run,
+                    self._schema.runs.c.id == identifier,
+                    identity_error=RunIdTakenError,
+                )
+            except RunIdTakenError:
+                if attempt == attempts - 1:
+                    raise
+        raise AssertionError("Unreachable run id allocation state")
 
     def get_run(self, run_id: str) -> Run:
         return self._get(self._schema.runs, run_id, Run)

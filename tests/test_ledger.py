@@ -10,7 +10,7 @@ from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Barrier
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 from sqlalchemy import create_engine, inspect, text
@@ -20,6 +20,7 @@ from sqlalchemy.engine import URL
 from specvania.clock import FakeClock
 from specvania.config import LedgerConfig
 from specvania.ledger import Ledger, LedgerError, LedgerNotFoundError
+from specvania.ledger.repo import RunIdTakenError
 from specvania.ledger.schema import build_initial_schema
 from specvania.run.events import (
     Action,
@@ -186,6 +187,93 @@ def test_two_threads_append_without_duplicate_or_missing_sequences(
     assert sorted(sequences) == list(range(1, 61))
     assert [event.seq for event in ledger.list_events(run_id)] == list(range(1, 61))
     assert ledger.get_run(run_id).last_seq == 60
+
+
+@pytest.mark.parametrize("kind", ["run", "plan"])
+def test_generated_run_id_retries_suffix_collision(
+    ledger: Ledger,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: Literal["run", "plan"],
+) -> None:
+    from specvania.ledger import repo
+
+    first = ledger.get_run(make_run(ledger, tmp_path))
+    prefix = first.id[:-4]
+    # Shared Postgres retains prior suites: choose a genuinely unused suffix
+    # rather than making this regression depend on a fixed id being available.
+    for value in range(65536):
+        fresh_suffix = f"{value:04x}"
+        try:
+            ledger.get_run(prefix + fresh_suffix)
+        except LedgerNotFoundError:
+            break
+    else:
+        pytest.fail("No unused suffix remains for this test timestamp")
+    suffixes = iter([first.id[-4:], fresh_suffix])
+
+    def suffix(size: int) -> str:
+        assert size == 2
+        return next(suffixes)
+
+    monkeypatch.setattr(repo.secrets, "token_hex", suffix)
+    second = ledger.create_run(
+        first.feature_id, first.spec_version_id, "", run_id=None, kind=kind
+    )
+    assert second.id == prefix + fresh_suffix and second.id != first.id
+    assert second.kind == kind
+    assert second.status == ("finished" if kind == "plan" else "running")
+    assert ledger.get_run(first.id) == first
+    assert {run.id for run in ledger.list_runs(first.feature_id)} == {
+        first.id,
+        second.id,
+    }
+
+
+def test_explicit_run_id_collision_does_not_generate_or_retry(
+    ledger: Ledger, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from specvania.ledger import repo
+
+    first = ledger.get_run(make_run(ledger, tmp_path))
+    add = ledger._add
+    attempts: list[str] = []
+
+    def record_attempt(*args: Any, **kwargs: Any) -> Any:
+        attempts.append(args[1]["id"])
+        return add(*args, **kwargs)
+
+    monkeypatch.setattr(ledger, "_add", record_attempt)
+    monkeypatch.setattr(
+        repo.secrets,
+        "token_hex",
+        lambda size: pytest.fail("An explicit run id must not generate another id"),
+    )
+    with pytest.raises(RunIdTakenError, match="already taken"):
+        ledger.create_run(
+            first.feature_id, first.spec_version_id, "different", run_id=first.id
+        )
+    assert attempts == [first.id]
+    assert ledger.list_runs(first.feature_id) == [first]
+
+
+def test_generated_run_id_collision_retries_are_bounded(
+    ledger: Ledger, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from specvania.ledger import repo
+
+    first = ledger.get_run(make_run(ledger, tmp_path))
+    calls: list[int] = []
+
+    def suffix(size: int) -> str:
+        calls.append(size)
+        return first.id[-4:]
+
+    monkeypatch.setattr(repo.secrets, "token_hex", suffix)
+    with pytest.raises(RunIdTakenError, match="already taken"):
+        ledger.create_run(first.feature_id, first.spec_version_id, "different")
+    assert calls == [2] * 5
+    assert ledger.list_runs(first.feature_id) == [first]
 
 
 @pytest.mark.parametrize(
