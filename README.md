@@ -2,90 +2,210 @@
 
 **A spec-driven coding agent where your spec becomes a metroidvania map.**
 
-A party of open models — a **Mage** that plans, a **Warrior** that codes and a **Paladin** that reviews — explores your spec room by room. Every task is a room, every dependency is a door, every acceptance scenario is a boss, every open bug is a monster. You watch the run on a pixel-art map, in your browser or in a desktop game window, live or as a replay.
+The Mage plans a world, the Warrior clears its rooms, and the Paladin reviews
+each checklist and fights the area's boss scenarios. The ledger keeps features,
+spec versions, runs and bugs. Watch the same local web app in a browser tab or
+the optional desktop window, live or as a replay.
 
-> 🚧 **Status: spec first, built in public.** Nothing runs yet. The whole project is planned in [`docs/spec.md`](docs/spec.md) and [`docs/tasks.md`](docs/tasks.md), and it is being built with the same Spec-Driven Development method it implements. Its own task list will be the first map it renders.
+The Python CLI and synthetic demo are implemented. Release CI, the owner's
+fresh-clone quickstart check, and the real dogfood run (T23) remain to be verified.
+See [the spec](docs/spec.md) and [the rooms](docs/tasks.md).
 
----
+## Python quickstart
 
-## Why
+You need Python 3.12 or newer, Git, and [uv](https://docs.astral.sh/uv/).
+The Python package uses SQLite by default and needs neither Docker nor Node.
+From a fresh clone:
 
-- **Most coding agents take a prompt, not a contract.** specvania is SDD-native: Clarify → spec with BDD scenarios → tasks with checklists → execution one room at a time → review against the checklist → boss fight against the scenarios.
-- **Progress is usually a scrolling log.** Here the map *is* the progress: what is done, what is locked, where the party is, what it cost.
-- **Agents forget.** specvania keeps a ledger of every run, feature, spec version and bug, so the next run starts from history instead of from zero.
-- **Open models are cheap to try, hard to orchestrate.** specvania uses a different model per role, a shared rate limiter, automatic fallback on `429`, and per-model metrics you can publish.
+```sh
+cd specvania
+uv sync --locked
+uv run specvania --help
+uv run specvania replay demo
+```
 
-## How SDD maps to the game
+`replay demo` opens the map with a **synthetic** bundled run; it needs no config,
+API key or provider connection. Close the terminal process with Ctrl+C after
+watching. See [the demo's provenance](src/specvania/examples/demo/README.md).
 
-| SDD | specvania | On the map |
+To make the CLI available in your own repository, install from the clone:
+
+```sh
+uv tool install .
+```
+
+For a published release, you can instead invoke it without a permanent install:
+
+```sh
+uvx --from specvania specvania replay demo
+```
+
+For actual planning and execution, enter an existing Git repository with a
+commit at HEAD and a configured Git author. Set your provider key in the
+environment, then:
+
+```sh
+specvania init
+export NVIDIA_API_KEY='<your key>'
+specvania doctor
+git add .gitignore .specvania/config.toml
+git commit -m "configure specvania"
+specvania plan "add greeting"
+specvania lint .specvania/specs/add-greeting
+git add .specvania/specs/add-greeting
+git commit -m "specify greeting"
+specvania run .specvania/specs/add-greeting --ui=browser
+specvania history add-greeting
+specvania status
+specvania export <run-id>
+specvania replay <run-id>
+```
+
+The Mage normally asks Clarify questions; Enter accepts a question's default.
+Use `--no-clarify` to skip that step. A hand-written `spec.md` + `tasks.md` world
+also works after `specvania lint <spec-dir>` passes. Commit the world before
+running: `run` requires a clean tree unless you explicitly use `--allow-dirty`.
+`export` writes `.specvania/runs/<run-id>/events.jsonl`; replay also accepts that
+file. Summaries are saved beside it as `summary.md`.
+
+## SDD ↔ game
+
+| SDD concept | specvania | On the map |
 |---|---|---|
-| Spec | World | The whole map |
-| Task group | Area | A region |
-| Task | Room | A room, locked until its doors open |
-| Dependency | Door | Opens when the previous room is cleared |
-| Checklist passes review | Room cleared | Room lights up, one git commit |
-| Acceptance scenarios | Boss | One HP segment per scenario |
+| Spec (`spec.md` + `tasks.md`) | World | The whole map |
+| Task group / milestone | Area | A region with its own color |
+| Task | Room | Locked until its doors open |
+| `depends_on` | Door | Opens when the source room is cleared |
+| Task checklist passes review | Room cleared | Lights up; one commit is made |
+| Scenarios assigned to an area | Boss | One HP segment per scenario |
 | Planner / Coder / Reviewer | Mage / Warrior / Paladin | The party |
 | Rate-limit budget | Stamina | Bar under each character |
-| `429` backoff | Cooldown | Character rests |
-| Review rejected | Respawn | Back to the room entrance, with feedback |
-| Open bug | Monster | Waits in its room; listed in the Bestiary |
+| 429 backoff | Cooldown | Character rests; timer shown |
+| Reviewer rejects | Respawn | Back to the room entrance with feedback |
+| Max attempts per room | Lives | Hearts in the HUD |
+| Cost-equivalent | Coins | Only for models with configured prices |
+| Open bug | Monster | In its room and the Bestiary |
 | Project history | Ledger | The save file |
-| Cost-equivalent | Coins | Only when you configure prices, always with a source |
 
-## Planned usage
+## Model roles and chains
 
-```bash
-specvania init                       # config in your git repo
-specvania doctor                     # check key, models and ledger
-specvania plan "add invoices with PDF export" --ui
-specvania run .specvania/specs/invoices --ui
-specvania history                    # features, spec versions, runs, open bugs
-specvania bug list                   # the Bestiary
-specvania replay demo                # no API key needed
+The default provider is the OpenAI-compatible NVIDIA NIM endpoint,
+`https://integrate.api.nvidia.com/v1`. Edit `.specvania/config.toml` to change
+`provider.base_url`, the API-key environment variable name, or any role's ordered
+model chain. Each role uses the first healthy model and falls back after repeated
+429/5xx failures. The party shares one rate limiter per API key (40 RPM by default).
+
+These D4 defaults are a **2026-10-12 catalog snapshot, unverified for quality**.
+The real catalog check is an owner check in T05; O1/T23 will settle the chains
+after a real run. `doctor` checks the configured ids against your endpoint.
+
+| Role | Work | Default chain, in order |
+|---|---|---|
+| Mage | Clarify, spec and rooms | `moonshotai/kimi-k3` → `z-ai/glm-5.3` → `nvidia/nemotron-3-ultra-550b-a55b` |
+| Warrior | Execute one room through JSON actions | `z-ai/glm-5.3` → `moonshotai/kimi-k2.6` → `deepseek-ai/deepseek-v4.1-flash` |
+| Paladin | Review checklists and evaluate boss scenarios | `nvidia/nemotron-3-ultra-550b-a55b` → `deepseek-ai/deepseek-v4.1-flash` → `z-ai/glm-5.3-flash` |
+
+## Optional desktop app
+
+The Electron shell in [apps/desktop](apps/desktop/README.md) loads the same web
+app and adds approval controls and native notifications. Install a matching
+macOS dmg (`arm64` or `x64`) or Linux AppImage when release artifacts are
+available. Builds are **unsigned**, and macOS builds are **not notarized**;
+follow the linked installation instructions for opening a build you trust.
+Building the shell from source needs Node/npm; using Python with a browser does
+not. Installer production still needs release CI verification.
+
+The launcher finds `desktop.path` in config, then `SPECVANIA_DESKTOP`, then
+`specvania-desktop` (or a Linux AppImage) on PATH, then
+`/Applications/specvania.app` on macOS. `specvania run <spec-dir> --ui=auto`
+prefers the installed app and prints a notice when it falls back to a browser.
+`--ui=desktop` requires the app; `--ui=browser` opens a view-only tab.
+`replay demo` uses the automatic launcher too.
+
+## Optional Postgres team mode
+
+SQLite at `.specvania/ledger.db` is the default ledger. For team mode, install
+the `postgres` extra and start the one optional service from the clone:
+
+```sh
+uv tool install --force '.[postgres]'
+docker compose up -d --wait postgres
+export SPECVANIA_DATABASE_URL='postgresql+psycopg://specvania:specvania@localhost:5432/specvania'
 ```
 
-Default provider: the [NVIDIA API catalog](https://build.nvidia.com) (OpenAI-compatible, free tier for prototyping). Any OpenAI-compatible endpoint works by changing `base_url`.
+Run the same `init`, `plan`, `run`, `history` and `replay` commands in your project
+with that variable set. Migrations apply automatically. The variable selects
+the ledger; it does not copy existing SQLite history into Postgres. The compose
+credentials are for local development only, and the port binds to loopback.
+Unset `SPECVANIA_DATABASE_URL` to return to SQLite. Use `docker compose down`
+from the clone when finished; no Redis service is required.
 
-## Architecture
+For the offline provider end-to-end checks against both adapters:
 
+```sh
+uv sync --locked --extra postgres
+SPECVANIA_TEST_DATABASE_URL="$SPECVANIA_DATABASE_URL" uv run pytest -q -rs tests/test_e2e.py
 ```
-specvania (Python) ── Mage / Warrior / Paladin ── router + rate limiter ── OpenAI-compatible API
-      │
-      ├── engine ── git (one branch per run, one commit per room, never pushes)
-      ├── ledger ── SQLite by default, Postgres for teams (docker compose)
-      └── UI server (127.0.0.1) ── same web app in a browser tab or the Electron desktop window
+
+Only the configured test ledger host is allowed through the test socket guard.
+
+## Safety
+
+- **Git (D7):** `run` creates `specvania/<run-id>` from HEAD, commits once per
+  cleared room, and never pushes. Review the local branch before publishing it.
+- **Commands (D8):** every model-proposed shell command needs explicit approval
+  in the terminal or desktop window. The first answer wins and cancels the
+  other prompt. User-written `gates` in config run without an approval prompt.
+  Shell commands execute locally with your permissions; this is not a container
+  sandbox.
+- **Files (D12):** model context skips `.git/`, ignored paths and secret patterns
+  (`.env*`, `*.pem`, `*.key`, `id_*`). File tools resolve symlinks and cannot read
+  or write outside the repository root. These file-tool restrictions do not
+  constrain an approved shell command.
+- **Local UI (D16):** the server binds to `127.0.0.1`. Page and WebSocket access
+  require a random view token, and the WebSocket checks Origin. A browser tab
+  only watches; terminal approvals remain available. The desktop gets a separate
+  control token to answer approvals. The **desktop control token is passed as a
+  process argument** (`--control-token`), which can be visible to local process
+  inspection. It is kept out of URLs, the ledger, exported events and logs.
+  Keep view URLs private too.
+- API keys live in environment variables; config stores only their names.
+  Registered secrets are rejected from event and report output. Execution is
+  bounded by configurable steps, lives and observation sizes (D13).
+
+## Add reference prices
+
+No prices are shipped (D11). Summaries always report tokens. To show coins for
+a model, create `.specvania/pricing.toml` with one `[[prices]]` table per model.
+Replace every angle-bracket placeholder below with the model id, published
+nonnegative rates **per million tokens**, currency, source URL and check date
+before saving; this is a template, not a price quote:
+
+```toml
+[[prices]]
+model = "<model id>"
+input_per_mtok = <published input rate>
+output_per_mtok = <published output rate>
+currency = "<currency>"
+source_url = "<https://source-of-the-price>"
+checked_on = <YYYY-MM-DD>
 ```
 
-- **Zero setup by default:** `uvx specvania` with SQLite. No Docker, no Node.
-- **Team mode:** set `SPECVANIA_DATABASE_URL` and use the bundled `docker-compose.yml` for Postgres.
-- **Desktop window (optional):** a game window with native notifications, where you can also approve shell commands.
+`specvania status <run-id>` uses the file. Coins appear only for priced models,
+with `source_url` and `checked_on`; other models remain labeled `not priced`.
+Rates describe a user-maintained reference cost-equivalent, not a provider bill.
 
-## Safety by design
+## Real-run GIF
 
-- Runs on its own branch, one commit per room, **never pushes**.
-- Every shell command proposed by a model needs your approval, in the terminal or the desktop window.
-- File tools cannot leave the repository and never read `.env`, keys or certificates.
-- The UI only listens on `127.0.0.1` and requires per-run tokens; only the desktop window can approve commands.
-- API keys and tokens are never written to the ledger, logs or events.
+**GIF placeholder — T23 will record the real plan → run cycle on the sample
+project and place its GIF here.** The bundled synthetic demo is not that evidence.
 
-## Roadmap
+## Contributing and licenses
 
-Six areas, twenty-three rooms — see [`docs/tasks.md`](docs/tasks.md).
+Read [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md), and the
+[execution protocol](.agent/execution-protocol.md). Contributions follow the
+same SDD contract that specvania executes.
 
-| Area | What it unlocks |
-|---|---|
-| A1 · Foundations | CLI, config, events, ledger (SQLite + Postgres), provider with rate limit and fallback |
-| A2 · Spellbook | World format, `lint`, Mage with Clarify |
-| A3 · Dungeon | Tools, Warrior loop, Paladin review, engine, history, bugs |
-| A4 · Map | Live map, party HUD, bosses, monsters, replay |
-| A5 · Desktop | Electron window, approvals and notifications, packaged releases |
-| A6 · Ship | Packaging, docs, Postgres end-to-end, a real recorded run |
-
-## Contributing
-
-Read [`AGENTS.md`](AGENTS.md) first. Humans and coding agents follow the same contract: [`.agent/execution-protocol.md`](.agent/execution-protocol.md).
-
-## License
-
-[MIT](LICENSE). Not affiliated with NVIDIA. All art is original.
+[MIT](LICENSE). Original pixel art; vendored Phaser, font and desktop runtime
+licenses are recorded in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Not affiliated with NVIDIA.

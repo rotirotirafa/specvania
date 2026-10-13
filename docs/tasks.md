@@ -364,7 +364,7 @@ files: pyproject.toml, README.md, CONTRIBUTING.md, THIRD_PARTY_NOTICES.md, .gith
 Make the wheel include `specvania/ui/static/` and `specvania/examples/`. Add CI jobs that (a) build the wheel and run `uvx --from dist/*.whl specvania replay demo --help`, and (b) run one end-to-end fake-provider `plan` + `run` + `history` against Postgres from `docker-compose.yml`. README: quickstart (Python only), optional desktop app, optional Postgres team mode, the SDD ↔ game table, model roles, safety notes (D7, D8, D12, D16), how to add prices, and a GIF slot.
 
 Checklist:
-- [ ] The wheel contains every file under `specvania/ui/static/` and `specvania/examples/`
+- [x] The wheel contains every file under `specvania/ui/static/` and `specvania/examples/`
 - [ ] The wheel job and the Postgres end-to-end job pass on CI
 - [ ] README quickstart works from a fresh clone with no Docker and no Node (verified by the owner)
 - [ ] All spec §11 checklist items are green

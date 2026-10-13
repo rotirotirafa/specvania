@@ -3,6 +3,31 @@
   "on": {"push": {}, "pull_request": {}},
   "permissions": {"contents": "read"},
   "jobs": {
+    "wheel": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {"uses": "actions/checkout@v4"},
+        {"uses": "astral-sh/setup-uv@v6", "with": {"python-version": "3.12"}},
+        {"name": "Install test tools", "run": "uv sync --locked"},
+        {"name": "Build wheel", "run": "uv build"},
+        {"name": "Inspect bundled resources", "run": "uv run pytest -q tests/test_e2e.py -k built_wheel"},
+        {"name": "Wheel CLI smoke test", "run": "uvx --from dist/*.whl specvania replay demo --help"}
+      ]
+    },
+    "postgres-e2e": {
+      "runs-on": "ubuntu-latest",
+      "env": {
+        "SPECVANIA_TEST_DATABASE_URL": "postgresql+psycopg://specvania:specvania@localhost:5432/specvania"
+      },
+      "steps": [
+        {"uses": "actions/checkout@v4"},
+        {"uses": "astral-sh/setup-uv@v6", "with": {"python-version": "3.12"}},
+        {"name": "Start optional ledger", "run": "docker compose up -d --wait postgres"},
+        {"name": "Install Postgres extra", "run": "uv sync --locked --extra postgres"},
+        {"name": "G9 · CLI end-to-end", "run": "uv run pytest -q -rs tests/test_e2e.py"},
+        {"name": "Stop ledger", "if": "always()", "run": "docker compose down"}
+      ]
+    },
     "postgres": {
       "runs-on": "ubuntu-latest",
       "env": {
