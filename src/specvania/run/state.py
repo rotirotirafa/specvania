@@ -77,6 +77,12 @@ class BugProgress(FrozenModel):
     fixed_by_run: str | None = None
 
 
+class RoleTokens(FrozenModel):
+    mage: int = 0
+    warrior: int = 0
+    paladin: int = 0
+
+
 class RunState(FrozenModel):
     run_id: str | None = None
     seq: int = 0
@@ -94,6 +100,9 @@ class RunState(FrozenModel):
     prices: tuple[ModelPrice, ...] = ()
     dialogue: Action | Review | ApprovalRequested | ApprovalAnswered | None = None
     party_room: str | None = None
+    token_budget: PositiveInt | None = None
+    tokens_spent: int = 0
+    tokens_spent_by_role: RoleTokens = RoleTokens()
 
 
 class StateFoldError(ValueError):
@@ -175,6 +184,15 @@ def fold_events(events: Iterable[Event]) -> RunState:
                         "reason": None,
                         "lives": event.lives,
                         "prices": event.prices,
+                        "token_budget": event.token_budget,
+                    }
+                )
+            case "stamina_restored":
+                state = state.model_copy(
+                    update={
+                        "token_budget": event.token_budget,
+                        "status": "running",
+                        "reason": None,
                     }
                 )
             case "world_loaded":
@@ -267,6 +285,19 @@ def fold_events(events: Iterable[Event]) -> RunState:
                 if event.type in ("room_cleared", "room_failed", "room_skipped"):
                     state = state.model_copy(update={"active_room": None})
             case "model_call":
+                spent = event.tokens_in + event.tokens_out
+                role_spent = state.tokens_spent_by_role
+                state = state.model_copy(
+                    update={
+                        "tokens_spent": state.tokens_spent + spent,
+                        "tokens_spent_by_role": role_spent.model_copy(
+                            update={
+                                event.role.value: getattr(role_spent, event.role.value)
+                                + spent
+                            }
+                        ),
+                    }
+                )
                 metrics = models.get(event.model, ModelMetrics(model=event.model))
                 models[event.model] = metrics.model_copy(
                     update={

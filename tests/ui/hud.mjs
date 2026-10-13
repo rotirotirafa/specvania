@@ -123,14 +123,14 @@ if (["statuses", "fallback", "metrics", "integration"].includes(check)) {
     const ui = browser(); const mounted = mountParty(ui.host, ui.win);
     ui.event({type:"cooldown",role:"warrior",model:"w1",seconds:10});
     let meters = flatten(ui.host).filter(node => node.attrs.role === "progressbar");
-    assert.equal(meters.length, 3); assert.ok(meters.every(node => node.attrs["aria-valuenow"] === "0"));
+    assert.equal(meters.length, 3); assert.ok(meters.every(node => node.attrs["aria-valuenow"] === "100"));
     ui.tick(5000); meters = flatten(ui.host).filter(node => node.attrs.role === "progressbar");
-    assert.ok(meters.every(node => node.attrs["aria-valuenow"] === "50"));
+    assert.ok(meters.every(node => node.attrs["aria-valuenow"] === "100"));
     ui.event({type:"fallback",role:"warrior",from_model:"w1",to_model:"w2"});
     assert.match(texts(ui.host), /w2/); assert.doesNotMatch(texts(ui.host), /w1/);
     assert.ok(flatten(ui.host).filter(node => node.attrs.role === "progressbar").every(node => node.attrs["aria-valuenow"] === "100"));
     ui.state({party:[{role:"warrior",model:"w2",status:"cooldown",cooldown_seconds:5,cooldown_duration:10}]});
-    assert.ok(flatten(ui.host).filter(node => node.attrs.role === "progressbar").every(node => node.attrs["aria-valuenow"] === "50"));
+    assert.ok(flatten(ui.host).filter(node => node.attrs.role === "progressbar").every(node => node.attrs["aria-valuenow"] === "100"));
     palettePanel(flatten(ui.host).find(node => node.id === "party-hud"));
     mounted.destroy();
   }

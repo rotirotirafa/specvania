@@ -35,7 +35,7 @@ Every change to the spec's intent, logged before the commit that introduces it. 
 ### DEV-009 · 2026-10-12 · T17
 **What changed:** Optional `run_started.lives` and `run_started.prices` carry the configured lives limit and reference model rates/currency to the HUD. The engine reads T12's local pricing file; absent metadata uses D13's three lives and tokens only. RunState preserves this metadata and the latest dialogue event for reconnects. Stamina is an explicitly labeled estimate: a cooldown empties the shared bar, which recovers linearly over its duration; overlapping cooldowns use the lowest recovery fraction.
 **Why:** Existing events omit the configurable lives limit, pricing and limiter availability. The reviewer authorized lives/prices wiring; the owner authorized deterministic cooldown-derived stamina. Round-trip, engine and Node tests cover old streams and HUD projections.
-**Impact:** T17, run/events.py, run/engine.py, run/state.py, D6, D11, D13 and S9. No new dependency, event type or CLI edit. Prices in the event are reference rates only; the HUD presents no invented price.
+**Impact:** T17, run/events.py, run/engine.py, run/state.py, D6, D11, D13 and S9. No new dependency, event type or CLI edit. Prices in the event are reference rates only; the HUD presents no invented price. The cooldown-derived stamina estimate is superseded by D21 in spec v0.3 (T27); the lives, prices and dialogue metadata remain in effect. The original estimate above is retained as history.
 **Approved by:** reviewer under the owner's wiring delegation.
 
 ### DEV-008 · 2026-10-12 · T13

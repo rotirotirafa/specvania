@@ -51,6 +51,7 @@ def test_init_defaults_match_binding_decisions(repository: Path) -> None:
             ],
         },
         "limits": {
+            "token_budget": 1000000,
             "rpm": 40,
             "lives": 3,
             "max_steps": 25,
@@ -153,6 +154,7 @@ def test_custom_config_round_trips_without_reordering(tmp_path: Path) -> None:
     assert config.roles.paladin == ["review"]
     assert config.gates == ["pytest -q", "ruff check ."]
     assert config.limits.model_dump() == {
+        "token_budget": 1000000,
         "rpm": 10,
         "lives": 2,
         "max_steps": 12,

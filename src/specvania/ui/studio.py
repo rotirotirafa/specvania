@@ -26,6 +26,7 @@ from specvania.provider.client import (
     OpenAIProvider,
     Provider,
     ProviderError,
+    probe_party,
 )
 from specvania.run.bus import EventBus
 from specvania.run.engine import Engine, EngineError, PauseDecision, rebuild_run_state
@@ -48,6 +49,8 @@ from specvania.ui.server import (
     InitProject,
     OpenProject,
     PauseReply,
+    ProbeParty,
+    ProbeResult,
     SaveWorld,
     SetLanguage,
     Shutdown,
@@ -469,7 +472,7 @@ class Studio:
         self._job = worker
         worker.start()
 
-    def control(self, message: StudioControl) -> bool:
+    def control(self, message: StudioControl) -> bool | ProbeResult:
         if isinstance(message, Shutdown):
             with self._lock:
                 worker, abort = self._worker or self._job, self._abort or self._cancel
@@ -490,7 +493,7 @@ class Studio:
             return True
         with self._condition:
             try:
-                self._control(message)
+                result = self._control(message)
             except Exception as error:
                 raise StudioError(
                     self._error_message(
@@ -502,15 +505,15 @@ class Studio:
                     if isinstance(error, StudioError)
                     else (),
                 ) from None
-        return True
+        return result if result is not None else True
 
-    def _control(self, message: StudioControl) -> None:
+    def _control(self, message: StudioControl) -> ProbeResult | None:
         if isinstance(message, SetLanguage) and not self.stopped.is_set():
             self._language_override = self._language = message.language
             if self._active_ui is not None:
                 self._active_ui.language = message.language
             self.server.publish_studio_info()
-            return
+            return None
         phases: dict[str, tuple[StudioPhase, ...]] = {
             "open_project": ("idle", "project_open", "world_ready", "finished"),
             "init_project": ("project_open",),
@@ -519,6 +522,7 @@ class Studio:
             "save_world": ("project_open", "world_ready"),
             "start_run": ("world_ready",),
             "pause_decision": ("running",),
+            "probe_party": ("project_open", "world_ready", "finished"),
         }
         if self.stopped.is_set() or self.phase not in phases.get(message.kind, ()):
             raise StudioError("Studio message does not fit the current phase.")
@@ -580,9 +584,18 @@ class Studio:
         elif isinstance(message, PauseReply):
             if self._pause is None or self._choice is not None:
                 raise StudioError("Paused run unavailable.")
+            if self._pause.reason == "stamina exhausted" and message.choice == "skip":
+                raise StudioError("Choose retry or abort when stamina is exhausted.")
             self._choice, self._pause = message.choice, None
             self.server.publish_studio_state()
             self._condition.notify_all()
+        elif isinstance(message, ProbeParty):
+            _, config, key = self._settings()
+            with OpenAIProvider(config.provider, api_key=key) as provider:
+                result = ProbeResult(results=probe_party(config, provider, self.clock))
+            self._safe(result.model_dump_json())
+            return result
+        return None
 
     def serve(self, *, on_started: Callable[[], None]) -> None:
         self.server.serve(on_started=on_started)

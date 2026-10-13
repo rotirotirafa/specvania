@@ -36,7 +36,7 @@ from specvania.config import (
 )
 from specvania.ledger.repo import Ledger, LedgerError
 from specvania.pricing import PricingError, load_pricing
-from specvania.provider.client import OpenAIProvider, ProviderError
+from specvania.provider.client import OpenAIProvider, ProviderError, probe_party
 from specvania.run.bus import EventBus
 from specvania.run.engine import Engine, EngineError, PauseDecision
 from specvania.run.events import Event, RedactionGuard, Role, RunPaused, SecretLeakError
@@ -276,7 +276,11 @@ def create_app() -> typer.Typer:
         )
 
     @app.command("doctor", help="Check the API key, model chains and ledger.")
-    def doctor() -> None:
+    def doctor(
+        probe: Annotated[
+            bool, typer.Option("--probe", help="Call each distinct party model once.")
+        ] = False,
+    ) -> None:
         console = Console()
         try:
             root = repository_root(Path.cwd())
@@ -302,15 +306,34 @@ def create_app() -> typer.Typer:
             console.print(f"API key: {config.provider.api_key_env} set", markup=False)
             try:
                 with OpenAIProvider(config.provider, api_key=key) as provider:
-                    models = set(provider.list_models())
-                for role in Role:
-                    for model in getattr(config.roles, role.value):
-                        found = model in models
-                        console.print(
-                            f"{role.value}: {model} {'found' if found else 'missing'}",
-                            markup=False,
-                        )
-                        failed |= not found
+                    if probe:
+                        for result in probe_party(config, provider, SystemClock()):
+                            status = (
+                                f"ok ({result.latency_ms:.0f} ms)"
+                                if result.status == "ok"
+                                else (
+                                    f"HTTP {result.status}"
+                                    if isinstance(result.status, int)
+                                    else result.status
+                                )
+                            )
+                            console.print(
+                                guard.redact(f"{result.model}: {status}"),
+                                markup=False,
+                                highlight=False,
+                            )
+                            failed |= result.status != "ok"
+                    else:
+                        models = set(provider.list_models())
+                        for role in Role:
+                            for model in getattr(config.roles, role.value):
+                                found = model in models
+                                console.print(
+                                    f"{role.value}: {model} "
+                                    f"{'found' if found else 'missing'}",
+                                    markup=False,
+                                )
+                                failed |= not found
             except ProviderError as error:
                 console.print(str(error), markup=False, highlight=False, soft_wrap=True)
                 failed = True
@@ -458,7 +481,9 @@ def create_app() -> typer.Typer:
                 PauseDecision,
                 Prompt.ask(
                     "Choose",
-                    choices=["retry", "skip", "abort"],
+                    choices=["retry", "abort"]
+                    if pause.reason == "stamina exhausted"
+                    else ["retry", "skip", "abort"],
                     default="abort",
                     console=console,
                 ),

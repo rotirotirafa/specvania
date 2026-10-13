@@ -433,12 +433,12 @@ files: src/specvania/config.py, src/specvania/run/engine.py, src/specvania/run/e
 D21: `limits.token_budget` (positive integer, default 1,000,000) is sent as optional `run_started.token_budget`. Before each model call of a run, if the tokens spent in the run (input + output) reach the budget, the run pauses with reason "stamina exhausted"; `retry` emits the new event `stamina_restored{token_budget}` with the budget plus 25% of the original and continues, `skip` is rejected for this pause, `abort` finishes the run. `RunState` projects the budget, tokens spent and tokens spent per role; cooldowns no longer change stamina (DEV-009's estimate is removed). D24: `specvania doctor --probe` and the studio's `probe_party` send one minimal completion to each distinct configured model through the provider (no router, no fallback) and report ok with latency, the HTTP status or a timeout; the CLI exits non-zero if any model fails. Tests use the fake provider only.
 
 Checklist:
-- [ ] A run whose spending reaches the budget pauses before the next model call with "stamina exhausted"
-- [ ] Retry emits `stamina_restored` with the original budget × 1.25 and the run continues; skip is rejected for this pause; abort finishes as aborted
-- [ ] `run_started.token_budget` and `stamina_restored` round-trip through `events.jsonl`, and older streams without them still load
-- [ ] `RunState` exposes budget, spent and per-role spent; a `cooldown` no longer changes stamina
-- [ ] `doctor --probe` lists every distinct model as ok with latency or with its HTTP status or timeout, and exits non-zero when any fails
-- [ ] `probe_party` returns the same results to the game
+- [x] A run whose spending reaches the budget pauses before the next model call with "stamina exhausted"
+- [x] Retry emits `stamina_restored` with the original budget × 1.25 and the run continues; skip is rejected for this pause; abort finishes as aborted
+- [x] `run_started.token_budget` and `stamina_restored` round-trip through `events.jsonl`, and older streams without them still load
+- [x] `RunState` exposes budget, spent and per-role spent; a `cooldown` no longer changes stamina
+- [x] `doctor --probe` lists every distinct model as ok with latency or with its HTTP status or timeout, and exits non-zero when any fails
+- [x] `probe_party` returns the same results to the game
 
 ### T28 · Agent language
 depends_on: T25

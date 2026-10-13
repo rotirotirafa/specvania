@@ -17,7 +17,7 @@ from specvania.clock import Clock
 from specvania.config import Config
 from specvania.ledger.repo import Ledger, RunIdTakenError, generate_run_id
 from specvania.pricing import load_pricing
-from specvania.provider.client import Provider, ProviderError
+from specvania.provider.client import ChatMessage, Completion, Provider, ProviderError
 from specvania.provider.router import Router
 from specvania.run.bus import EventBus
 from specvania.run.events import (
@@ -34,6 +34,7 @@ from specvania.run.events import (
     RunFinished,
     RunPaused,
     RunStarted,
+    StaminaRestored,
     WorldLoaded,
     build_world_payload,
 )
@@ -54,6 +55,24 @@ class EventFields(TypedDict):
 
 class EngineError(Exception):
     """A run cannot proceed; the player can fix its inputs."""
+
+
+class _StaminaStop(Exception):
+    """Unwind the pending call without treating a player pause as a failure."""
+
+
+class _BudgetProvider:
+    """Check every actual request, including router retries and JSON repairs."""
+
+    def __init__(self, engine: "Engine") -> None:
+        self.engine = engine
+
+    def complete(self, model: str, messages: Sequence[ChatMessage]) -> Completion:
+        self.engine._check_budget()
+        return self.engine.provider.complete(model, messages)
+
+    def list_models(self) -> tuple[str, ...]:
+        return self.engine.provider.list_models()
 
 
 def rebuild_run_state(ledger: Ledger, run_id: str) -> RunState:
@@ -110,12 +129,27 @@ class Engine:
         self.emit(pause)
         write_summary(self.git.root, self.ledger, self.run_id, config=self.config)
         choice = self.decide(pause)
+        while reason == "stamina exhausted" and choice == "skip":
+            choice = self.decide(pause)
         if choice not in (None, "retry", "skip", "abort"):
             raise EngineError("Choose retry, skip or abort for a paused run.")
         if choice == "abort":
             # Abort leaves uncommitted work in place for the player to inspect.
             self._finish("aborted")
         return choice
+
+    def _check_budget(self) -> None:
+        state = rebuild_run_state(self.ledger, self.run_id)
+        while (
+            state.token_budget is not None and state.tokens_spent >= state.token_budget
+        ):
+            choice = self._pause("stamina exhausted", state.active_room)
+            if choice != "retry":
+                raise _StaminaStop()
+            # Budgets are whole tokens; round a fractional quarter upward.
+            budget = state.token_budget + (self._original_budget + 3) // 4
+            self.emit(StaminaRestored(**self._fields(), token_budget=budget))
+            state = rebuild_run_state(self.ledger, self.run_id)
 
     def _finish(self, status: Literal["finished", "aborted"]) -> None:
         self.emit(RunFinished(**self._fields(), status=status))
@@ -134,7 +168,7 @@ class Engine:
         # Explicit player retry restores an exhausted chain, preserving stamina.
         self.router = Router(
             config=self.config,
-            provider=self.provider,
+            provider=_BudgetProvider(self),
             clock=self.clock,
             run_id=self.run_id,
             emit=self.emit,
@@ -349,6 +383,7 @@ class Engine:
     ) -> RunState:
         world = validate_directory(directory)
         self.world = world
+        self._original_budget = self.config.limits.token_budget
         self.git.check(allow_dirty=allow_dirty)
         pricing = load_pricing(self.git.root / ".specvania/pricing.toml")
         try:
@@ -386,6 +421,7 @@ class Engine:
                 feature=feature.slug,
                 branch=branch,
                 lives=self.config.limits.lives,
+                token_budget=self.config.limits.token_budget,
                 prices=tuple(
                     ModelPrice(
                         model=price.model,
@@ -407,7 +443,7 @@ class Engine:
         self.sandbox = Sandbox(self.git.root)
         self.router = Router(
             config=self.config,
-            provider=self.provider,
+            provider=_BudgetProvider(self),
             clock=self.clock,
             run_id=self.run_id,
             emit=self.emit,
@@ -436,9 +472,12 @@ class Engine:
             if not ready:
                 break  # Skipped sources keep their dependent rooms locked.
             room = min(ready, key=lambda r: r.id)
-            outcome = self._room(
-                room, spec_md[: self.config.limits.observation_kb * 1024]
-            )
+            try:
+                outcome = self._room(
+                    room, spec_md[: self.config.limits.observation_kb * 1024]
+                )
+            except _StaminaStop:
+                return rebuild_run_state(self.ledger, self.run_id)
             if outcome is None:
                 return rebuild_run_state(self.ledger, self.run_id)
             del remaining[room.id]
@@ -450,7 +489,11 @@ class Engine:
                 area_rooms = {r.id for r in world.rooms if r.area_id == area.id}
                 if area_rooms and area_rooms <= cleared:
                     fought.add(area.id)
-                    if not self._boss(area, world, room.id):
+                    try:
+                        passed = self._boss(area, world, room.id)
+                    except _StaminaStop:
+                        return rebuild_run_state(self.ledger, self.run_id)
+                    if not passed:
                         return rebuild_run_state(self.ledger, self.run_id)
         self._finish("finished")
         return rebuild_run_state(self.ledger, self.run_id)

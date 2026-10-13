@@ -29,6 +29,7 @@ from specvania.agent.sandbox import Sandbox, SandboxRefusal
 from specvania.clock import Clock
 from specvania.config import Language
 from specvania.ledger import Ledger, LedgerError
+from specvania.provider.client import ProbeModelResult
 from specvania.run.bus import EventBus, Subscription
 from specvania.run.events import (
     ApprovalRequested,
@@ -256,6 +257,16 @@ class StartRun(FrozenModel):
     control_token: str = Field(default="", repr=False, exclude=True)
 
 
+class ProbeParty(FrozenModel):
+    kind: Literal["probe_party"]
+    control_token: str = Field(default="", repr=False, exclude=True)
+
+
+class ProbeResult(FrozenModel):
+    kind: Literal["probe_result"] = "probe_result"
+    results: tuple[ProbeModelResult, ...]
+
+
 class PauseReply(FrozenModel):
     kind: Literal["pause_decision"]
     choice: Literal["retry", "skip", "abort"]
@@ -278,6 +289,7 @@ type StudioControl = (
     | StartRun
     | PauseReply
     | SetLanguage
+    | ProbeParty
 )
 type ControlMessage = Annotated[
     ApprovalAnswer | StudioControl, Field(discriminator="kind")
@@ -342,7 +354,7 @@ class UIServer:
         port: int = 0,
         approval_responder: Callable[[ApprovalAnswer], bool | None] | None = None,
         studio_snapshot: Callable[[], StateMessage] | None = None,
-        control_responder: Callable[[StudioControl], bool] | None = None,
+        control_responder: Callable[[StudioControl], bool | ProbeResult] | None = None,
         studio_info: Callable[[], StudioState | None] | None = None,
         repository_root: Path | None = None,
         world_directory: Path | None = None,
@@ -857,6 +869,8 @@ class UIServer:
                     continue
                 if accepted is False:
                     await reject("request unavailable")
+                elif isinstance(accepted, ProbeResult):
+                    await websocket.send_json(accepted.model_dump(mode="json"))
             except ControlError as error:
                 await reject(str(error), error.dirty_paths)
 

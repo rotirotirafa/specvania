@@ -4,11 +4,12 @@ from collections.abc import Sequence
 from types import TracebackType
 from typing import Literal, Protocol, Self
 
-from openai import APIConnectionError, APIError, APIStatusError, OpenAI
+from openai import APIConnectionError, APIError, APIStatusError, APITimeoutError, OpenAI
 from openai.types.chat import ChatCompletionMessageParam
 from pydantic import Field
 
-from specvania.config import ProviderConfig
+from specvania.clock import Clock
+from specvania.config import Config, ProviderConfig
 from specvania.run.events import FrozenModel, NonNegativeInt
 
 
@@ -52,6 +53,49 @@ class Provider(Protocol):
     def complete(self, model: str, messages: Sequence[ChatMessage]) -> Completion: ...
 
     def list_models(self) -> tuple[str, ...]: ...
+
+
+class ProviderTimeoutError(ProviderError):
+    """A request reached the configured provider timeout without a response."""
+
+
+class ProbeModelResult(FrozenModel):
+    model: str
+    status: int | Literal["ok", "timeout", "connection failed"]
+    latency_ms: float | None = None
+
+
+def probe_party(
+    config: Config, provider: Provider, clock: Clock
+) -> tuple[ProbeModelResult, ...]:
+    """One minimal request per distinct model; discard all completion contents."""
+    models = dict.fromkeys(
+        config.roles.mage + config.roles.warrior + config.roles.paladin
+    )
+    results: list[ProbeModelResult] = []
+    for model in models:
+        started = clock.now()
+        try:
+            provider.complete(
+                model, (ChatMessage(role="user", content="Reply with OK."),)
+            )
+        except ProviderTimeoutError:
+            result = ProbeModelResult(model=model, status="timeout")
+        except ProviderError as error:
+            result = ProbeModelResult(
+                model=model,
+                status=error.status
+                if error.status is not None
+                else "connection failed",
+            )
+        else:
+            result = ProbeModelResult(
+                model=model,
+                status="ok",
+                latency_ms=max(0.0, (clock.now() - started).total_seconds() * 1000),
+            )
+        results.append(result)
+    return tuple(results)
 
 
 class OpenAIProvider:
@@ -106,6 +150,8 @@ class OpenAIProvider:
                 status=error.status_code,
                 retry_after=error.response.headers.get("Retry-After"),
             ) from None
+        except APITimeoutError:
+            raise ProviderTimeoutError() from None
         except APIConnectionError:
             raise ProviderError() from None
         except APIError:

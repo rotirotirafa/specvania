@@ -58,6 +58,7 @@ class RolesConfig(ConfigModel):
 
 
 class LimitsConfig(ConfigModel):
+    token_budget: PositiveInt = 1_000_000
     rpm: PositiveInt = 40
     lives: PositiveInt = 3
     max_steps: PositiveInt = 25

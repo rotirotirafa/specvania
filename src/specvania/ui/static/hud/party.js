@@ -51,6 +51,8 @@ export function partyFromState(state, now = 0) {
   const currentRoom = state.party_room || state.active_room;
   const room = (state.rooms || []).find(room => room.id === currentRoom);
   return { lives: state.lives || 3, prices: [...(state.prices || [])],
+    token_budget: state.token_budget ?? null,
+    tokens_spent: state.tokens_spent ?? (state.models || []).reduce((sum, model) => sum + model.tokens_in + model.tokens_out, 0),
     room: currentRoom || null, attempt: room?.attempt || 1,
     failed: room?.failed_attempts ?? Math.max(0, (room?.attempt || 1) - 1 + (room?.state === "failed" ? 1 : 0)),
     models: (state.models || []).map(model => ({...model})),
@@ -59,12 +61,13 @@ export function partyFromState(state, now = 0) {
       const remaining = member?.status === "cooldown" ? member.cooldown_seconds || 0 : 0;
       const duration = member?.cooldown_duration || remaining;
       return {role, model: member?.model || "—", status: member?.status || "idle",
+        tokens_spent: state.tokens_spent_by_role?.[role] || 0,
         start: now - (duration - remaining) * 1000, duration, until: now + remaining * 1000};
     }) };
 }
 
 export function projectParty(state, event, now = 0) {
-  if (event.type === "run_started") return {...partyFromState({}, now), lives: event.lives || 3, prices: [...(event.prices || [])]};
+  if (event.type === "run_started") return partyFromState(event, now);
   const next = {...state, members: state.members.map(member => ({...member})), models: state.models.map(model => ({...model}))};
   const statuses = eventStatuses(event);
   for (const member of next.members) {
@@ -82,10 +85,15 @@ export function projectParty(state, event, now = 0) {
     }
   }
   if (event.type === "model_call") {
+    const spent = (event.tokens_in || 0) + (event.tokens_out || 0);
+    next.tokens_spent += spent;
+    const member = next.members.find(member => member.role === event.role);
+    if (member) member.tokens_spent += spent;
     let model = next.models.find(model => model.model === event.model);
     if (!model) { model = {model: event.model, tokens_in: 0, tokens_out: 0}; next.models.push(model); }
     model.tokens_in += event.tokens_in || 0; model.tokens_out += event.tokens_out || 0;
   }
+  if (event.type === "stamina_restored") next.token_budget = event.token_budget;
   if (event.type === "room_entered" && event.room_id !== next.room) {
     next.room = event.room_id; next.attempt = 1; next.failed = 0;
   }
@@ -101,12 +109,12 @@ export function projectParty(state, event, now = 0) {
 }
 
 export function partyView(state, now = 0) {
-  // Limiter availability is absent from the event catalog. Deterministic estimate:
-  // shared stamina = 0 at cooldown receipt, linear recovery to 100 at expiry;
-  // overlapping cooldowns take the lowest recovery. Never claim real RPM budget.
-  const stamina = Math.round(100 * Math.min(1, ...state.members.filter(member => member.until > now)
-    .map(member => Math.max(0, (now - member.start) / (member.duration * 1000)))));
+  const stamina = state.token_budget === null ? 100
+    : Math.round(100 * Math.max(0, 1 - state.tokens_spent / state.token_budget));
+  const staminaText = state.token_budget === null ? `${state.tokens_spent} tokens`
+    : `${state.tokens_spent} / ${state.token_budget} tokens`;
   return {lives: Math.max(0, state.lives - state.failed), maximum: state.lives, stamina,
+    staminaText,
     members: state.members.map(member => {
       const countdown = Math.max(0, Math.ceil((member.until - now) / 1000));
       const model = state.models.find(model => model.model === member.model);
@@ -148,11 +156,12 @@ export function mountParty(host, browser = window) {
       column.append(label(document, "h3", member.role[0].toUpperCase() + member.role.slice(1)),
         label(document, "p", member.model), label(document, "p", member.status + (member.countdown ? ` · ${member.countdown}s` : "")));
       const meter = document.createElement("div");
-      meter.setAttribute("role", "progressbar"); meter.setAttribute("aria-label", "Estimated shared stamina (cooldown recovery)");
+      meter.setAttribute("role", "progressbar"); meter.setAttribute("aria-label", "Stamina");
       for (const [name, value] of Object.entries({"aria-valuemin": 0, "aria-valuemax": 100, "aria-valuenow": view.stamina})) meter.setAttribute(name, value);
       Object.assign(meter.style, {height: "8px", border: `2px solid ${UI_COLORS.accent}`, backgroundColor: UI_COLORS.background});
       const fill = document.createElement("div"); Object.assign(fill.style, {width: `${view.stamina}%`,height: "100%",backgroundColor: PALETTE.G}); meter.append(fill);
-      column.append(meter, label(document, "small", "Stamina · estimated"), label(document, "p", `Model: ${member.metrics}`));
+      column.append(meter, label(document, "small", `Stamina · ${view.staminaText}`),
+        label(document, "p", `${member.tokens_spent} tokens spent`), label(document, "p", `Model: ${member.metrics}`));
       const hearts = label(document, "p", "♥".repeat(view.lives) + "♡".repeat(view.maximum - view.lives));
       hearts.style.color = PALETTE.R; hearts.setAttribute("aria-label", `Lives: ${view.lives} of ${view.maximum}`);
       column.append(hearts); columns.append(column);

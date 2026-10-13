@@ -50,6 +50,9 @@ class RunStarted(EventBase):
     type: Literal["run_started"] = "run_started"
     feature: ShortText
     branch: ShortText
+    token_budget: PositiveInt | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     lives: PositiveInt | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
@@ -307,6 +310,11 @@ class RunPaused(EventBase):
     room_id: ShortText | None = None
 
 
+class StaminaRestored(EventBase):
+    type: Literal["stamina_restored"] = "stamina_restored"
+    token_budget: PositiveInt
+
+
 class RunFinished(EventBase):
     type: Literal["run_finished"] = "run_finished"
     status: Literal["finished", "aborted"]
@@ -339,6 +347,7 @@ type Event = Annotated[
     | BugOpened
     | BugClosed
     | RunPaused
+    | StaminaRestored
     | RunFinished,
     Field(discriminator="type"),
 ]
