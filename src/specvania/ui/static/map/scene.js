@@ -92,6 +92,57 @@ export function mountMap(Phaser, host, browser = window) {
   let height = browser.innerHeight || 540;
   const objects = [];
   const animations = createMapAnimations(browser, () => redraw());
+  let scrollBounds = null, overviewScroll = null, drag = null, dragged = false;
+  const previousTabIndex = host.tabIndex;
+  host.tabIndex = 0;
+  const editable = target => /^(INPUT|TEXTAREA|SELECT)$/.test(target?.tagName) || target?.isContentEditable;
+  const canScroll = () => scrollBounds && host.getAttribute?.("inert") == null;
+  function scrollTo(x, y) {
+    if (!scrollBounds) return;
+    const {minX, maxX, maxY} = scrollBounds;
+    overviewScroll = {x: Math.max(minX, Math.min(maxX, Math.round(x))),
+      y: Math.max(0, Math.min(maxY, Math.round(y)))};
+    scene.cameras.main.scrollX = overviewScroll.x;
+    scene.cameras.main.scrollY = overviewScroll.y;
+  }
+  const onWheel = event => {
+    if (!canScroll()) return;
+    event.preventDefault();
+    const unit = event.deltaMode === 1 ? TILE_SIZE : event.deltaMode === 2 ? height : 1;
+    scrollTo(overviewScroll.x + (event.deltaX || 0) * unit, overviewScroll.y + (event.deltaY || 0) * unit);
+  };
+  const onScrollKey = event => {
+    const focused = browser.document.activeElement;
+    if (!canScroll() || editable(event.target) || !(focused === host || host.contains?.(focused))) return;
+    const page = Math.max(TILE_SIZE, height - 2 * TILE_SIZE);
+    const steps = {ArrowLeft: [-TILE_SIZE, 0], ArrowRight: [TILE_SIZE, 0],
+      ArrowUp: [0, -TILE_SIZE], ArrowDown: [0, TILE_SIZE], PageUp: [0, -page], PageDown: [0, page]};
+    const step = steps[event.key];
+    if (!step) return;
+    event.preventDefault();
+    scrollTo(overviewScroll.x + step[0], overviewScroll.y + step[1]);
+  };
+  const onDragStart = event => {
+    if (!canScroll() || event.button !== 0) return;
+    host.focus?.({preventScroll: true});
+    event.target?.setPointerCapture?.(event.pointerId);
+    dragged = false;
+    drag = {id: event.pointerId, x: event.clientX, y: event.clientY,
+      scrollX: overviewScroll.x, scrollY: overviewScroll.y, moved: false};
+  };
+  const onDragMove = event => {
+    if (!canScroll() || !drag || drag.id !== event.pointerId) return;
+    const dx = event.clientX - drag.x, dy = event.clientY - drag.y;
+    drag.moved ||= Math.abs(dx) > 3 || Math.abs(dy) > 3;
+    if (drag.moved) {dragged = true; scrollTo(drag.scrollX - dx, drag.scrollY - dy);}
+  };
+  const onDragEnd = event => {if (drag?.id === event.pointerId) drag = null;};
+  host.addEventListener?.("wheel", onWheel, {passive: false});
+  host.addEventListener?.("keydown", onScrollKey);
+  host.addEventListener?.("pointerdown", onDragStart);
+  browser.addEventListener("pointermove", onDragMove);
+  browser.addEventListener("pointerup", onDragEnd);
+  browser.addEventListener("pointercancel", onDragEnd);
 
   function redraw() {
     if (!scene) return;
@@ -146,7 +197,12 @@ export function mountMap(Phaser, host, browser = window) {
       const zone = scene.add.zone(room.x + room.width / 2, room.y + room.height / 2, room.width, room.height);
       objects.push(zone);
       zone.setInteractive();
-      zone.on("pointerdown", () => browser.dispatchEvent(new browser.CustomEvent("specvania:room-selected", { detail: { room_id: room.id } })));
+      const select = () => browser.dispatchEvent(new browser.CustomEvent("specvania:room-selected", { detail: { room_id: room.id } }));
+      zone.on("pointerdown", () => {if (!scrollBounds) select();});
+      // In a scrollable overview wait for release, so dragging a chamber does
+      // not open its panel. Keep the result after DOM pointerup: Phaser's
+      // compatibility mouseup (or touchend) can arrive after that event.
+      zone.on("pointerup", () => {if (scrollBounds && !dragged) select();});
     }
     for (const door of layout.doors) {
       tile(door.x, door.y + 16, door.locked ? "door_closed" : "door_open_middle");
@@ -184,14 +240,30 @@ export function mountMap(Phaser, host, browser = window) {
     camera.setBounds(overview || preview ? frame.x + Math.min(0, (frame.width - viewWidth) / 2) : 0,
       overview || preview ? frame.y + Math.min(0, (frame.height - viewHeight) / 2) : 0,
       Math.max(layout.width, viewWidth) + coveredWidth, Math.max(layout.height, viewHeight));
+    const scrollable = overview && !preview && !arena
+      && (layout.width > visibleWidth || layout.height > viewport.height);
+    if (scrollable) {
+      // At zoom 1 a tall castle starts at its top. Narrow castles stay centered;
+      // wide ones can reach the right wall to the left of the measured HUD.
+      const integerWidth = Math.floor(visibleWidth);
+      const minX = Math.min(0, Math.round((layout.width - integerWidth) / 2));
+      const maxX = Math.max(minX, layout.width - integerWidth);
+      scrollBounds = {minX, maxX, maxY: Math.max(0, layout.height - viewport.height)};
+      camera.setBounds(minX, 0, viewport.width + maxX - minX, Math.max(layout.height, viewport.height));
+      const position = overviewScroll || {x: Math.round((layout.width - integerWidth) / 2), y: 0};
+      scrollTo(position.x, position.y);
+    } else {
+      scrollBounds = overviewScroll = drag = null;
+      dragged = false;
+    }
     if (arena) {
       camera.setViewport?.(0, 0, width, height);
       camera.setZoom(Math.max(1, Math.min(4, Math.floor(width / (arena.width + 64)), Math.floor(height / 128))));
       // Center the real T30 arena below the HP header and above Continue.
       camera.setBounds(-width, -height, layout.width + width * 2, layout.height + height * 2);
       camera.centerOn(arena.x + Math.floor(arena.width / 2), arena.y + 24);
-    } else if (overview || preview || !layout.rooms.length) camera.centerOn(Math.floor(frame.x + frame.width / 2) + offset, Math.floor(frame.y + frame.height / 2));
-    else {
+    } else if (!scrollable && (overview || preview || !layout.rooms.length)) camera.centerOn(Math.floor(frame.x + frame.width / 2) + offset, Math.floor(frame.y + frame.height / 2));
+    else if (!scrollable) {
       const target = party || { x: layout.rooms[0].x + 40, y: layout.rooms[0].y + 24 };
       // Phaser subtracts its follow offset from the target before centering.
       // The HUD's screen width becomes world units at the integer zoom.
@@ -257,7 +329,7 @@ export function mountMap(Phaser, host, browser = window) {
       if (browser.CustomEvent) browser.dispatchEvent?.(new browser.CustomEvent("specvania:textures-ready", {detail: this.textures}));
       this.input.keyboard.on("keydown-M", event => {
         if (host.getAttribute?.("inert") != null || event.repeat || /^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName) || event.target?.isContentEditable) return;
-        overview = !overview; redraw();
+        overview = !overview; overviewScroll = drag = null; redraw();
       });
       redraw(); revealReady();
     }, update() { revealReady(); } },
@@ -271,6 +343,13 @@ export function mountMap(Phaser, host, browser = window) {
   resize();
   return { setReducedMotion: animations.setReducedMotion,
     setReplaySpeed: animations.setReplaySpeed, destroy() {
+    host.removeEventListener?.("wheel", onWheel);
+    host.removeEventListener?.("keydown", onScrollKey);
+    host.removeEventListener?.("pointerdown", onDragStart);
+    host.tabIndex = previousTabIndex;
+    browser.removeEventListener("pointermove", onDragMove);
+    browser.removeEventListener("pointerup", onDragEnd);
+    browser.removeEventListener("pointercancel", onDragEnd);
     browser.removeEventListener("specvania:expedition-dialog", onExpedition);
     browser.removeEventListener("specvania:boss-screen", onBossScreen);
     browser.removeEventListener("specvania:dialogue-layout", onDialogueLayout);

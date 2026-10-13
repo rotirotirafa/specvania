@@ -56,7 +56,7 @@ function literals(source) {
 const technical = new Set(`en pt-BR specvania.language specvania.settings text/javascript
   role dialog status progressbar meter img aria-label aria-pressed aria-valuemin aria-valuemax aria-valuenow aria-valuetext
   div section p h1 h2 h3 strong small span button canvas nav header style pre main 2d
-  click message close error open resize pointerdown keydown-M change
+  click message close error open resize pointerdown pointerup pointermove pointercancel wheel keydown-M change
   function boolean anywhere json pt Linear shake kenney-tiny-dungeon slime bat ghost spider rat red_crab hooded_figure coin stamina_pip V C P idle thinking acting cooldown running paused finished aborted locked active cleared failed skipped
   mage warrior paladin state event studio_state set_language approval_answer approval_rejected desktop-title-bar connection run-state
   view_token ws: /ws world-map castle-hud map-rooms party-hud bestiary-hud dialogue-hud approval-choice

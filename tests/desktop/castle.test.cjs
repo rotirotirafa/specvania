@@ -144,7 +144,7 @@ const cameraMethod = name => {
 };
 
 function harness(width = 960, height = 540, reduced = false) {
-  const handlers = new Map(), keys = new Map(), paints = [], selections = [], resizes = [];
+  const handlers = new Map(), hostHandlers = new Map(), keys = new Map(), paints = [], selections = [], resizes = [];
   const descriptions = {"map-rooms": {}, "castle-hud": {hidden: false}};
   const object = (kind, x = 0, y = 0, key) => ({kind, x, y, key, destroyed: false, visible: true, alpha: 1, listeners: new Map(),
     destroy() {this.destroyed = true;}, setInteractive() {this.interactive = true; return this;},
@@ -161,7 +161,9 @@ function harness(width = 960, height = 540, reduced = false) {
     stopFollow() {this.following = null;}, startFollow(marker) {this.following = marker;},
     setZoom(zoom) {assert.ok(Number.isInteger(zoom) && zoom >= 1); this.zoom = zoom;},
     setBounds(...args) {this.bounds = args; cameraMethod("setBounds").apply(this, args);},
-    centerOn(x, y) {this.centers.push([x, y]); this.centerOnX(x); this.centerOnY(y);}, setScroll() {} };
+    centerOn(x, y) {this.centers.push([x, y]); this.centerOnX(x); this.centerOnY(y);},
+    setScroll(x, y) {this.scrollX = x; this.scrollY = y; return this;},
+    setViewport(x, y, width, height) {Object.assign(this, {x, y, width, height});} };
   const scene = {cameras: {main: camera}, textures: {exists: () => true},
     input: {keyboard: {on: (type, fn) => keys.set(type, fn)}},
     children: {bringToTop(item) {const index = paints.indexOf(item); paints.splice(index, 1); paints.push(item);}},
@@ -184,20 +186,163 @@ function harness(width = 960, height = 540, reduced = false) {
     destroy() {destroyed = true;}
   } };
   const browser = {innerWidth: width, innerHeight: height, matchMedia: () => media,
-    document: {getElementById: id => descriptions[id]},
+    document: {activeElement: null, getElementById: id => descriptions[id]},
     CustomEvent: class {constructor(type, options) {this.type = type; this.detail = options.detail;}},
     addEventListener(type, fn) {const list = handlers.get(type) || []; list.push(fn); handlers.set(type, list);},
     removeEventListener(type, fn) {handlers.set(type, handlers.get(type).filter(item => item !== fn));},
     dispatchEvent(event) {selections.push(event);},
   };
+  const host = {clientWidth: width, tabIndex: -1, inert: false,
+    getAttribute: name => name === "inert" && host.inert ? "" : null,
+    focus() {browser.document.activeElement = host;}, contains: target => target === host,
+    addEventListener(type, fn) {hostHandlers.set(type, fn);}, removeEventListener(type) {hostHandlers.delete(type);} };
+  const dom = (surface, type, fields = {}) => {
+    const event = {target: host, defaultPrevented: false, preventDefault() {this.defaultPrevented = true;}, ...fields};
+    if (surface === "host") hostHandlers.get(type)?.(event);
+    else handlers.get(type)?.forEach(fn => fn(event));
+    return event;
+  };
   const emit = (type, detail) => handlers.get(type).forEach(fn => fn({detail}));
-  return {Phaser, browser, host: {clientWidth: width}, scene, paints, camera, keys, descriptions, selections, resizes, mediaHandlers,
-    emit, config: () => config, create: () => config.scene.create.call(scene),
+  return {Phaser, browser, host, scene, paints, camera, keys, descriptions, selections, resizes, mediaHandlers,
+    emit, dom, config: () => config, create: () => config.scene.create.call(scene),
     resize(w, h) {browser.innerWidth = w; browser.innerHeight = h; emit("resize");},
     reduce() {media.matches = true; [...mediaHandlers].forEach(fn => fn({matches: true}));},
     live: () => paints.filter(item => !item.destroyed && item.visible), destroyed: () => destroyed,
-    listenerCount: () => [...handlers.values()].reduce((sum, list) => sum + list.length, 0) };
+    listenerCount: () => hostHandlers.size + [...handlers.values()].reduce((sum, list) => sum + list.length, 0) };
 }
+
+// Independent of the repository's current number of areas and rooms.
+function syntheticWorld(areaCount = 12, roomsPerArea = 1) {
+  const areas = Array.from({length: areaCount}, (_, i) => ({id: `A${i + 1}`, title: `Floor ${i + 1}`, boss_ids: [`S${i + 1}`]}));
+  const rooms = areas.flatMap(area => Array.from({length: roomsPerArea}, (_, j) => ({
+    id: `T${String((Number(area.id.slice(1)) - 1) * roomsPerArea + j + 1).padStart(2, "0")}`,
+    area: area.id, title: `Chamber ${j + 1}`, state: "open", depends_on: [],
+  })));
+  return {areas, rooms, doors: []};
+}
+
+async function overviewHarness(world = syntheticWorld()) {
+  const { mountMap } = await load("map/scene.js");
+  const h = harness(), map = mountMap(h.Phaser, h.host, h.browser);
+  h.emit("specvania:event", {type: "world_loaded", ...world}); h.create();
+  h.keys.get("keydown-M")({repeat: false});
+  return {h, map};
+}
+
+test("oversized_overview_starts_at_top_at_zoom_one_and_wheel_scrolls_integer_clamped_pixels", async () => {
+  const {h, map} = await overviewHarness();
+  assert.equal(h.camera.zoom, 1);
+  assert.equal(h.camera.scrollY, 0, "First floor starts below the title bar, not midway through the castle");
+  assert.equal(h.camera.scrollX, -304, "352px castle centered in 960px window");
+  assert.ok(32 - h.camera.scrollY >= 32 && 80 - h.camera.scrollY <= 540);
+  assert.equal(h.dom("host", "wheel", {deltaX: 0, deltaY: 23.7, deltaMode: 0}).defaultPrevented, true);
+  assert.equal(h.camera.scrollY, 24);
+  h.emit("specvania:event", {type: "room_cleared", room_id: "T01"});
+  assert.equal(h.camera.scrollY, 24, "Live redraw retains manual scrolling");
+  h.dom("host", "wheel", {deltaX: 0, deltaY: 10000, deltaMode: 0});
+  assert.equal(h.camera.scrollY, 84, "624px castle bottom clamps at 540px window bottom");
+  assert.ok(560 - h.camera.scrollY >= 32 && 608 - h.camera.scrollY <= 540, "Last boss arena fully visible");
+  h.dom("host", "wheel", {deltaX: -9999, deltaY: -10000, deltaMode: 0});
+  assert.deepEqual([h.camera.scrollX, h.camera.scrollY], [-304, 0]);
+  h.dom("host", "wheel", {deltaX: 0, deltaY: 2, deltaMode: 1});
+  assert.equal(h.camera.scrollY, 32, "Wheel line deltas use tile-sized pixels");
+  map.destroy(); assert.equal(h.listenerCount(), 0);
+});
+
+test("oversized_overview_arrow_and_page_keys_scroll_only_with_castle_focus", async () => {
+  const {h, map} = await overviewHarness();
+  assert.equal(h.host.tabIndex, 0, "Castle can receive keyboard focus");
+  const key = (value, fields) => h.dom("host", "keydown", {key: value, ...fields});
+  key("ArrowDown"); assert.equal(h.camera.scrollY, 0);
+  h.host.focus();
+  assert.equal(key("ArrowDown").defaultPrevented, true); assert.equal(h.camera.scrollY, 16);
+  key("ArrowUp"); assert.equal(h.camera.scrollY, 0);
+  key("PageDown"); assert.equal(h.camera.scrollY, 84);
+  key("PageDown", {repeat: true}); assert.equal(h.camera.scrollY, 84);
+  key("PageUp"); assert.equal(h.camera.scrollY, 0);
+  for (const fields of [{target: {tagName: "INPUT"}}, {target: {tagName: "TEXTAREA"}}, {target: {isContentEditable: true}}]) {
+    assert.equal(key("PageDown", fields).defaultPrevented, false); assert.equal(h.camera.scrollY, 0);
+  }
+  h.host.inert = true; key("PageDown"); assert.equal(h.camera.scrollY, 0); h.host.inert = false;
+  h.keys.get("keydown-M")({repeat: false});
+  const before = [h.camera.scrollX, h.camera.scrollY];
+  key("PageDown"); h.dom("host", "wheel", {deltaY: 1000});
+  assert.deepEqual([h.camera.scrollX, h.camera.scrollY], before, "Follow mode ignores overview scrolling");
+  map.destroy();
+});
+
+test("oversized_overview_drag_scrolls_integer_pixels_clamps_and_does_not_select_chambers", async () => {
+  const {h, map} = await overviewHarness();
+  const zone = h.live().find(item => item.kind === "zone");
+  zone.listeners.get("pointerdown")({});
+  h.dom("host", "pointerdown", {button: 0, pointerId: 1, clientX: 400, clientY: 300});
+  assert.equal(h.browser.document.activeElement, h.host);
+  h.dom("browser", "pointermove", {pointerId: 1, clientX: 390.4, clientY: 279.3});
+  assert.deepEqual([h.camera.scrollX, h.camera.scrollY], [-304, 21]);
+  h.dom("browser", "pointermove", {pointerId: 1, clientX: -1000, clientY: -1000});
+  assert.equal(h.camera.scrollY, 84);
+  h.dom("browser", "pointermove", {pointerId: 1, clientX: 2000, clientY: 2000});
+  assert.equal(h.camera.scrollY, 0);
+  // DOM Pointer Events precede Phaser's compatibility mouseup event.
+  h.dom("browser", "pointerup", {pointerId: 1});
+  zone.listeners.get("pointerup")?.({});
+  assert.ok(!h.selections.some(event => event.type === "specvania:room-selected"));
+  h.dom("browser", "pointermove", {pointerId: 1, clientX: 400, clientY: 200});
+  assert.equal(h.camera.scrollY, 0, "Released drag stops scrolling");
+  h.dom("host", "pointerdown", {button: 0, pointerId: 2, clientX: 150, clientY: 50});
+  zone.listeners.get("pointerdown")({});
+  h.dom("browser", "pointerup", {pointerId: 2});
+  zone.listeners.get("pointerup")?.({});
+  assert.deepEqual(h.selections.at(-1).detail, {room_id: "T01"}, "A click still selects the chamber");
+  map.destroy();
+});
+
+test("oversized_overview_scrolls_both_axes_to_last_arena_left_of_measured_hud_overlay", async () => {
+  const {layoutWorld} = await load("map/layout.js");
+  const world = syntheticWorld(12, 10), {h, map} = await overviewHarness(world);
+  // Retain a measured overlay reservation even while M hides the HUD.
+  h.descriptions["castle-hud"].getBoundingClientRect = () => ({width: 260});
+  h.resize(960, 540);
+  assert.equal(h.camera.zoom, 1);
+  assert.equal(h.camera.scrollY, 0);
+  h.host.focus();
+  const before = h.camera.scrollX;
+  h.dom("host", "keydown", {key: "ArrowRight"}); assert.equal(h.camera.scrollX, before + 16);
+  h.dom("host", "keydown", {key: "ArrowLeft"}); assert.equal(h.camera.scrollX, before);
+  h.dom("host", "wheel", {deltaX: 10000.4, deltaY: 10000.4, deltaMode: 0});
+  assert.deepEqual([h.camera.scrollX, h.camera.scrollY], [516, 84]);
+  const arena = layoutWorld(world).bosses.at(-1);
+  assert.ok(arena.x - h.camera.scrollX >= 0);
+  assert.ok(arena.x + arena.width - h.camera.scrollX <= 700, "Arena ends left of 260px HUD");
+  assert.ok(arena.y - h.camera.scrollY >= 32 && arena.y + arena.height - h.camera.scrollY <= 540);
+  assert.equal(h.camera.clampX(h.camera.scrollX), h.camera.scrollX, "Phaser bounds preserve HUD-aware scroll");
+  assert.equal(h.camera.clampY(h.camera.scrollY), h.camera.scrollY);
+  h.dom("host", "wheel", {deltaX: -10000, deltaY: -10000, deltaMode: 0});
+  assert.deepEqual([h.camera.scrollX, h.camera.scrollY], [0, 0]);
+  h.descriptions["castle-hud"].getBoundingClientRect = () => ({width: 260.5});
+  h.resize(960, 540);
+  h.dom("host", "wheel", {deltaX: 10000, deltaY: 10000, deltaMode: 0});
+  assert.deepEqual([h.camera.scrollX, h.camera.scrollY], [517, 84], "Fractional DOM measurements still yield integer scroll bounds");
+  assert.ok(arena.x + arena.width - h.camera.scrollX <= 699.5);
+  map.destroy();
+  // Width alone can overflow, even when every floor fits vertically.
+  const wide = await overviewHarness(syntheticWorld(1, 10));
+  assert.equal(wide.h.camera.zoom, 1); assert.equal(wide.h.camera.scrollY, 0);
+  wide.h.dom("host", "wheel", {deltaX: 10000, deltaY: 10000});
+  assert.deepEqual([wide.h.camera.scrollX, wide.h.camera.scrollY], [256, 0]); wide.map.destroy();
+});
+
+test("small_overview_keeps_largest_integer_zoom_and_centering_and_ignores_scroll_inputs", async () => {
+  const {h, map} = await overviewHarness(syntheticWorld(2));
+  assert.equal(h.camera.zoom, 2);
+  assert.deepEqual(h.camera.centers.at(-1), [176, 72]);
+  const before = [h.camera.scrollX, h.camera.scrollY];
+  h.host.focus(); h.dom("host", "wheel", {deltaY: 10000}); h.dom("host", "keydown", {key: "PageDown"});
+  h.dom("host", "pointerdown", {button: 0, pointerId: 1, clientX: 400, clientY: 300});
+  h.dom("browser", "pointermove", {pointerId: 1, clientX: 200, clientY: 100});
+  assert.deepEqual([h.camera.scrollX, h.camera.scrollY], before);
+  map.destroy();
+});
 
 function stateWorld() {
   return {areas: [{id: "A1", title: "States", boss_ids: []}], doors: [],
