@@ -5,12 +5,21 @@ can represent an event awaiting append. Consumers receive assigned sequences.
 """
 
 import json
+from datetime import date
 from decimal import Decimal
 from enum import StrEnum
 from threading import RLock
 from typing import Annotated, Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, TypeAdapter
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    HttpUrl,
+    TypeAdapter,
+    field_validator,
+)
 
 from specvania.sdd.world import World
 
@@ -44,6 +53,19 @@ class ModelPrice(FrozenModel):
     input_per_mtok: Annotated[Decimal, Field(ge=0, allow_inf_nan=False)]
     output_per_mtok: Annotated[Decimal, Field(ge=0, allow_inf_nan=False)]
     currency: ShortText
+    source_url: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    checked_on: date | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
+    @field_validator("source_url")
+    @classmethod
+    def no_source_credentials(cls, value: str | None) -> str | None:
+        if value is not None:
+            url = HttpUrl(value)
+            if url.username is not None or url.password is not None:
+                raise ValueError("Source URLs must not contain credentials")
+        return value
 
 
 class RunStarted(EventBase):

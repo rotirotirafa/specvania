@@ -1,3 +1,4 @@
+import { t, onLanguageChange } from "../i18n/index.js";
 import { PALETTE, AREA_COLORS, UI_COLORS } from "../pixel/palette.js";
 import { TILE_SIZE } from "../pixel/cast.js";
 import { preloadTextures, registerTextures, textureKey } from "../pixel/textures.js";
@@ -16,7 +17,7 @@ export function roomAppearance(state) {
     failed: { fill: "R", border: "R", mark: "cross", label: "failed" },
     skipped: { fill: "S", border: "S", mark: "cobweb", label: "skipped" },
   };
-  if (!appearances[state]) throw new Error(`Unknown room state: ${state}`);
+  if (!appearances[state]) throw new Error(t("error.roomState", {state}));
   return appearances[state];
 }
 
@@ -178,7 +179,7 @@ export function mountMap(Phaser, host, browser = window) {
       camera.centerOn(Math.round(target.x) + offset, Math.round(target.y));
     }
     const description = browser.document.getElementById("map-rooms");
-    if (description) description.textContent = world.rooms.map(room => `${room.area} ${room.id}: ${room.title} — ${room.state}`).join("\n");
+    if (description) description.textContent = world.rooms.map(room => t("map.room", {area: room.area, id: room.id, title: room.title, state: t(`room.${room.state}`)})).join("\n");
   }
   const onState = ({ detail }) => {
     world = worldFromRooms(detail.rooms, detail.areas, detail.doors);
@@ -194,6 +195,7 @@ export function mountMap(Phaser, host, browser = window) {
   };
   browser.addEventListener("specvania:state", onState);
   browser.addEventListener("specvania:event", onEvent);
+  const unsubscribe = onLanguageChange(redraw);
   const onSettings = ({ detail }) => animations.setReducedMotion(detail.reducedMotion);
   const onSpeed = ({ detail }) => animations.setReplaySpeed(detail.speed);
   browser.addEventListener("specvania:settings", onSettings);
@@ -205,6 +207,7 @@ export function mountMap(Phaser, host, browser = window) {
     scene: { preload() { preloadTextures(this); }, create() {
       scene = this;
       registerTextures(this);
+      if (browser.CustomEvent) browser.dispatchEvent?.(new browser.CustomEvent("specvania:textures-ready", {detail: this.textures}));
       this.input.keyboard.on("keydown-M", event => {
         if (event.repeat || /^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName) || event.target?.isContentEditable) return;
         overview = !overview; redraw();
@@ -226,6 +229,6 @@ export function mountMap(Phaser, host, browser = window) {
     browser.removeEventListener("resize", resize);
     browser.removeEventListener("specvania:settings", onSettings);
     browser.removeEventListener("specvania:replay-speed", onSpeed);
-    animations.destroy(); game.destroy(true);
+    unsubscribe(); animations.destroy(); game.destroy(true);
   } };
 }

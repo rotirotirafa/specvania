@@ -1242,5 +1242,8 @@ def test_run_started_supplies_configured_lives_and_optional_prices(
         assert str(price.input_per_mtok) == "2.5"
         assert price.output_per_mtok == 5
         assert price.currency == "USD"
+        assert price.source_url == "https://example.invalid/pricing"
+        assert price.checked_on is not None
+        assert price.checked_on.isoformat() == "2026-10-12"
     else:
         assert started.prices == ()

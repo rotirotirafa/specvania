@@ -1,3 +1,4 @@
+import { t, onLanguageChange } from "../i18n/index.js";
 import { UI_COLORS, PALETTE } from "../pixel/palette.js";
 import { panel, label } from "./party.js";
 
@@ -40,35 +41,38 @@ export function projectBestiary(state, event) {
 }
 
 export function mountBestiary(host, browser = window) {
-  const document = browser.document, element = panel(document,"bestiary-hud","Bestiary and bosses");
+  const document = browser.document, element = panel(document,"bestiary-hud",t("bestiary.description"));
   let state = bestiaryFromState({}); host.append(element);
   function render() {
-    element.replaceChildren(label(document,"h2","Bestiary"));
+    element.setAttribute("aria-label", t("bestiary.description"));
+    element.replaceChildren(label(document,"h2",t("bestiary.title")));
     const bugs = openBugs(state);
-    if (!bugs.length) element.append(label(document,"p","No open bugs in this feature."));
+    if (!bugs.length) element.append(label(document,"p",t("bestiary.empty")));
     for (const bug of bugs) {
-      element.append(label(document,"p",`${bug.bug_id} · ${bug.room_id || "no room"} · ${bug.title}\n${bug.body || ""}`));
+      element.append(label(document,"p",t("bestiary.bug", {id: bug.bug_id, room: bug.room_id || t("bestiary.noRoom"), title: bug.title, body: bug.body || ""})));
     }
     for (const boss of state.bosses) {
       const segments = bossSegments(boss); if (!segments.length) continue;
       const alive = segments.filter(segment => segment.alive).length;
-      element.append(label(document,"h3",`${boss.area_id} boss · HP ${alive}/${segments.length}`));
+      element.append(label(document,"h3",t("boss.hp", {area: boss.area_id, alive, total: segments.length})));
       const meter = document.createElement("div"); meter.setAttribute("role","meter");
-      meter.setAttribute("aria-label",`${boss.area_id} boss HP`);
+      meter.setAttribute("aria-label",t("boss.description", {area: boss.area_id}));
       for (const [name,value] of Object.entries({"aria-valuemin":0,"aria-valuemax":segments.length,"aria-valuenow":alive})) meter.setAttribute(name,value);
       Object.assign(meter.style,{display:"flex",gap:"4px"});
       for (const segment of segments) {
-        const pip = label(document,"span",`${segment.alive ? "■" : "□"} ${segment.scenario}`);
+        const pip = label(document,"span",t("boss.segment", {mark: segment.alive ? "■" : "□", scenario: segment.scenario}));
         pip.style.color = segment.alive ? PALETTE.R : UI_COLORS.muted;
-        pip.setAttribute("aria-label",`${segment.scenario}: ${segment.alive ? "remaining" : "passed"}`); meter.append(pip);
+        pip.setAttribute("aria-label",t("boss.scenario", {scenario: segment.scenario, status: t(segment.alive ? "boss.remaining" : "boss.passed")})); meter.append(pip);
       }
       element.append(meter);
     }
   }
+  const unsubscribe = onLanguageChange(render);
   const onState = ({detail}) => { state = bestiaryFromState(detail); render(); };
   const onEvent = ({detail}) => { state = projectBestiary(state,detail); render(); };
   browser.addEventListener("specvania:state",onState); browser.addEventListener("specvania:event",onEvent); render();
   return {destroy() {
+    unsubscribe();
     browser.removeEventListener("specvania:state",onState); browser.removeEventListener("specvania:event",onEvent); element.remove();
   }};
 }

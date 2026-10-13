@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
-  <title>specvania</title>
+  <title data-i18n="app.name"></title>
   <style>
     @font-face {
       font-family: "Press Start 2P";
@@ -14,23 +14,25 @@
     body { margin: 0; background: var(--background); color: var(--text);
       font: 10px/1.8 "Press Start 2P", monospace; }
     #desktop-title-bar { position: fixed; left: 0; right: 0; top: 0; z-index: 2; }
-    main { position: fixed; right: 12px; top: 40px; width: 240px;
-      max-height: calc(100vh - 52px); overflow: auto; z-index: 1;
+    main { position: fixed; right: 12px; top: 32px; width: 240px;
+      max-height: calc(100vh - 44px); overflow: auto; z-index: 1;
       background: var(--surface); border: 2px solid var(--border); padding: 8px; }
-    h1 { font-size: 16px; color: var(--accent); }
+    h1 { font-size: 10px; color: var(--accent); }
     #world-map { position: fixed; inset: 0; width: 100vw; height: 100vh; }
     canvas { image-rendering: pixelated; display: block; }
+    main p { margin: 4px 0; }
+    main h2, main h3 { font-size: 8px; margin: 6px 0; }
     #map-rooms { white-space: pre-wrap; }
   </style>
 </head>
 <body>
-  <div id="world-map" role="img" aria-label="World map. Press M for the whole map."></div>
+  <div id="world-map" role="img" data-i18n-aria="map.description"></div>
   <main id="castle-hud" aria-live="polite">
-    <h1>specvania</h1>
-    <p id="connection">Connecting to the run…</p>
+    <h1 data-i18n="app.name"></h1>
+    <p id="connection"></p>
     <p id="run-state"></p>
-    <p>World map · M: whole map / follow party</p>
-    <details><summary>Rooms and states</summary><p id="map-rooms"></p></details>
+    <p data-i18n="map.hint"></p>
+    <details><summary data-i18n="map.rooms"></summary><p id="map-rooms"></p></details>
   </main>
   <script src="./vendor/phaser.min.js" data-version="3.90.0"
     integrity="sha256-6S3e8RG6QuktMWl5xzIxF1cJNojqGBBZHLeqKFjrp6c="></script>
@@ -43,9 +45,9 @@
     for (const [name, color] of Object.entries(UI_COLORS)) {
       document.documentElement.style.setProperty(`--${name}`, color);
     }
-    mountMap(Phaser, document.getElementById("world-map"));
     const hudHost = document.querySelector("main");
     mountParty(hudHost);
+    mountMap(Phaser, document.getElementById("world-map"));
     mountBestiary(hudHost);
     mountDialogue(hudHost);
     // Connect only after map listeners exist, including before Phaser create().

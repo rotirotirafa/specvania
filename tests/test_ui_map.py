@@ -1,5 +1,6 @@
 """Execute the real vanilla ES modules with Node built-ins, no network or npm."""
 
+import json
 import shutil
 import subprocess
 from pathlib import Path
@@ -53,4 +54,6 @@ def test_index_mounts_map_before_transport_and_uses_local_pixel_assets() -> None
     assert 'url("./vendor/fonts/PressStart2P-Regular.ttf")' in source
     assert "image-rendering: pixelated" in source
     assert 'id="world-map"' in source
-    assert "whole map / follow party" in source
+    assert 'data-i18n="map.hint"' in source
+    english = json.loads((ROOT / "src/specvania/ui/static/i18n/en.json").read_text())
+    assert "whole map / follow party" in english["map.hint"]

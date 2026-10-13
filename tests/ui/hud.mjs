@@ -123,20 +123,20 @@ if (["statuses", "fallback", "metrics", "integration"].includes(check)) {
     const ui = browser(); const mounted = mountParty(ui.host, ui.win);
     ui.event({type:"cooldown",role:"warrior",model:"w1",seconds:10});
     let meters = flatten(ui.host).filter(node => node.attrs.role === "progressbar");
-    assert.equal(meters.length, 3); assert.ok(meters.every(node => node.attrs["aria-valuenow"] === "100"));
+    assert.equal(meters.length, 0);
     ui.tick(5000); meters = flatten(ui.host).filter(node => node.attrs.role === "progressbar");
-    assert.ok(meters.every(node => node.attrs["aria-valuenow"] === "100"));
+    assert.equal(meters.length, 0);
     ui.event({type:"fallback",role:"warrior",from_model:"w1",to_model:"w2"});
     assert.match(texts(ui.host), /w2/); assert.doesNotMatch(texts(ui.host), /w1/);
-    assert.ok(flatten(ui.host).filter(node => node.attrs.role === "progressbar").every(node => node.attrs["aria-valuenow"] === "100"));
+    assert.equal(flatten(ui.host).filter(node => node.attrs.role === "progressbar").length, 0);
     ui.state({party:[{role:"warrior",model:"w2",status:"cooldown",cooldown_seconds:5,cooldown_duration:10}]});
-    assert.ok(flatten(ui.host).filter(node => node.attrs.role === "progressbar").every(node => node.attrs["aria-valuenow"] === "100"));
+    assert.equal(flatten(ui.host).filter(node => node.attrs.role === "progressbar").length, 0);
     palettePanel(flatten(ui.host).find(node => node.id === "party-hud"));
     mounted.destroy();
   }
   if (check === "metrics") {
     const ui = browser(); const mounted = mountParty(ui.host, ui.win);
-    ui.event({type:"run_started", lives:5, prices:[{model:"w1",input_per_mtok:"2",output_per_mtok:"4",currency:"USD"}]});
+    ui.event({type:"run_started", lives:5, prices:[{model:"w1",input_per_mtok:"2",output_per_mtok:"4",currency:"USD",source_url:"https://example.test/pricing"}]});
     ui.event({type:"room_entered",room_id:"T01"});
     ui.event({type:"attempt_started",room_id:"T01",attempt:1});
     ui.event({type:"model_call",role:"warrior",model:"w1",tokens_in:1000000,tokens_out:500000});
@@ -145,21 +145,21 @@ if (["statuses", "fallback", "metrics", "integration"].includes(check)) {
     assert.match(texts(ui.host), /16 tokens/);
     ui.event({type:"review",room_id:"T01",verdict:"fail"});
     ui.event({type:"room_failed",room_id:"T01"});
-    assert.ok(flatten(ui.host).filter(node => node.attrs["aria-label"] === "Lives: 4 of 5").length === 3);
+    assert.ok(flatten(ui.host).filter(node => node.attrs["aria-label"] === "Lives: 4 of 5").length === 1);
     ui.event({type:"room_entered",room_id:"T01"});
     ui.event({type:"respawn",room_id:"T01",attempt:2});
     ui.event({type:"attempt_started",room_id:"T01",attempt:2});
-    assert.equal(flatten(ui.host).filter(node => node.attrs["aria-label"] === "Lives: 4 of 5").length, 3);
+    assert.equal(flatten(ui.host).filter(node => node.attrs["aria-label"] === "Lives: 4 of 5").length, 1);
     ui.event({type:"review",room_id:"T01",verdict:"fail"});
-    assert.equal(flatten(ui.host).filter(node => node.attrs["aria-label"] === "Lives: 3 of 5").length, 3);
+    assert.equal(flatten(ui.host).filter(node => node.attrs["aria-label"] === "Lives: 3 of 5").length, 1);
     ui.event({type:"attempt_started",room_id:"T01",attempt:1});
-    assert.equal(flatten(ui.host).filter(node => node.attrs["aria-label"] === "Lives: 5 of 5").length, 3);
+    assert.equal(flatten(ui.host).filter(node => node.attrs["aria-label"] === "Lives: 5 of 5").length, 1);
     ui.event({type:"room_entered",room_id:"T02"});
-    assert.equal(flatten(ui.host).filter(node => node.attrs["aria-label"] === "Lives: 5 of 5").length, 3);
+    assert.equal(flatten(ui.host).filter(node => node.attrs["aria-label"] === "Lives: 5 of 5").length, 1);
     ui.state({lives:2,prices:[],active_room:"T02",rooms:[{id:"T02",state:"failed",attempt:2}],party:[{role:"mage",model:"m1",status:"idle"}],models:[{model:"m1",tokens_in:9,tokens_out:7}]});
     assert.match(texts(ui.host), /16 tokens/); assert.doesNotMatch(texts(ui.host), /coins/);
-    assert.equal(flatten(ui.host).filter(node => node.attrs["aria-label"] === "Lives: 0 of 2").length, 3);
-    ui.state({}); assert.equal(flatten(ui.host).filter(node => node.attrs["aria-label"] === "Lives: 3 of 3").length, 3);
+    assert.equal(flatten(ui.host).filter(node => node.attrs["aria-label"] === "Lives: 0 of 2").length, 1);
+    ui.state({}); assert.equal(flatten(ui.host).filter(node => node.attrs["aria-label"] === "Lives: 3 of 3").length, 1);
     mounted.destroy();
   }
 }

@@ -428,6 +428,8 @@ class Engine:
                         input_per_mtok=price.input_per_mtok,
                         output_per_mtok=price.output_per_mtok,
                         currency=price.currency,
+                        source_url=str(price.source_url),
+                        checked_on=price.checked_on,
                     )
                     for price in pricing.prices
                 ),

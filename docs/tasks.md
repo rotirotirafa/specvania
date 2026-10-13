@@ -511,10 +511,10 @@ files: src/specvania/ui/static/i18n/index.js, src/specvania/ui/static/i18n/en.js
 D22: `t(key, params)` serves every visible string: statuses, room states, dialogue templates, buttons, errors and HUD labels; PT-BR terms follow `docs/domain.md`. The HUD is drawn over the castle: hearts, the stamina bar (tokens spent / budget, or tokens only when the run has no budget), party portraits with model id, status, tokens spent and coins when priced, and the `PT | EN` switch. The language comes from the app settings in the desktop window and from `navigator.language` in a browser tab.
 
 Checklist:
-- [ ] `en.json` and `pt-BR.json` have the same keys and the same placeholders (test)
-- [ ] No user-visible string literal remains outside the dictionaries (scan test with an allowlist for model ids and numbers)
-- [ ] Switching the language updates every visible text without a reload
-- [ ] The stamina bar shows spent and budget from `RunState`, and tokens only when there is no budget
+- [x] `en.json` and `pt-BR.json` have the same keys and the same placeholders (test)
+- [x] No user-visible string literal remains outside the dictionaries (scan test with an allowlist for model ids and numbers)
+- [x] Switching the language updates every visible text without a reload
+- [x] The stamina bar shows spent and budget from `RunState`, and tokens only when there is no budget
 
 ### T33 · Title, project, settings and error screens
 depends_on: T24, T32
