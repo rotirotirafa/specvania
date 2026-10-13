@@ -99,7 +99,7 @@ Checklist:
 - [x] When the whole chain fails, the router raises a typed error the engine can turn into `run_paused`
 - [x] `model_call` events carry role, model, tokens in/out, latency and status
 - [x] `doctor` exits non-zero when the env var is missing, a configured model is not in `/v1/models`, or the ledger is unreachable
-- [ ] Default model ids from D4 are checked against the real catalog once (manually, by the owner) and the result is recorded in `.agent/deviations.md`
+- [x] Default model ids from D4 are checked against the real catalog once (manually, by the owner) and the result is recorded in `.agent/deviations.md`
 
 ---
 

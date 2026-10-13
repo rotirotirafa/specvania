@@ -14,6 +14,12 @@ Every change to the spec's intent, logged before the commit that introduces it. 
 
 ## Entries
 
+### DEV-010 · 2026-10-13 · T05
+**What changed:** Nothing; this records the one-time manual check of D4's default model ids. `specvania doctor`, run with the owner's real `NVIDIA_API_KEY` against `https://integrate.api.nvidia.com/v1` from a fresh `specvania init` config, reported all nine role entries as found in `/v1/models` (mage `moonshotai/kimi-k3`, `z-ai/glm-5.3`, `nvidia/nemotron-3-ultra-550b-a55b`; warrior `z-ai/glm-5.3`, `moonshotai/kimi-k2.6`, `deepseek-ai/deepseek-v4.1-flash`; paladin `nvidia/nemotron-3-ultra-550b-a55b`, `deepseek-ai/deepseek-v4.1-flash`, `z-ai/glm-5.3-flash`), ledger connected at migration 0002, exit 0.
+**Why:** T05 requires the D4 ids to be checked against the real catalog once and the result recorded here.
+**Impact:** None to D4. Catalog presence does not prove quality or callability; T23 validates those.
+**Approved by:** owner, 2026-10-13 (check run at the owner's request).
+
 ### DEV-009 · 2026-10-12 · T17
 **What changed:** Optional `run_started.lives` and `run_started.prices` carry the configured lives limit and reference model rates/currency to the HUD. The engine reads T12's local pricing file; absent metadata uses D13's three lives and tokens only. RunState preserves this metadata and the latest dialogue event for reconnects. Stamina is an explicitly labeled estimate: a cooldown empties the shared bar, which recovers linearly over its duration; overlapping cooldowns use the lowest recovery fraction.
 **Why:** Existing events omit the configurable lives limit, pricing and limiter availability. The reviewer authorized lives/prices wiring; the owner authorized deterministic cooldown-derived stamina. Round-trip, engine and Node tests cover old streams and HUD projections.
