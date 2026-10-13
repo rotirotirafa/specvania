@@ -1,7 +1,7 @@
 """Thin CLI registration; commands remain stubs until their rooms are cleared."""
 
 import os
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from importlib.metadata import version
 from importlib.resources import as_file, files
@@ -36,7 +36,7 @@ from specvania.pricing import PricingError, load_pricing
 from specvania.provider.client import OpenAIProvider, ProviderError
 from specvania.run.bus import EventBus
 from specvania.run.engine import Engine, EngineError, PauseDecision
-from specvania.run.events import RedactionGuard, Role, RunPaused, SecretLeakError
+from specvania.run.events import Event, RedactionGuard, Role, RunPaused, SecretLeakError
 from specvania.run.gitops import GitError, GitOps
 from specvania.run.summary import (
     SummaryError,
@@ -61,19 +61,25 @@ from specvania.ui.launcher import (
 from specvania.ui.server import UIServer, UIServerError, load_replay
 
 
-class RunCommand(TyperCommand):
-    """Normalize the spec's optional --ui value within the run command only."""
+class UICommand(TyperCommand):
+    """Parse optional --ui values, remembering when config selects the mode."""
 
     def parse_args(self, ctx: Any, args: list[str]) -> list[str]:
         normalized = list(args)
         for index, value in enumerate(normalized):
             if value == "--":
                 break
-            if value == "--ui" and (
-                index + 1 == len(normalized)
-                or normalized[index + 1] not in ("auto", "browser", "desktop")
-            ):
-                normalized[index] = "--ui=auto"
+            if value.startswith("--ui="):
+                ctx.meta["ui_use_config"] = False
+            elif value == "--ui":
+                bare = index + 1 == len(normalized) or normalized[index + 1] not in (
+                    "auto",
+                    "browser",
+                    "desktop",
+                )
+                ctx.meta["ui_use_config"] = bare
+                if bare:
+                    normalized[index] = "--ui=auto"
         return super().parse_args(ctx, normalized)
 
 
@@ -274,14 +280,25 @@ def create_app() -> typer.Typer:
         if failed:
             raise typer.Exit(code=1)
 
-    @app.command("plan", help="Mage: Clarify an idea and write a verifiable world.")
+    @app.command(
+        "plan",
+        cls=UICommand,
+        help="Mage: Clarify an idea and write a verifiable world.",
+    )
     def plan(
+        ctx: typer.Context,
         idea: Annotated[str, typer.Argument(help="Feature idea for the Mage.")] = "",
         no_clarify: Annotated[
             bool, typer.Option("--no-clarify", help="Skip Clarify.")
         ] = False,
         from_bug: Annotated[
             str | None, typer.Option("--from-bug", help="Plan a fix for an open bug.")
+        ] = None,
+        ui: Annotated[
+            Literal["auto", "browser", "desktop"] | None,
+            typer.Option(
+                "--ui", help="Watch planning; bare --ui uses configured ui.mode."
+            ),
         ] = None,
     ) -> None:
         console = Console()
@@ -304,6 +321,30 @@ def create_app() -> typer.Typer:
             ledger_url = os.environ.get(config.ledger.database_url_env, "")
             if ledger_url:
                 guard.register(ledger_url)
+            bus = EventBus(guard)
+
+            def started(run_id: str, snapshot: Callable[[], Sequence[Event]]) -> None:
+                if ui is not None:
+                    server = UIServer(
+                        guard=guard,
+                        clock=clock,
+                        run_id=run_id,
+                        bus=bus,
+                        live_snapshot=snapshot,
+                        port=config.ui.port,
+                    )
+                    start_run_ui(
+                        server,
+                        config=config,
+                        mode=config.ui.mode if ctx.meta.get("ui_use_config") else ui,
+                    )
+                    console.print(
+                        "Plan UI follows the bus only; the ledger is saved on success.",
+                        markup=False,
+                        highlight=False,
+                        soft_wrap=True,
+                    )
+
             with OpenAIProvider(config.provider, api_key=key) as provider:
                 with Ledger.from_config(
                     root, config.ledger, clock=clock, guard=guard
@@ -319,8 +360,17 @@ def create_app() -> typer.Typer:
                         answer=answer,
                         no_clarify=no_clarify,
                         from_bug_id=from_bug,
+                        bus=bus if ui is not None else None,
+                        on_started=started if ui is not None else None,
                     )
-        except (ConfigError, LedgerError, ProviderError, PlanError, BugError) as error:
+        except (
+            ConfigError,
+            LedgerError,
+            ProviderError,
+            PlanError,
+            BugError,
+            UIServerError,
+        ) as error:
             Console(stderr=True).print(
                 str(error), markup=False, highlight=False, soft_wrap=True
             )
@@ -334,17 +384,20 @@ def create_app() -> typer.Typer:
 
     @app.command(
         "run",
-        cls=RunCommand,
+        cls=UICommand,
         help="Clear rooms in door order, with reviews and bosses.",
     )
     def run(
+        ctx: typer.Context,
         directory: Annotated[Path, typer.Argument(help="World directory.")],
         allow_dirty: Annotated[
             bool, typer.Option("--allow-dirty", help="Allow an existing dirty tree.")
         ] = False,
         ui: Annotated[
-            str | None,
-            typer.Option("--ui", help="Open the live map: auto, browser or desktop."),
+            Literal["auto", "browser", "desktop"] | None,
+            typer.Option(
+                "--ui", help="Open the live map; bare --ui uses configured ui.mode."
+            ),
         ] = None,
     ) -> None:
         console = Console()
@@ -364,8 +417,6 @@ def create_app() -> typer.Typer:
             )
 
         try:
-            if ui not in (None, "auto", "browser", "desktop"):
-                raise EngineError("Choose UI mode auto, browser or desktop.")
             # Reject invalid worlds and dirty repositories before creating a client.
             validate_directory(directory)
             git = GitOps(Path.cwd())
@@ -400,7 +451,9 @@ def create_app() -> typer.Typer:
                             start_run_ui(
                                 server,
                                 config=config,
-                                mode=cast(UIMode, ui),
+                                mode=config.ui.mode
+                                if ctx.meta.get("ui_use_config")
+                                else ui,
                             )
                             return (server.desktop_responder,)
                         return None

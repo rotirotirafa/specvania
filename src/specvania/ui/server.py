@@ -101,6 +101,8 @@ class UIServer:
     snapshot are discarded by seq. An append not yet published is in the snapshot;
     a later append is queued. Publishers must append before publishing (T03/T04).
     Replay connections each start with an empty projection and play the same stream.
+    Planning can instead supply an in-memory snapshot while its ledger row does
+    not yet exist; its publisher serializes snapshot updates and bus publication.
     """
 
     def __init__(
@@ -111,6 +113,7 @@ class UIServer:
         run_id: str,
         ledger: Ledger | None = None,
         bus: EventBus | None = None,
+        live_snapshot: Callable[[], Sequence[Event]] | None = None,
         replay: Sequence[Event] | None = None,
         speed: Literal[1, 2, 4] = 1,
         port: int = 0,
@@ -118,13 +121,16 @@ class UIServer:
     ) -> None:
         if speed not in (1, 2, 4) or not 0 <= port <= 65535:
             raise UIServerError("Use replay speed 1, 2 or 4 and a valid local port.")
-        if replay is None and (ledger is None or bus is None):
-            raise UIServerError("Live UI requires the run's ledger and event bus.")
+        if replay is None and (
+            bus is None or (ledger is None and live_snapshot is None)
+        ):
+            raise UIServerError("Live UI requires an event bus and a run snapshot.")
         self.guard = guard
         self.clock = clock
         self.run_id = run_id
         self.ledger = ledger
         self.bus = bus
+        self.live_snapshot = live_snapshot
         self.replay = tuple(replay) if replay is not None else None
         self.speed = speed
         self.port = port
@@ -253,8 +259,16 @@ class UIServer:
         receiver: asyncio.Task[None] | None = None
         try:
             pending: ApprovalRequested | None = None
-            if subscription is not None and self.ledger is not None:
-                snapshot = await asyncio.to_thread(self.ledger.list_events, self.run_id)
+            if subscription is not None:
+                if self.ledger is not None:
+                    snapshot = await asyncio.to_thread(
+                        self.ledger.list_events, self.run_id
+                    )
+                else:
+                    assert self.live_snapshot is not None
+                    snapshot = await asyncio.to_thread(self.live_snapshot)
+                    for event in snapshot:
+                        self.guard.validate(event)
                 state = fold_events(snapshot)
                 for event in snapshot:
                     if event.type == "approval_requested":

@@ -2,10 +2,11 @@
 
 import json
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from importlib.resources import files
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from threading import RLock
 from typing import Annotated
 
 from pydantic import Field, ValidationError, model_validator
@@ -18,6 +19,7 @@ from specvania.ledger.repo import Ledger, RunIdTakenError, generate_run_id
 from specvania.provider.client import ChatMessage, Provider, ProviderError
 from specvania.provider.jsonout import ModelOutputError, extract_json_value
 from specvania.provider.router import Router
+from specvania.run.bus import EventBus
 from specvania.run.events import (
     ClarifyAnswer,
     ClarifyQuestion,
@@ -182,11 +184,15 @@ def plan(
     answer: Callable[[Question], str],
     no_clarify: bool = False,
     from_bug_id: str | None = None,
+    bus: EventBus | None = None,
+    on_started: Callable[[str, Callable[[], Sequence[Event]]], None] | None = None,
 ) -> PlanResult:
     """Buffer seq=0 events; persist only a validated plan with kind='plan'.
 
     The run id is allocated before the first Mage call. Failed plans retain
     only drafts. Successful plans use an empty branch (no Git mutations).
+    Optional live events have in-memory sequences, with no ledger row until
+    success. The UI snapshots this buffer after subscribing to avoid gaps.
     """
     bug = source_bug(ledger, root, from_bug_id) if from_bug_id is not None else None
     if bug is not None:
@@ -200,10 +206,28 @@ def plan(
         or "feature"
     )
     buffered: list[Event] = []
+    live: list[Event] = []
+    live_run_id = run_id
+    live_lock = RLock()
+
+    def snapshot() -> Sequence[Event]:
+        with live_lock:
+            return tuple(live)
 
     def emit(event: Event) -> None:
         guard.validate(event)
         buffered.append(event)
+        if bus is not None:
+            with live_lock:
+                assigned = event.model_copy(
+                    update={"seq": len(live) + 1, "run_id": live_run_id}
+                )
+                guard.validate(assigned)
+                live.append(assigned)
+                bus.publish(assigned)
+
+    if on_started is not None:
+        on_started(run_id, snapshot)
 
     router = Router(
         config=config, provider=provider, clock=clock, run_id=run_id, emit=emit

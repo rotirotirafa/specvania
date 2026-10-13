@@ -324,6 +324,46 @@ def test_bad_replay_sources_raise_typed_errors(tmp_path: Path) -> None:
         load_replay("unknown-run", guard=RedactionGuard())
 
 
+def test_bus_only_snapshot_overlap_delivers_live_events_without_duplicates() -> None:
+    guard = RedactionGuard()
+    clock = FakeClock()
+    bus = EventBus(guard)
+    events: list[Event] = [
+        RunStarted(ts=clock.now(), run_id="plan", seq=1, feature="map", branch="")
+    ]
+    bus.publish(events[0])
+
+    def snapshot() -> tuple[Event, ...]:
+        # Emitted after subscription but before snapshot completion: seq 2 must
+        # appear in the state, and its queued duplicate must be discarded.
+        event = RoomEntered(ts=clock.now(), run_id="plan", seq=2, room_id="T01")
+        events.append(event)
+        bus.publish(event)
+        return tuple(events)
+
+    server = UIServer(
+        guard=guard,
+        clock=clock,
+        run_id="plan",
+        bus=bus,
+        live_snapshot=snapshot,
+        port=8765,
+    )
+    with TestClient(server.app, base_url=ORIGIN) as client:
+        with client.websocket_connect(
+            f"ws://127.0.0.1:8765/ws?view_token={server.view_token}",
+            headers={"Origin": ORIGIN},
+        ) as websocket:
+            state = websocket.receive_json()["state"]
+            assert state["run_id"] == "plan" and state["seq"] == 2
+            assert state["active_room"] == "T01"
+            event = RoomEntered(ts=clock.now(), run_id="plan", seq=3, room_id="T02")
+            bus.publish(event)
+            message = websocket.receive_json()
+            assert message["kind"] == "event" and message["event"]["seq"] == 3
+            assert message["event"]["room_id"] == "T02"
+
+
 def test_static_files_are_local_and_all_served_with_view_token(ui: UIServer) -> None:
     with TestClient(ui.app, base_url=ORIGIN) as client:
         for path in sorted(STATIC.rglob("*")):

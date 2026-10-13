@@ -14,6 +14,28 @@ from specvania.ledger import Ledger
 from specvania.provider.client import Completion, ProviderError
 from specvania.provider.fake import ScriptedProvider
 from specvania.sdd.planner import PlanResult, Question
+from specvania.ui.server import UIServer
+
+
+@pytest.fixture
+def no_ui_processes(monkeypatch: pytest.MonkeyPatch) -> None:
+    import subprocess
+
+    def git_probe(
+        arguments: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[bytes]:
+        assert arguments[0] == "git" and arguments[-2:] == [
+            "rev-parse",
+            "--is-inside-work-tree",
+        ]
+        return subprocess.CompletedProcess(
+            arguments, returncode=1, stdout=b"", stderr=b""
+        )
+
+    monkeypatch.setattr(subprocess, "run", git_probe)
+    monkeypatch.setattr(
+        subprocess, "Popen", lambda *args, **kwargs: pytest.fail("No UI test processes")
+    )
 
 
 def world_reply() -> Completion:
@@ -34,6 +56,178 @@ def world_reply() -> Completion:
         tokens_in=12,
         tokens_out=30,
     )
+
+
+@pytest.mark.parametrize(
+    "ui_args,configured,expected",
+    [
+        (["--ui"], "auto", "auto"),
+        (["--ui"], "browser", "browser"),
+        (["--ui"], "desktop", "desktop"),
+        (["--ui=auto"], "desktop", "auto"),
+        (["--ui=browser"], "desktop", "browser"),
+        (["--ui=desktop"], "browser", "desktop"),
+        (["--ui", "browser"], "desktop", "browser"),
+    ],
+)
+def test_cli_plan_ui_launches_before_mage_and_streams_without_ledger(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    no_ui_processes: None,
+    ui_args: list[str],
+    configured: str,
+    expected: str,
+) -> None:
+    from starlette.testclient import TestClient
+
+    from specvania.run.bus import Subscription
+    from specvania.run.events import Event, RedactionGuard
+
+    (tmp_path / ".specvania").mkdir()
+    (tmp_path / ".specvania/config.toml").write_text(f'[ui]\nmode = "{configured}"\n')
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli, "SystemClock", FakeClock)
+    servers: list[UIServer] = []
+    launched: list[str] = []
+    received: list[Event] = []
+    subscriptions: list[Subscription] = []
+
+    def serve(self: UIServer, *, on_started: Callable[[], None]) -> None:
+        assert self.ledger is None and self.replay is None and self.bus is not None
+        self.port = 8765
+        servers.append(self)
+        subscriptions.append(self.bus.subscribe(self.run_id))
+        on_started()
+
+    def launch(port: int, view: str, control: str, **kwargs: object) -> str:
+        assert port == 8765
+        assert view == servers[0].view_token and control == servers[0].control_token
+        launched.append(str(kwargs["mode"]))
+        return expected
+
+    def draft() -> Completion:
+        import sqlite3
+
+        assert launched == [expected]
+        with sqlite3.connect(tmp_path / ".specvania/ledger.db") as connection:
+            assert connection.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 0
+        return world_reply()
+
+    provider = ScriptedProvider([draft])
+    monkeypatch.setattr(cli, "OpenAIProvider", lambda *args, **kwargs: provider)
+    monkeypatch.setattr(UIServer, "serve", serve)
+    monkeypatch.setattr(cli, "launch_ui", launch)
+    result = CliRunner().invoke(
+        cli.create_app(), ["plan", "invoices", "--no-clarify", *ui_args]
+    )
+    assert result.exit_code == 0, result.output
+    assert len(servers) == 1 and launched == [expected]
+    server = servers[0]
+    assert server.live_snapshot is not None
+    received = [subscriptions[0].get(timeout=0) for _ in range(2)]
+    subscriptions[0].close()
+    assert list(server.live_snapshot()) == received
+    assert [event.type for event in received] == ["model_call", "spec_written"]
+    assert [event.seq for event in received] == [1, 2]
+    assert "bus only" in result.output.lower()
+    with Ledger.open(
+        f"sqlite:///{tmp_path / '.specvania/ledger.db'}",
+        clock=FakeClock(),
+        guard=RedactionGuard(),
+    ) as ledger:
+        assert ledger.get_run(server.run_id).kind == "plan"
+        assert ledger.list_events(server.run_id) == received
+    with TestClient(server.app, base_url=server.origin) as client:
+        with client.websocket_connect(
+            f"{server.origin.replace('http:', 'ws:')}/ws"
+            f"?view_token={server.view_token}",
+            headers={"Origin": server.origin},
+        ) as websocket:
+            state = websocket.receive_json()["state"]
+            assert state["run_id"] == server.run_id and state["seq"] == 2
+            assert state["models"][0]["calls"] == 1
+
+
+@pytest.mark.parametrize("command", ["run", "plan"])
+@pytest.mark.parametrize("ui_args", [["--ui=invalid"], ["--ui", "invalid"]])
+def test_cli_invalid_ui_mode_is_usage_error_before_work(
+    monkeypatch: pytest.MonkeyPatch, command: str, ui_args: list[str]
+) -> None:
+    monkeypatch.setattr(
+        cli, "load_config", lambda *args: pytest.fail("Invalid UI must prevent work")
+    )
+    result = CliRunner().invoke(cli.create_app(), [command, "world", *ui_args])
+    assert result.exit_code == 2, result.output
+    assert "Usage:" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_cli_failed_plan_ui_keeps_live_events_without_ledger_records(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ui_processes: None
+) -> None:
+    import sqlite3
+
+    (tmp_path / ".specvania").mkdir()
+    (tmp_path / ".specvania/config.toml").write_text("")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli, "SystemClock", FakeClock)
+    servers: list[UIServer] = []
+    monkeypatch.setattr(
+        cli, "start_run_ui", lambda server, **kwargs: servers.append(server)
+    )
+    provider = ScriptedProvider([clarify_reply(), ProviderError(status=401)])
+    monkeypatch.setattr(cli, "OpenAIProvider", lambda *args, **kwargs: provider)
+
+    def answer(*args: object, **kwargs: object) -> str:
+        server = servers[0]
+        assert server.live_snapshot is not None
+        events = server.live_snapshot()
+        assert events[-1].type == "clarify_question"
+        with sqlite3.connect(tmp_path / ".specvania/ledger.db") as connection:
+            assert connection.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 0
+        return "test"
+
+    monkeypatch.setattr(cli.Prompt, "ask", answer)
+    result = CliRunner().invoke(cli.create_app(), ["plan", "invoices", "--ui"])
+    assert result.exit_code == 1 and "401" in result.output
+    assert "Traceback" not in result.output
+    server = servers[0]
+    assert server.ledger is None and server.live_snapshot is not None
+    events = server.live_snapshot()
+    assert any(event.type == "clarify_answer" for event in events)
+    assert [event.seq for event in events] == list(range(1, len(events) + 1))
+    assert not any(event.type == "spec_written" for event in events)
+    assert (tmp_path / ".specvania/specs/invoices/spec.draft.md").is_file()
+    assert all(server.control_token not in event.model_dump_json() for event in events)
+    with sqlite3.connect(tmp_path / ".specvania/ledger.db") as connection:
+        for table in ("projects", "features", "spec_versions", "runs", "events"):
+            assert (
+                connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0
+            )
+
+
+def test_cli_plan_ui_start_failure_exits_before_mage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ui_processes: None
+) -> None:
+    from specvania.ui.server import UIServerError
+
+    (tmp_path / ".specvania").mkdir()
+    (tmp_path / ".specvania/config.toml").write_text("")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli, "SystemClock", FakeClock)
+    provider = ScriptedProvider([world_reply()])
+    monkeypatch.setattr(cli, "OpenAIProvider", lambda *args, **kwargs: provider)
+
+    def serve(self: UIServer, **kwargs: object) -> None:
+        raise UIServerError("Cannot bind local port")
+
+    monkeypatch.setattr(UIServer, "serve", serve)
+    result = CliRunner().invoke(
+        cli.create_app(), ["plan", "invoices", "--no-clarify", "--ui"]
+    )
+    assert result.exit_code == 1 and "Cannot bind local port" in result.output
+    assert "Traceback" not in result.output
+    assert provider.calls == []
 
 
 def test_cli_no_clarify_prints_no_question(

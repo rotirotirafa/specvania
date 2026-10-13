@@ -832,6 +832,45 @@ def test_cli_ui_uses_same_live_ledger_and_bus_without_sockets(
     assert all(seen[0].control_token not in e.model_dump_json() for e in events)
 
 
+@pytest.mark.parametrize("mode", ["browser", "desktop"])
+def test_cli_bare_ui_uses_configured_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str
+) -> None:
+    import subprocess
+    from types import SimpleNamespace
+
+    from specvania.run.state import RunState
+
+    directory = Path(__file__).parent / "fixtures/worlds/valid"
+    (tmp_path / ".specvania").mkdir()
+    (tmp_path / ".specvania/config.toml").write_text(f'[ui]\nmode = "{mode}"\n')
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        subprocess, "Popen", lambda *args, **kwargs: pytest.fail("No UI test processes")
+    )
+    monkeypatch.setattr(
+        cli,
+        "GitOps",
+        lambda root: SimpleNamespace(root=root, check=lambda **kwargs: None),
+    )
+    monkeypatch.setattr(
+        cli, "OpenAIProvider", lambda *args, **kwargs: ScriptedProvider([])
+    )
+
+    def execute(directory: Path, **kwargs: Any) -> RunState:
+        kwargs["on_started"]("run")
+        return RunState(run_id="run", status="finished")
+
+    monkeypatch.setattr(cli, "Engine", lambda **kwargs: SimpleNamespace(run=execute))
+    modes: list[str] = []
+    monkeypatch.setattr(
+        cli, "start_run_ui", lambda server, **kwargs: modes.append(kwargs["mode"])
+    )
+    result = CliRunner().invoke(cli.create_app(), ["run", "--ui", str(directory)])
+    assert result.exit_code == 0, result.output
+    assert modes == [mode]
+
+
 def test_live_ui_daemon_thread_uses_launch_ui_after_port_assignment(
     harness: Harness, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -998,7 +1037,7 @@ def test_cli_ui_validation_and_separate_mode_argument(
     )
     result = CliRunner().invoke(cli.create_app(), ["run", *ui_args, str(directory)])
     if ui_args == ["--ui=invalid"]:
-        assert result.exit_code == 1 and "Choose UI mode" in result.output
+        assert result.exit_code == 2 and "Invalid value for '--ui'" in result.output
         assert not provider.calls
     else:
         assert result.exit_code == 0, result.output
