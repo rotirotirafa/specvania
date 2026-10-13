@@ -8,7 +8,7 @@ Project rules for every room. Decisions with a "why" live in `docs/spec.md` §9;
 - Runtime dependencies allowed: `typer`, `rich`, `pydantic` (v2), `openai`, `fastapi`, `uvicorn[standard]`, `sqlalchemy` (2.x, Core only), `alembic`, `tomli-w`, `pathspec`.
 - Optional extra `postgres`: `psycopg[binary]` (3.x).
 - Dev dependencies allowed: `pytest`, `hypothesis`, `ruff`, `pyright`, `httpx2`.
-- Web app: vanilla ES modules, vendored Phaser 3 (pinned), vendored pixel font. No npm, no bundler, no CDN.
+- Web app: vanilla ES modules, vendored Phaser 3 (pinned), vendored pixel font, vendored Kenney Tiny Dungeon tilesheet (CC0), vendored Monaco editor min build (pinned, MIT, trimmed; T35). No npm, no bundler, no CDN.
 - Desktop app (`apps/desktop/` only): `electron` and `electron-builder` as dev dependencies; main and preload in plain JavaScript (CommonJS), no bundler, no other npm packages.
 - Infra: `docker-compose.yml` with one `postgres` service. Never a runtime requirement.
 - Anything else is a stop rule (S-3): ask first, then log a deviation.
@@ -27,7 +27,7 @@ src/specvania/
   sdd/                   # world.py, lint.py, planner.py, prompts/*.md
   agent/                 # actions.py, tools.py, sandbox.py, approval.py, executor.py, reviewer.py, gates.py, prompts/*.md
   run/                   # events.py, bus.py, state.py, jsonl.py, engine.py, gitops.py, summary.py
-  ui/                    # server.py, launcher.py, static/
+  ui/                    # server.py, launcher.py, studio.py, static/ (map/, hud/, screens/, pixel/, i18n/, vendor/)
   examples/              # demo/ (synthetic), real-run/ (recorded)
 apps/desktop/            # Electron shell (package.json, main.js, preload.js, electron-builder.yml, scripts/)
 tests/                   # mirrors src layout; fixtures/ for worlds and event streams
@@ -66,11 +66,12 @@ docker-compose.yml       # optional Postgres for team mode and the Postgres test
 
 ## UI
 
-- `pixelArt: true`, integer scaling only, internal resolution 320×180.
-- Every color comes from `pixel/palette.js`.
-- Original art only (spec D10). Each new sprite is added to the `sprites.html` gallery.
-- Respect `prefers-reduced-motion`.
-- UI text uses the glossary terms (Mage / Warrior / Paladin, room, door, boss, monster, Bestiary).
+- `pixelArt: true`, integer scaling only; the castle canvas fills the window (spec D23).
+- Every UI color (HUD, panels, text) comes from `pixel/palette.js`.
+- Art comes only from the vendored Kenney Tiny Dungeon pack (spec D10), through `pixel/cast.js`. Each new cast entry is added to the `sprites.html` gallery.
+- Respect `prefers-reduced-motion` and the reduced-motion setting.
+- Every visible string goes through `i18n/` (`t(key)`), with the same keys in `en.json` and `pt-BR.json` (spec D22). Text uses the glossary terms (Mage / Warrior / Paladin, room, door, boss, monster, Bestiary) and their PT-BR column in `docs/domain.md`.
+- Studio control messages, like approval answers, require the control token and are Pydantic models in `ui/`.
 - The web app must work in a browser tab; desktop-only features check `window.specvaniaDesktop` and degrade silently.
 - Electron: `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`; the preload exposes only what `docs/tasks.md` lists; navigation stays on the UI server origin.
 

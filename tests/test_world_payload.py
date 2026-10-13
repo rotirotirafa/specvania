@@ -30,8 +30,8 @@ def test_repository_world_payload_contains_areas_rooms_doors_and_boss_ids() -> N
     world = parse_world(ROOT / "docs")
     original = world.model_dump_json()
     payload = build_world_payload(world)
-    assert len(payload.rooms) == 23
-    assert len(payload.areas) == 6
+    assert len(payload.rooms) == 38
+    assert len(payload.areas) == 10
     assert [(area.id, area.title, area.boss_ids) for area in payload.areas] == [
         (area.id, area.title, area.boss) for area in world.areas
     ]
@@ -39,7 +39,7 @@ def test_repository_world_payload_contains_areas_rooms_doors_and_boss_ids() -> N
         (door.src, door.dst) for door in world.doors
     }
     assert payload.boss_ids == tuple(boss for area in world.areas for boss in area.boss)
-    assert len(set(payload.boss_ids)) == 17
+    assert len(set(payload.boss_ids)) == 23
     for room, parsed in zip(payload.rooms, world.rooms, strict=True):
         area = next(area for area in world.areas if area.id == parsed.area_id)
         assert (room.id, room.title, room.area, room.depends_on) == (
@@ -79,7 +79,7 @@ def test_legacy_world_loaded_still_decodes_and_snapshot_keeps_topology() -> None
     state = fold_events(
         [WorldLoaded(ts=FakeClock().now(), run_id="map", seq=1, **payload.model_dump())]
     )
-    assert len(state.rooms) == 23
+    assert len(state.rooms) == 38
     assert {room.area for room in state.rooms} == {area.id for area in payload.areas}
     assert {boss for room in state.rooms for boss in room.boss_ids} == set(
         payload.boss_ids

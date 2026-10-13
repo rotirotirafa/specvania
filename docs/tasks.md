@@ -1,4 +1,4 @@
-# specvania — Tasks v0.2
+# specvania — Tasks v0.3
 
 World for [`docs/spec.md`](spec.md). Execute with [`.agent/execution-protocol.md`](../.agent/execution-protocol.md): one room at a time, in door order, gates after every room.
 
@@ -18,8 +18,17 @@ A4 Map           T14 ─┐
                               └─ T18 ...................... boss: S9 S10 S14
 A5 Desktop       T19 ─┬─ T20
                       └─ T21 .............................. boss: S16 S17
-A6 Ship          T22 ── T23 ............................... boss: S15
+A6 Ship          T22 ...................................... boss: S15
+A7 Studio        T24 ─┬─ T25 ─┬─ T27
+                      │       └─ T28
+                      └─ T26 .............................. boss: S18 S19
+A8 Castle        T29 ── T30 ── T31 ........................ boss: S20
+A9 Screens       T32 ─┬─ T33 ── T34 ── T36 ── T37
+                      └─ T35 .............................. boss: S21 S22
+A10 Demo         T38 ── T23 ............................... boss: S23
 ```
+
+v0.3 note: T23 moved from A6 to A10 so the dogfood run happens in the game; its sample project (`examples/sample-todo-api/`) is already in place.
 
 ---
 
@@ -369,15 +378,237 @@ Checklist:
 - [ ] README quickstart works from a fresh clone with no Docker and no Node (verified by the owner)
 - [ ] All spec §11 checklist items are green
 
-### T23 · Dogfood run and real demo
-depends_on: T07, T11, T22
-covers: S11
-files: examples/sample-todo-api/, src/specvania/examples/real-run/, .agent/deviations.md, README.md
+---
 
-Create a small sample project (FastAPI todo API with tests) in `examples/sample-todo-api/`. With a real NVIDIA API key, run `specvania plan` for one feature and `specvania run` on it with the desktop window. Export the run as `real-run`, update the README GIF from it, and use the summary to settle open point O1 (default models per role).
+## A7 · Studio
+boss: S18, S19
+
+### T24 · `specvania studio` and the desktop handshake
+depends_on: T19, T20
+covers: S18
+files: src/specvania/ui/studio.py, src/specvania/ui/server.py, src/specvania/cli.py, apps/desktop/main.js, apps/desktop/preload.js, tests/test_studio.py, tests/desktop/studio.test.cjs
+
+`specvania studio` starts the UI server in studio mode with no run (D18): it binds `127.0.0.1:0`, creates the view and control tokens, prints exactly one JSON line `{"port", "view_token", "control_token"}` on stdout and logs only to stderr. Started without `--url`, the desktop app spawns it through the login shell (D19: `$SHELL -lic 'exec <specvania> studio'`, with the path from the app settings or `specvania` on `PATH`), reads the handshake and loads the game; the control token reaches the renderer through the preload, never through argv or a URL. Studio phases: `idle` → `project_open` → `planning` → `world_ready` → `running` → `finished` (back to `project_open` on demand). A `shutdown` control message finishes an active run as aborted and exits 0; quitting the app sends it and kills the child after 5 s. Until T33 exists, a failed start shows a plain error page.
 
 Checklist:
-- [ ] One full plan → run cycle completes on the sample project (or the failure is documented)
-- [ ] `real-run` events and `summary.md` are committed and replay correctly
+- [ ] `specvania studio` prints exactly one handshake line on stdout and serves the game under the existing token rules (D16)
+- [ ] Started without `--url`, the desktop app spawns the studio through the login shell and opens the game; the spawn command line and environment contain no token (Node test with a fake child process)
+- [ ] If the studio exits or no handshake arrives within 20 s, the app shows an error page with a non-secret reason and the log path
+- [ ] `shutdown` finishes an active run with `run_finished` status aborted and the process exits 0; quitting the app sends it
+- [ ] Control messages without the control token are rejected like approval answers and leave the connection open
+
+### T25 · Plan and run from the studio
+depends_on: T24
+covers: S18
+files: src/specvania/ui/studio.py, src/specvania/ui/server.py, src/specvania/sdd/planner.py, src/specvania/run/engine.py, src/specvania/run/gitops.py, tests/test_studio_flow.py
+
+Control messages (control token): `open_project{path}` (must be inside a git work tree; reports whether `.specvania/` exists), `init_project`, `start_plan{idea, no_clarify}`, `clarify_answer{question_id, answer}`, `save_world{slug}` (D25: commits only `.specvania/specs/<slug>/` with the message `specvania: map <slug>`), `start_run{slug, allow_dirty}` (a dirty tree is refused with the list of dirty paths unless `allow_dirty`), `pause_decision{choice}`, plus the existing `approval_answer`. Plan and run execute in a worker thread; the planner's `answer`, the engine's `decide` and an `ApprovalBroker` responder wait on the WebSocket. Pending Clarify questions travel like pending approvals: a transient prompt with the options and the default, restored on reconnect. After each change the studio sends `studio_state{phase, project, worlds, open_bugs}`. Messages that do not fit the phase are rejected without changing state.
+
+Checklist:
+- [ ] A fake-provider test drives `open_project` → `start_plan` → Clarify answers → `save_world` → `start_run` → approval → `pause_decision` → finished over the WebSocket only, with one commit per cleared room on `specvania/<run-id>` and no terminal prompt
+- [ ] `save_world` commits only the world folder; other dirty files stay uncommitted
+- [ ] `start_run` on a dirty tree is refused with the dirty paths unless `allow_dirty` is true
+- [ ] A message sent in the wrong phase (for example `start_run` while planning) is rejected and the phase does not change
+- [ ] A pending Clarify question, with its options and default, is restored after a reconnect
+
+### T26 · Room files and diff endpoint
+depends_on: T24
+covers: S18
+files: src/specvania/ui/server.py, src/specvania/ui/studio.py, src/specvania/run/gitops.py, tests/test_room_code.py
+
+`GET /api/rooms/<id>/code` (view token) returns, for a cleared room, the files changed by its commit and the commit diff; for the active room, the working-tree diff against the attempt base; for any other room, the files listed in its `files:` line with their current content. Every path passes the Sandbox rules (D12: no `.git/`, ignored or secret paths, nothing outside the root) and every body passes the redaction guard. Caps: 200 kB per file and 1 MB per response, truncated with a visible marker. When the repository is not available (a replay of an exported run), the endpoint answers 404 with a reason.
+
+Checklist:
+- [ ] A cleared room returns its commit's files and diff; the active room returns the working diff
+- [ ] `.git/`, `.env`, ignored files and paths outside the root are never returned (one test per case)
+- [ ] Files and responses above the caps are truncated with the marker
+- [ ] A token value written into a repository file is redacted in the response
+- [ ] Requests without the view token get 401
+
+### T27 · Stamina as a token budget and the party probe
+depends_on: T25
+covers: S19
+files: src/specvania/config.py, src/specvania/run/engine.py, src/specvania/run/events.py, src/specvania/run/state.py, src/specvania/provider/client.py, src/specvania/cli.py, src/specvania/ui/studio.py, tests/test_budget.py, tests/test_probe.py
+
+D21: `limits.token_budget` (positive integer, default 1,000,000) is sent as optional `run_started.token_budget`. Before each model call of a run, if the tokens spent in the run (input + output) reach the budget, the run pauses with reason "stamina exhausted"; `retry` emits the new event `stamina_restored{token_budget}` with the budget plus 25% of the original and continues, `skip` is rejected for this pause, `abort` finishes the run. `RunState` projects the budget, tokens spent and tokens spent per role; cooldowns no longer change stamina (DEV-009's estimate is removed). D24: `specvania doctor --probe` and the studio's `probe_party` send one minimal completion to each distinct configured model through the provider (no router, no fallback) and report ok with latency, the HTTP status or a timeout; the CLI exits non-zero if any model fails. Tests use the fake provider only.
+
+Checklist:
+- [ ] A run whose spending reaches the budget pauses before the next model call with "stamina exhausted"
+- [ ] Retry emits `stamina_restored` with the original budget × 1.25 and the run continues; skip is rejected for this pause; abort finishes as aborted
+- [ ] `run_started.token_budget` and `stamina_restored` round-trip through `events.jsonl`, and older streams without them still load
+- [ ] `RunState` exposes budget, spent and per-role spent; a `cooldown` no longer changes stamina
+- [ ] `doctor --probe` lists every distinct model as ok with latency or with its HTTP status or timeout, and exits non-zero when any fails
+- [ ] `probe_party` returns the same results to the game
+
+### T28 · Agent language
+depends_on: T25
+covers: S21
+files: src/specvania/config.py, src/specvania/sdd/planner.py, src/specvania/sdd/prompts/, src/specvania/agent/executor.py, src/specvania/agent/reviewer.py, src/specvania/agent/prompts/, src/specvania/ui/studio.py, tests/test_language.py
+
+D22: `[ui] language` is `"en"` or `"pt-BR"` (default `"en"`); the studio's `set_language{language}` overrides it for the session. Mage, Warrior and Paladin prompts get one instruction to write human-facing text — Clarify questions and options, spec prose, room titles and checklist items, the Warrior's `thought`, the Paladin's feedback — in the chosen language, and to keep code, identifiers, file paths, commit message prefixes and world-format keywords in English. A change applies from the next model call.
+
+Checklist:
+- [ ] The chosen language reaches every Mage, Warrior and Paladin prompt (fake provider captures the messages)
+- [ ] A world written in Brazilian Portuguese by the fake Mage passes `specvania lint`
+- [ ] `set_language` during a run applies from the next model call
+- [ ] Unknown language values are rejected by the config and by the studio
+
+---
+
+## A8 · Castle
+boss: S20
+
+### T29 · Kenney Tiny Dungeon and the new cast
+depends_on: T15
+covers: S20
+files: src/specvania/ui/static/vendor/kenney-tiny-dungeon/, src/specvania/ui/static/pixel/cast.js, src/specvania/ui/static/pixel/textures.js, src/specvania/ui/static/pixel/sprites.js, src/specvania/ui/static/sprites.html, apps/desktop/scripts/make-icon.mjs, THIRD_PARTY_NOTICES.md, tests/desktop/cast.test.cjs
+
+D10: vendor the pack's packed 16×16 tilesheet and its `License.txt` (CC0). `cast.js` maps names to tile indices: Mage 84, Warrior 87, Paladin 96; monsters from 108, 120, 121, 122 and 123, chosen by a stable hash of the bug id; bosses from 109, 110 and 111 by area; walls, back-wall bricks, floors, doors, stairs, banners, chests and grates. `textures.js` slices the sheet into Phaser textures. The code-drawn sprites in `sprites.js` are removed once nothing references them. `sprites.html` shows the whole cast. The app icon is generated from the Mage tile with Node built-ins only.
+
+Checklist:
+- [ ] The pack and its license are vendored and listed in `THIRD_PARTY_NOTICES.md`
+- [ ] Every cast entry resolves to a tile inside the sheet (Node test)
+- [ ] The same bug id always gets the same monster
+- [ ] `sprites.html` shows every cast entry at 2× and 3× without blur
+- [ ] The app icon is generated from the pack with Node built-ins only
+
+### T30 · Castle layout and room states
+depends_on: T16, T29
+covers: S20
+files: src/specvania/ui/static/map/castle.js, src/specvania/ui/static/map/layout.js, src/specvania/ui/static/map/scene.js, tests/desktop/castle.test.cjs
+
+D23: `castle.js` is a pure function from the `world_loaded` payload to floors (one per area, in order), chambers (rooms left to right by door depth, then id), doors between consecutive chambers (locked until every dependency of the next room is cleared), a boss arena at the end of each floor and stairs down to the next floor. The scene draws the cross-section with the cast: walls, back-wall bricks, floors, banners and labels. Room states: locked (dark, padlocked door), open (lit torch), active (warm light, party inside), cleared (open chest, green check), failed (red tint), skipped (grey, cobwebs). The camera follows the party; `M` toggles the whole castle; clicking a chamber dispatches `specvania:room-selected`. Integer scaling only; the canvas fills the window.
+
+Checklist:
+- [ ] The layout is deterministic and has no overlapping chambers for this repository's world and for the sample project's world
+- [ ] Every floor ends in its boss arena, and stairs connect it to the next floor
+- [ ] Each room state has a distinct look, also distinguishable in grayscale (screenshot in the report)
+- [ ] Clicking a chamber dispatches its room id; `M` toggles the whole-castle view
+- [ ] The canvas fills a 960×540 window and larger ones with integer scaling only
+
+### T31 · Castle animations
+depends_on: T17, T30
+covers: S20
+files: src/specvania/ui/static/map/animations.js, src/specvania/ui/static/map/scene.js, tests/desktop/animations.test.cjs
+
+The cast has one frame per character, so motion comes from tweens: hops while walking between chambers and down stairs; the Warrior's weapon swing on `action`; Mage sparkles while planning; the Paladin's shield on `review`; shake and a lost heart on a failed review; return to the chamber entrance on `respawn`; zzz while in `cooldown`; boss hit per passed scenario and defeat or escape on `boss_result`; chambers revealed one by one as a new world arrives; monster defeat on `bug_closed`. The event → animation mapping is a table in a code comment. `prefers-reduced-motion` and the reduced-motion setting replace tweens with instant state changes.
+
+Checklist:
+- [ ] Each listed event triggers its animation (mapping test with a fake scene)
+- [ ] Reduced motion disables every tween and keeps every state change visible
+- [ ] Replaying the demo at 4× keeps the animation queue bounded (test on the queue)
+
+---
+
+## A9 · Screens
+boss: S21, S22
+
+### T32 · Languages in the UI and the HUD overlay
+depends_on: T27, T30
+covers: S21
+files: src/specvania/ui/static/i18n/index.js, src/specvania/ui/static/i18n/en.json, src/specvania/ui/static/i18n/pt-BR.json, src/specvania/ui/static/hud/, tests/desktop/i18n.test.cjs
+
+D22: `t(key, params)` serves every visible string: statuses, room states, dialogue templates, buttons, errors and HUD labels; PT-BR terms follow `docs/domain.md`. The HUD is drawn over the castle: hearts, the stamina bar (tokens spent / budget, or tokens only when the run has no budget), party portraits with model id, status, tokens spent and coins when priced, and the `PT | EN` switch. The language comes from the app settings in the desktop window and from `navigator.language` in a browser tab.
+
+Checklist:
+- [ ] `en.json` and `pt-BR.json` have the same keys and the same placeholders (test)
+- [ ] No user-visible string literal remains outside the dictionaries (scan test with an allowlist for model ids and numbers)
+- [ ] Switching the language updates every visible text without a reload
+- [ ] The stamina bar shows spent and budget from `RunState`, and tokens only when there is no budget
+
+### T33 · Title, project, settings and error screens
+depends_on: T24, T32
+covers: S22
+files: src/specvania/ui/static/screens/title.js, src/specvania/ui/static/screens/project.js, src/specvania/ui/static/screens/settings.js, src/specvania/ui/static/screens/error.js, apps/desktop/main.js, apps/desktop/preload.js, tests/desktop/screens.test.cjs
+
+Title: logo, New project, Open project, Watch demo, language, Settings and the Kenney credit. Project: native folder picker (preload `pickFolder()`), git check, init offer, the project's worlds and open bugs, Check the party (`probe_party`, green or red per model with latency). Settings: language, token budget, path to `specvania`, reduced motion; stored in the app's user-data folder and sent to the studio. Error: studio failed to start, missing API key (with where to set `NVIDIA_API_KEY`), connection lost. Every screen works with keyboard and mouse.
+
+Checklist:
+- [ ] Every screen is reachable and usable with the keyboard only
+- [ ] A folder outside a git work tree shows the reason; a git folder without `.specvania/` offers init
+- [ ] Settings persist across app restarts (Node test with a temporary user-data folder)
+- [ ] The missing-key error explains where to set the key and still offers Watch demo
+- [ ] The preload exposes only `isDesktop`, `controlToken`, `notify`, `pickFolder`, `settings` and `studio` status (asserted)
+
+### T34 · Idea, Clarify and saving the map
+depends_on: T25, T28, T33
+covers: S22
+files: src/specvania/ui/static/screens/idea.js, src/specvania/ui/static/hud/dialogue.js, src/specvania/ui/static/map/scene.js, tests/desktop/clarify.test.cjs
+
+At the castle entrance the Mage asks for the idea in a dialogue box with a text field. Each Clarify question appears as RPG dialogue with selectable options, a free-text field and the default highlighted. The chambers of the new world appear one by one; then Save map (`save_world`) and Start expedition (`start_run`), which lists dirty paths with Cancel / Start anyway when the tree is dirty.
+
+Checklist:
+- [ ] The idea and each answer travel as studio messages (Node test with a fake socket)
+- [ ] Enter accepts the default; options are selectable with arrow keys and the mouse
+- [ ] Start expedition stays disabled until the map is saved
+- [ ] A dirty tree lists the dirty paths and offers Cancel / Start anyway
+
+### T35 · Room panel with Monaco
+depends_on: T26, T32
+covers: S22
+files: src/specvania/ui/static/vendor/monaco/, src/specvania/ui/static/hud/room-panel.js, src/specvania/ui/server.py, THIRD_PARTY_NOTICES.md, tests/test_ui_server.py, tests/desktop/room-panel.test.cjs
+
+D20: vendor a pinned Monaco min build trimmed to the editor core and the Python, JavaScript, TypeScript, JSON, Markdown, TOML, YAML, HTML, CSS and shell languages, within 8 MB. Read-only, no language services. Clicking a chamber slides a panel over 60% of the window with tabs Mission (checklist and item states), Code (file list and editor), Diff (side-by-side diff editor) and Review (Paladin verdict and gate results). Esc closes it. It also works in a browser tab.
+
+Checklist:
+- [ ] Monaco loads with the network disabled in the browser tab and in the desktop window
+- [ ] The vendored size is within 8 MB; version and license are in `THIRD_PARTY_NOTICES.md`
+- [ ] The four tabs show data for a cleared, an active and a locked room
+- [ ] The editor is read-only: typing changes nothing
+- [ ] The CSP has no remote sources and no `'unsafe-eval'` (test on the response headers)
+
+### T36 · Expedition screens
+depends_on: T31, T32, T34
+covers: S22
+files: src/specvania/ui/static/hud/approval.js, src/specvania/ui/static/screens/pause.js, src/specvania/ui/static/screens/boss.js, src/specvania/ui/static/screens/end.js, tests/desktop/expedition.test.cjs
+
+The T20 approval choice box restyled and translated, with keyboard support. The pause dialog ("The party fell!") with Retry / Skip / Abort and one line explaining each; for "stamina exhausted", Rest / Abort. The boss arena transition with one HP segment per scenario. The end screen with the run summary — rooms, tokens, calls, fallbacks, time and coins when priced — plus See commits and Back to the castle.
+
+Checklist:
+- [ ] Approvals, pause choices and stamina choices work with keyboard and mouse and reach the studio
+- [ ] The pause dialog shows the `run_paused` reason, translated when it is a known reason
+- [ ] The end screen numbers match `summary.md` for the same run (fixture test)
+- [ ] The boss loses one HP segment per passed scenario in the arena
+
+### T37 · Watch the demo in the app
+depends_on: T33, T36
+covers: S23
+files: src/specvania/ui/studio.py, src/specvania/ui/static/screens/title.js, src/specvania/ui/static/screens/replay.js, src/specvania/examples/demo/, tests/test_studio_replay.py
+
+Watch demo asks the studio (`open_replay`) to play a bundled recording — `real-run` when present, otherwise the synthetic `demo` — through the same game screens. A recording may hold a plan stream and a run stream, played in sequence, so the Clarify answers and approvals appear as they happened. Speed 1×, 2× or 4×, changeable during playback, and pause. No API key, no project and no network.
+
+Checklist:
+- [ ] Watch demo works with no API key, no project and the network disabled
+- [ ] Speed 1, 2 and 4 change the pace (fake clock test) and can change during playback
+- [ ] A recording with a plan stream and a run stream plays both in order, showing the recorded Clarify answers and approvals
+
+---
+
+## A10 · Demo
+boss: S23
+
+### T38 · Package and document v0.3
+depends_on: T35, T37
+covers: S23
+files: apps/desktop/package.json, apps/desktop/electron-builder.yml, README.md, README.pt-BR.md, THIRD_PARTY_NOTICES.md, pyproject.toml, .github/workflows/ci.yml, tests/test_readme.py
+
+The dmg opens the title screen; a first-run screen explains that the game needs `specvania` installed (`uv tool install`) and the API key in the shell. README in English and Brazilian Portuguese with the same sections: what it is, a GIF slot, install (uv tool and dmg), play, the SDD ↔ castle table, safety notes (D7, D8, D12, D16, D19), credits (Kenney, Press Start 2P, Phaser, Monaco, Electron). The wheel includes the i18n files and the vendored Kenney and Monaco assets.
+
+Checklist:
+- [ ] The wheel contains the i18n files and the vendored Kenney and Monaco assets
+- [ ] `README.md` and `README.pt-BR.md` have the same section headings (test)
+- [ ] The installed dmg opens the title screen and Watch demo works without an API key (owner check)
+- [ ] `THIRD_PARTY_NOTICES.md` lists Kenney Tiny Dungeon, Monaco, Phaser, Press Start 2P and Electron with their licenses
+
+### T23 · Dogfood run in the game and real demo
+depends_on: T38
+covers: S11, S23
+files: examples/sample-todo-api/, src/specvania/examples/real-run/, .agent/deviations.md, README.md, README.pt-BR.md
+
+The sample project already exists in `examples/sample-todo-api/` (FastAPI todo API with tests). With a real NVIDIA API key, the owner plays one feature end to end in the desktop game: Check the party, idea, Clarify, Save map, expedition, approvals, boss, end screen. Export the plan and run streams as `real-run`, bundled as the in-app Watch demo; make the README GIF from it; use the summary to settle O1 (default models per role).
+
+Checklist:
+- [ ] One full plan → run cycle completes in the desktop game on the sample project (or the failure is documented)
+- [ ] `real-run` (plan and run streams) and `summary.md` are committed and replay correctly in the game
 - [ ] O1 is decided and logged in `.agent/deviations.md` with the numbers from the summary
 - [ ] The README GIF comes from the real run, not the synthetic one

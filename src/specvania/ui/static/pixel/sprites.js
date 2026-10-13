@@ -718,6 +718,94 @@ export const SPRITES = freezeSprites({
       ]
     ]
   },
+  "room_a7": {
+    "idle": [
+      [
+        "KKKKKKKKKKKKKKKK",
+        "KCCCCCCCCCCCCCCK",
+        "KCSSSSSSSSSSSSCK",
+        "KCSKKKKKKKKKKSCK",
+        "KCSKKKKKKKKKKSCK",
+        "KCSKKKKKKKKKKSCK",
+        "KCSKKKKKKKKKKSCK",
+        "KCSKKKKKKKKKKSCK",
+        "KCSKKKKKKKKKKSCK",
+        "KCSKKKKKKKKKKSCK",
+        "KCSKKKKKKKKKKSCK",
+        "KCSKKKKKKKKKKSCK",
+        "KCSKKKKKKKKKKSCK",
+        "KCSSSSSSSSSSSSCK",
+        "KCCCCCCCCCCCCCCK",
+        "KKKKKKKKKKKKKKKK"
+      ]
+    ]
+  },
+  "room_a8": {
+    "idle": [
+      [
+        "KKKKKKKKKKKKKKKK",
+        "KNNNNNNNNNNNNNNK",
+        "KNSSSSSSSSSSSSNK",
+        "KNSKKKKKKKKKKSNK",
+        "KNSKKKKKKKKKKSNK",
+        "KNSKKKKKKKKKKSNK",
+        "KNSKKKKKKKKKKSNK",
+        "KNSKKKKKKKKKKSNK",
+        "KNSKKKKKKKKKKSNK",
+        "KNSKKKKKKKKKKSNK",
+        "KNSKKKKKKKKKKSNK",
+        "KNSKKKKKKKKKKSNK",
+        "KNSKKKKKKKKKKSNK",
+        "KNSSSSSSSSSSSSNK",
+        "KNNNNNNNNNNNNNNK",
+        "KKKKKKKKKKKKKKKK"
+      ]
+    ]
+  },
+  "room_a9": {
+    "idle": [
+      [
+        "KKKKKKKKKKKKKKKK",
+        "KWWWWWWWWWWWWWWK",
+        "KWSSSSSSSSSSSSWK",
+        "KWSKKKKKKKKKKSWK",
+        "KWSKKKKKKKKKKSWK",
+        "KWSKKKKKKKKKKSWK",
+        "KWSKKKKKKKKKKSWK",
+        "KWSKKKKKKKKKKSWK",
+        "KWSKKKKKKKKKKSWK",
+        "KWSKKKKKKKKKKSWK",
+        "KWSKKKKKKKKKKSWK",
+        "KWSKKKKKKKKKKSWK",
+        "KWSKKKKKKKKKKSWK",
+        "KWSSSSSSSSSSSSWK",
+        "KWWWWWWWWWWWWWWK",
+        "KKKKKKKKKKKKKKKK"
+      ]
+    ]
+  },
+  "room_a10": {
+    "idle": [
+      [
+        "KKKKKKKKKKKKKKKK",
+        "KPPPPPPPPPPPPPPK",
+        "KPSSSSSSSSSSSSPK",
+        "KPSKKKKKKKKKKSPK",
+        "KPSKKKKKKKKKKSPK",
+        "KPSKKKKKKKKKKSPK",
+        "KPSKKKKKKKKKKSPK",
+        "KPSKKKKKKKKKKSPK",
+        "KPSKKKKKKKKKKSPK",
+        "KPSKKKKKKKKKKSPK",
+        "KPSKKKKKKKKKKSPK",
+        "KPSKKKKKKKKKKSPK",
+        "KPSKKKKKKKKKKSPK",
+        "KPSSSSSSSSSSSSPK",
+        "KPPPPPPPPPPPPPPK",
+        "KKKKKKKKKKKKKKKK"
+      ]
+    ]
+  },
   "heart": {
     "idle": [
       [

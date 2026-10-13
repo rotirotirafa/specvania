@@ -65,13 +65,18 @@ One vocabulary for code, events, UI text, docs and posts. When a term exists her
 | View token | Token de visualização | Random secret required to load the page and open the WebSocket | `view_token` |
 | Control token | Token de controle | Random secret required to answer approvals; only the desktop window has it | `control_token` |
 | Responder | Respondedor | A place that can answer an approval (terminal, desktop window) | `ApprovalResponder` |
+| Studio | Estúdio | The long-lived server the desktop game starts and drives (D18) | `specvania studio`, `ui/studio.py` |
+| Castle | Castelo | How a world is drawn: one floor per area, one chamber per room | `map/castle.js` |
+| Handshake | Handshake | The one JSON line the studio prints on stdout with its port and tokens (D19) | studio stdout |
 
 ## Limits and metrics
 
 | Term | PT-BR | Meaning | In code |
 |---|---|---|---|
-| Stamina | Stamina | Remaining request budget in the shared rate limiter | `RateLimiter.available()` |
-| Cooldown | Recarga | A wait caused by 429/5xx backoff | `cooldown` event |
+| Stamina | Stamina | Tokens left in the run's token budget (D21; until v0.2, the limiter's request budget) | `RunState` budget and spent |
+| Token budget | Orçamento de tokens | Input + output tokens a run may spend before it pauses | `limits.token_budget` |
+| Rest | Descansar | The paused-run choice that restores stamina (+25% of the original budget) | `stamina_restored` event |
+| Cooldown | Recarga | A wait caused by 429/5xx backoff; the character rests (zzz) | `cooldown` event |
 | Coins | Moedas | Cost-equivalent, only for models priced in `pricing.toml` | `coins` |
 | Tokens | Tokens | Input/output tokens reported by the provider | `tokens_in`, `tokens_out` |
 

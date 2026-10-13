@@ -13,17 +13,22 @@ export const PALETTE = Object.freeze({
   "Y": "#e5bd65",
   "R": "#cc6b79",
   "C": "#6bbbc5",
-  "O": "#df9560"
+  "O": "#df9560",
+  "P": "#d58fce"
 });
 
-/** Palette symbols for the world's six area tiles. */
+/** Palette symbols for the world's ten area tiles. */
 export const AREA_COLORS = Object.freeze({
   "A1": "G",
   "A2": "B",
   "A3": "V",
   "A4": "R",
   "A5": "O",
-  "A6": "Y"
+  "A6": "Y",
+  "A7": "C",
+  "A8": "N",
+  "A9": "W",
+  "A10": "P"
 });
 
 export const UI_COLORS = Object.freeze({

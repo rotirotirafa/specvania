@@ -23,7 +23,7 @@ SPRITE_NAMES = (
     "boss",
     "monster",
     "door",
-    *(f"room_a{number}" for number in range(1, 7)),
+    *(f"room_a{number}" for number in range(1, 11)),
     "heart",
     "coin",
     "stamina_pip",
@@ -59,7 +59,9 @@ def palette() -> dict[str, str | None]:
 def test_sprite_inventory_matches_room_and_world_areas(sprites: Sprites) -> None:
     assert set(sprites) == set(SPRITE_NAMES)
     areas = re.findall(r"^## (A\d+) ·", (ROOT / "docs/tasks.md").read_text(), re.M)
-    assert {f"room_{area.lower()}" for area in areas} <= sprites.keys()
+    assert {f"room_{area.lower()}" for area in areas} == {
+        name for name in sprites if name.startswith("room_")
+    }
 
 
 @pytest.mark.parametrize("name", PARTY)
@@ -129,8 +131,8 @@ def test_room_tiles_use_their_area_color(sprites: Sprites) -> None:
     areas = cast(
         dict[str, str], definition("palette.js", "AREA_COLORS", "Object.freeze")
     )
-    assert set(areas) == {f"A{number}" for number in range(1, 7)}
-    assert len(set(areas.values())) == 6
+    assert set(areas) == {f"A{number}" for number in range(1, 11)}
+    assert len(set(areas.values())) == 10
     for area, color in areas.items():
         for frame in sprites[f"room_{area.lower()}"]["idle"]:
             assert color in "".join(frame)
