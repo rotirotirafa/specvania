@@ -67,11 +67,15 @@ class OpenAIProvider:
         if not api_key.strip():
             raise ProviderError(status=401)
         self._sdk = sdk or OpenAI(
-            api_key=api_key, base_url=config.base_url, max_retries=0, timeout=60.0
+            api_key=api_key,
+            base_url=config.base_url,
+            max_retries=0,
+            timeout=config.timeout_s,
         )
         self._sdk.base_url = config.base_url
         self._sdk.api_key = api_key
         self._sdk.max_retries = 0
+        self._sdk.timeout = config.timeout_s
 
     def complete(self, model: str, messages: Sequence[ChatMessage]) -> Completion:
         payload: list[ChatCompletionMessageParam] = []

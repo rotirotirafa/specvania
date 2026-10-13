@@ -1,4 +1,5 @@
 import json
+from functools import partial
 
 import httpx2
 import pytest
@@ -6,6 +7,37 @@ from openai import OpenAI
 
 from specvania.config import ProviderConfig
 from specvania.provider.client import ChatMessage, OpenAIProvider, ProviderError
+
+
+@pytest.mark.parametrize("injected", [False, True])
+@pytest.mark.parametrize("timeout_s", [300.0, 427.5])
+def test_provider_timeout_reaches_sdk_requests(
+    monkeypatch: pytest.MonkeyPatch, injected: bool, timeout_s: float
+) -> None:
+    requests: list[httpx2.Request] = []
+
+    def respond(request: httpx2.Request) -> httpx2.Response:
+        requests.append(request)
+        return httpx2.Response(200, json={"object": "list", "data": []})
+
+    http = httpx2.Client(transport=httpx2.MockTransport(respond))
+    sdk = OpenAI(api_key="fake-key", http_client=http) if injected else None
+    if not injected:
+        monkeypatch.setattr(
+            "specvania.provider.client.OpenAI", partial(OpenAI, http_client=http)
+        )
+    config = (
+        ProviderConfig() if timeout_s == 300 else ProviderConfig(timeout_s=timeout_s)
+    )
+    with OpenAIProvider(config, api_key="fake-key", sdk=sdk) as provider:
+        assert provider.list_models() == ()
+    assert len(requests) == 1
+    assert requests[0].extensions["timeout"] == {
+        "connect": timeout_s,
+        "read": timeout_s,
+        "write": timeout_s,
+        "pool": timeout_s,
+    }
 
 
 def test_configured_endpoint_chat_usage_and_catalog() -> None:

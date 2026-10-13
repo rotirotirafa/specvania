@@ -29,6 +29,7 @@ class ConfigModel(BaseModel):
 class ProviderConfig(ConfigModel):
     base_url: NonEmptyText = "https://integrate.api.nvidia.com/v1"
     api_key_env: EnvName = "NVIDIA_API_KEY"
+    timeout_s: Annotated[float, Field(strict=True, gt=0, allow_inf_nan=False)] = 300.0
 
 
 class RolesConfig(ConfigModel):

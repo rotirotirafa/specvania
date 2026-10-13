@@ -14,6 +14,12 @@ Every change to the spec's intent, logged before the commit that introduces it. 
 
 ## Entries
 
+### DEV-011 · 2026-10-13 · T05
+**What changed:** Provider requests use configurable `provider.timeout_s`, a positive finite float defaulting to 300 seconds, instead of the hard-coded 60-second SDK timeout. The setting also applies to injected SDK clients and is written by `specvania init`.
+**Why:** During the owner's T23 dogfood run against `https://integrate.api.nvidia.com/v1`, three Warrior calls to `z-ai/glm-5.3` failed at 60.3 seconds with synthetic status 599, while a tiny probe answered in 1.6 seconds. Whole-file Warrior replies and reasoning tokens need more time; `moonshotai/kimi-k3` produced 1,227 output tokens in 26 seconds during planning.
+**Impact:** D2/D5, T05, provider config validation and SDK construction, init defaults and README key discovery. Router retries and rate limits remain unchanged; invalid timeouts are rejected without echoing input values.
+**Approved by:** reviewer under the owner's wiring delegation, 2026-10-13
+
 ### DEV-010 · 2026-10-13 · T05
 **What changed:** Nothing; this records the one-time manual check of D4's default model ids. `specvania doctor`, run with the owner's real `NVIDIA_API_KEY` against `https://integrate.api.nvidia.com/v1` from a fresh `specvania init` config, reported all nine role entries as found in `/v1/models` (mage `moonshotai/kimi-k3`, `z-ai/glm-5.3`, `nvidia/nemotron-3-ultra-550b-a55b`; warrior `z-ai/glm-5.3`, `moonshotai/kimi-k2.6`, `deepseek-ai/deepseek-v4.1-flash`; paladin `nvidia/nemotron-3-ultra-550b-a55b`, `deepseek-ai/deepseek-v4.1-flash`, `z-ai/glm-5.3-flash`), ledger connected at migration 0002, exit 0.
 **Why:** T05 requires the D4 ids to be checked against the real catalog once and the result recorded here.

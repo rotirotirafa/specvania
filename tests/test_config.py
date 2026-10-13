@@ -31,6 +31,7 @@ def test_init_defaults_match_binding_decisions(repository: Path) -> None:
         "provider": {
             "base_url": "https://integrate.api.nvidia.com/v1",
             "api_key_env": "NVIDIA_API_KEY",
+            "timeout_s": 300.0,
         },
         "roles": {
             "mage": [
@@ -349,6 +350,48 @@ def test_partial_config_uses_defaults(tmp_path: Path) -> None:
     assert config.ui.port == 0
     assert config.limits.rpm == 40
     assert config.desktop.path is None
+
+
+@pytest.mark.parametrize(
+    "document, expected", [("", 300.0), ("[provider]\ntimeout_s = 427.5\n", 427.5)]
+)
+def test_provider_timeout_default_and_configured_value(
+    tmp_path: Path, document: str, expected: float
+) -> None:
+    from specvania.config import load_config
+
+    path = tmp_path / "config.toml"
+    path.write_text(document)
+    assert load_config(path).provider.timeout_s == expected
+
+
+@pytest.mark.parametrize(
+    "value, reason",
+    [
+        ("0.0", "greater than 0"),
+        ("-17.125", "greater than 0"),
+        ("nan", "finite number"),
+        ("inf", "finite number"),
+        ("-inf", "finite number"),
+        ("true", "valid number"),
+        ('"secret-timeout-value"', "valid number"),
+    ],
+)
+def test_invalid_provider_timeout_is_rejected_without_echoing_input(
+    tmp_path: Path, value: str, reason: str
+) -> None:
+    from specvania.config import ConfigError, load_config
+
+    path = tmp_path / "config.toml"
+    path.write_text(f"[provider]\ntimeout_s = {value}\n")
+    with pytest.raises(ConfigError) as caught:
+        load_config(path)
+    message = str(caught.value)
+    assert "provider.timeout_s" in message
+    assert reason in message
+    assert "input_value" not in message
+    assert "secret-timeout-value" not in message
+    assert "-17.125" not in message
 
 
 def test_non_utf8_config_raises_typed_error(tmp_path: Path) -> None:

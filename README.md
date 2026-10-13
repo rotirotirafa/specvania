@@ -94,6 +94,7 @@ The default provider is the OpenAI-compatible NVIDIA NIM endpoint,
 `provider.base_url`, the API-key environment variable name, or any role's ordered
 model chain. Each role uses the first healthy model and falls back after repeated
 429/5xx failures. The party shares one rate limiter per API key (40 RPM by default).
+`provider.timeout_s` sets the request timeout in seconds (positive finite float; default 300).
 
 These D4 defaults are a **2026-10-12 catalog snapshot, unverified for quality**.
 The real catalog check is an owner check in T05; O1/T23 will settle the chains
