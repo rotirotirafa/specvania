@@ -10,7 +10,15 @@ from specvania.provider.client import ProviderError
 from specvania.provider.fake import ScriptedProvider
 
 
+def repository(root: Path) -> None:
+    git = root / ".git"
+    (git / "objects").mkdir(parents=True)
+    (git / "refs/heads").mkdir(parents=True)
+    (git / "HEAD").write_text("ref: refs/heads/main\n")
+
+
 def configure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repository(tmp_path)
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("SPECVANIA_DATABASE_URL", raising=False)
     monkeypatch.setenv("CUSTOM_API_KEY", "doctor-fake-secret")
@@ -121,6 +129,7 @@ def test_doctor_missing_config_exits_cleanly(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    repository(tmp_path)
     monkeypatch.chdir(tmp_path)
     result = CliRunner().invoke(cli.create_app(), ["doctor"])
     assert result.exit_code == 1 and "config" in result.output.lower()
@@ -143,3 +152,35 @@ def test_doctor_uses_configured_ledger_url_without_printing_it(
     assert "migration 0002" in result.output
     assert url not in result.output and str(path) not in result.output
     assert "doctor-fake-secret" not in result.output
+
+
+def test_doctor_from_nested_directory_uses_repository_config_and_ledger(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    configure(tmp_path, monkeypatch)
+    catalog(monkeypatch, ("a", "b", "c"))
+    nested = tmp_path / "src/deep"
+    nested.mkdir(parents=True)
+    monkeypatch.chdir(nested)
+    result = CliRunner().invoke(cli.create_app(), ["doctor"])
+    assert result.exit_code == 0, result.output
+    assert "CUSTOM_API_KEY set" in result.output
+    assert "migration 0002" in result.output
+    assert (tmp_path / ".specvania/ledger.db").is_file()
+    assert not (nested / ".specvania").exists()
+
+
+def test_doctor_outside_git_exits_cleanly_before_config_or_provider(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        cli,
+        "OpenAIProvider",
+        lambda *args, **kwargs: pytest.fail("Outside Git must prevent provider calls"),
+    )
+    result = CliRunner().invoke(cli.create_app(), ["doctor"])
+    assert result.exit_code == 1
+    assert "inside a git repository" in result.output
+    assert "Traceback" not in result.output
+    assert not (tmp_path / ".specvania").exists()

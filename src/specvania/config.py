@@ -108,8 +108,8 @@ def load_config(path: Path) -> Config:
         raise ConfigError(f"Invalid config at {path}: {details}") from error
 
 
-def initialize_config(start: Path, *, force: bool = False) -> Path:
-    """Write defaults and ignore entries at the current git repository's root."""
+def repository_root(start: Path) -> Path:
+    """Resolve the current git repository for config and ledger paths."""
     try:
         result = subprocess.run(
             ["git", "-C", str(start), "rev-parse", "--show-toplevel"],
@@ -122,8 +122,13 @@ def initialize_config(start: Path, *, force: bool = False) -> Path:
             "Cannot find the git repository; install git first."
         ) from error
     if result.returncode != 0:
-        raise ConfigError("init must run inside a git repository.")
-    root = Path(result.stdout.strip())
+        raise ConfigError("This command must run inside a git repository.")
+    return Path(result.stdout.strip())
+
+
+def initialize_config(start: Path, *, force: bool = False) -> Path:
+    """Write defaults and ignore entries at the current git repository's root."""
+    root = repository_root(start)
     path = root / ".specvania/config.toml"
     if path.exists() and not force:
         raise ConfigError("Config already exists; use init --force to overwrite it.")

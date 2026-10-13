@@ -24,7 +24,13 @@ from specvania.agent.sandbox import SandboxRefusal
 from specvania.agent.tools import ToolError
 from specvania.bugs import BugError, Bugs
 from specvania.clock import SystemClock
-from specvania.config import Config, ConfigError, initialize_config, load_config
+from specvania.config import (
+    Config,
+    ConfigError,
+    initialize_config,
+    load_config,
+    repository_root,
+)
 from specvania.ledger.repo import Ledger, LedgerError
 from specvania.pricing import PricingError, load_pricing
 from specvania.provider.client import OpenAIProvider, ProviderError
@@ -219,8 +225,8 @@ def create_app() -> typer.Typer:
     @app.command("doctor", help="Check the API key, model chains and ledger.")
     def doctor() -> None:
         console = Console()
-        root = Path.cwd()
         try:
+            root = repository_root(Path.cwd())
             config = load_config(root / ".specvania/config.toml")
         except ConfigError as error:
             Console(stderr=True).print(
