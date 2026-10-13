@@ -27,11 +27,11 @@ class Element {
   set innerHTML(_) {assert.fail("Use inert text nodes");}
   remove() {if(this.parent)this.parent.children=this.parent.children.filter(n=>n!==this);}
 }
-async function harness() {
+async function harness({studio = true, desktop = true} = {}) {
   const {setLanguage} = await load("i18n/index.js"); setLanguage("en");
   const doc = {createElement:tag=>new Element(tag,doc)};
   doc.head=new Element("head",doc);doc.body=new Element("body",doc);
-  const host=new Element("section",doc);
+  const host=new Element("section",doc);host.hidden=true;
   const game=new Element("div",doc),hud=new Element("main",doc);
   const summary=new Element("summary",doc);summary.textContent="Rooms and states";hud.append(summary);
   for(const label of ["HUD PT","HUD EN"]) {const button=new Element("button",doc);button.textContent=label;hud.append(button);}
@@ -41,15 +41,58 @@ async function harness() {
     addEventListener(type,fn){const a=events.get(type)||[];a.push(fn);events.set(type,a);},removeEventListener(type,fn){events.set(type,(events.get(type)||[]).filter(f=>f!==fn));},
     dispatchEvent(event){if(event.type==="specvania:settings")motion.push(event.detail);for(const fn of events.get(event.type)||[])fn(event);},
     specvaniaDesktop:{isDesktop:true,controlToken:()=>"control",pickFolder:async()=>folder,settings:{get:async()=>({...saved}),set:async value=>{writes.push(value);saved={...saved,...value};return {...saved};}},studio:{get:async()=>({kind:"ready"}),restart:async()=>{restarts.push(true);}}}};
+  if (!desktop) delete browser.specvaniaDesktop;
   const socket=new EventEmitter();socket.readyState=1;socket.addEventListener=socket.on.bind(socket);socket.removeEventListener=socket.off.bind(socket);socket.send=data=>sent.push(JSON.parse(data));
-  const {mountScreens}=await load("screens/title.js");const screens=mountScreens({host,browser,socket}); await screens.ready;
+  const {mountScreens}=await load("screens/title.js");const screens=mountScreens({host,browser,socket});
+  const initial={hidden:host.hidden,children:host.children.length,gameInert:game.getAttribute("inert"),hudInert:hud.getAttribute("inert")};
+  await screens.ready;
   const message=value=>socket.emit("message",{data:JSON.stringify(value)});
+  if (studio) message({kind:"state",phase:"idle",state:{run_id:null,status:"pending"}});
   const tick=()=>new Promise(resolve=>setImmediate(resolve));
   function key(key,shiftKey=false) {const event={key,shiftKey,target:doc.activeElement,preventDefault(){this.prevented=true;}};host.dispatch("keydown",event);
     // Simulate the browser's default focus traversal and button activation.
     if(!event.prevented && key==="Tab") {const nodes=flat(doc.body).filter(n=>["button","input","select","summary"].includes(n.tagName)&&!n.disabled&&!function inert(node){return node.attrs.inert!==undefined||node.hidden||node.parent&&inert(node.parent);}(n));const at=nodes.indexOf(doc.activeElement);nodes[(at+(shiftKey?-1:1)+nodes.length)%nodes.length]?.focus();}
     if(!event.prevented && ["Enter"," "].includes(key) && doc.activeElement?.tagName==="button")doc.activeElement.click();}
-  return {host,doc,game,hud,browser,socket,screens,sent,writes,motion,restarts,message,key,tick,folder:value=>{folder=value;},button:label=>flat(host).find(n=>n.tagName==="button"&&n.textContent===label)};
+  return {host,doc,game,hud,browser,socket,screens,sent,writes,motion,restarts,message,key,tick,initial,folder:value=>{folder=value;},button:label=>flat(host).find(n=>n.tagName==="button"&&n.textContent===label)};
+}
+test("screens_stay_hidden_before_first_message_without_isolating_castle_or_hud",async()=>{
+  const h=await harness({studio:false});try {
+    assert.deepEqual(h.initial,{hidden:true,children:0,gameInert:null,hudInert:null});
+    h.socket.emit("open");
+    assert.equal(h.host.hidden,true);assert.equal(h.host.children.length,0);
+    h.socket.emit("error");h.socket.emit("close");
+    assert.equal(h.host.hidden,true);assert.equal(h.host.children.length,0);
+  } finally {h.screens.destroy();}
+});
+for (const mode of ["replay","run","plan"]) for (const desktop of [false,true]) {
+  test(`${mode}_state_without_phase_keeps_screens_unmounted_and_castle_hud_interactive_${desktop ? "desktop" : "browser"}`,async()=>{
+    const h=await harness({studio:false,desktop});try {
+      h.socket.emit("open");
+      h.message({kind:"state",state:{run_id:`${mode}-run`,status:"running"},approval_request:null});
+      assert.equal(h.host.hidden,true);assert.equal(h.host.children.length,0);
+      for (const node of [h.game,h.hud]) {assert.equal(node.getAttribute("inert"),null);assert.equal(node.getAttribute("aria-hidden"),null);}
+      h.message({kind:"event",event:{type:"world_loaded",run_id:`${mode}-run`,seq:1}});
+      h.message({kind:"approval_rejected",reason:"API key missing; check the configured environment variable."});
+      h.socket.emit("error");h.socket.emit("close");
+      assert.equal(h.host.hidden,true);assert.equal(h.host.children.length,0);assert.equal(h.button("New project"),undefined);
+      for (const node of [h.game,h.hud]) {assert.equal(node.getAttribute("inert"),null);assert.equal(node.getAttribute("aria-hidden"),null);}
+      h.key("Tab");assert.equal(h.doc.activeElement.textContent,"Rooms and states");
+      h.key("Tab");assert.equal(h.doc.activeElement.textContent,"HUD PT");
+      assert.deepEqual(h.sent,[]);
+    } finally {h.screens.destroy();}
+  });
+}
+for (const kind of ["state","studio_state"]) {
+  test(`${kind}_idle_identifies_studio_and_mounts_title`,async()=>{
+    const h=await harness({studio:false});try {
+      assert.equal(h.host.hidden,true);
+      h.message({kind,phase:"idle",state:{run_id:null,status:"pending"},project:null,worlds:[],open_bugs:0});
+      assert.equal(h.host.hidden,false);assert.equal(h.host.dataset.screen,"title");
+      assert.equal(h.doc.activeElement.textContent,"New project");
+      for (const node of [h.game,h.hud]) {assert.equal(node.getAttribute("inert"),"");assert.equal(node.getAttribute("aria-hidden"),"true");}
+      h.socket.emit("close");assert.equal(h.host.dataset.screen,"error");assert.match(text(h.host),/Connection lost/);
+    } finally {h.screens.destroy();}
+  });
 }
 test("keyboard_only_title_project_settings_error_navigation_and_mouse",async()=>{
   const h=await harness();try {

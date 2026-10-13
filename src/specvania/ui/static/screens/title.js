@@ -116,7 +116,7 @@ export function mountScreens({host, browser = window, socket, startup, watchDemo
     view.render?.();
   }
   function show(next, reason = "") {
-    if (destroyed) return;
+    if (destroyed || !studio && !startup) return;
     screen = next; labels = []; host.hidden = false; host.replaceChildren(); isolate(true);
     host.dataset.screen = next; container = host;
     container = element("div"); container.className = "screen-panel";
@@ -142,7 +142,10 @@ export function mountScreens({host, browser = window, socket, startup, watchDemo
     const first = controls()[0];
     if (next !== "settings") first?.focus();
   }
-  function showError(error) {lastError = error; unavailable = error.kind === "connection" || Boolean(error.reasonKey?.startsWith("error.start")) || error.reasonKey === "error.stopped"; show("error");}
+  function showError(error) {
+    if (!studio && !startup) return;
+    lastError = error; unavailable = error.kind === "connection" || Boolean(error.reasonKey?.startsWith("error.start")) || error.reasonKey === "error.stopped"; show("error");
+  }
   const keydown = event => {
     if (host.hidden) return;
     if (event.key === "Tab") {
@@ -154,7 +157,7 @@ export function mountScreens({host, browser = window, socket, startup, watchDemo
   const message = ({data}) => {
     const value = JSON.parse(data);
     if (value.kind === "studio_state" || value.kind === "state" && value.phase) {
-      if (!studio) {studio = true; send("set_language", {language: settings.language});}
+      if (!studio) {studio = true; send("set_language", {language: settings.language}); show("title");}
       if (value.kind === "studio_state") {
         project = value;
         if (value.error) showError({reason: value.error});
@@ -177,7 +180,9 @@ export function mountScreens({host, browser = window, socket, startup, watchDemo
     // HUD language buttons already use connectLanguage for studio control.
     if (manual && desktop?.settings?.set) desktop.settings.set({language}).catch(() => {});
   });
-  show("title");
+  // Replay and live watch views stay interactive until the server identifies a studio.
+  close();
+  if (startup) showError(startup);
   const ready = Promise.resolve(desktop?.settings?.get?.()).then(saved => {
     if (destroyed) return;
     if (saved) {settings = {...settings, ...saved}; syncing = true; setLanguage(settings.language); syncing = false;}
