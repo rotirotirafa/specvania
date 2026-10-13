@@ -252,15 +252,18 @@ def test_per_file_cap_has_visible_marker_and_flags(repo: Path, active: bool) -> 
     assert file["truncated"] is True and result["truncated"] is True
 
 
-def test_large_tracked_file_reads_are_bounded(
-    repo: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("active", [False, True])
+def test_large_file_reads_are_bounded(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, active: bool
 ) -> None:
     folder = repo / "logs"
     folder.mkdir()
     large = folder / "large.txt"
     large.write_bytes(b"x" * 5_000_000)
-    git(repo, "add", "logs/large.txt")
-    ui = server(repo, "logs/")
+    if not active:
+        git(repo, "add", "logs/large.txt")
+    ui = server(repo, "logs/", active=active)
+    read_limit = 200_000 + ui.guard.max_secret_bytes + 5
     original_open = Path.open
     reads: list[tuple[int, int]] = []
 
@@ -283,34 +286,42 @@ def test_large_tracked_file_reads_are_bounded(
     monkeypatch.setattr(Path, "open", watched_open)
     response = code(ui)
     assert response.status_code == 200
-    assert reads and all(0 < size <= 201_000 for size, _ in reads)
-    assert sum(length for _, length in reads) <= 201_000
+    assert reads == [(read_limit, read_limit)]
     result = response.json()
-    file = result["files"][0]
-    assert file["path"] == "logs/large.txt"
-    assert "truncated by specvania (200 kB cap)" in file["content"]
-    assert len(file["content"].encode()) <= 200_000
+    file = next(file for file in result["files"] if file["path"] == "logs/large.txt")
+    body = file["diff" if active else "content"]
+    assert "truncated by specvania (200 kB cap)" in body
+    assert len(body.encode()) <= 200_000
+    if active:
+        assert "\nindex " not in body
     assert file["truncated"] is True and result["truncated"] is True
 
 
 @pytest.mark.parametrize("escaped", [False, True])
-def test_bounded_read_redacts_long_secret_across_cap(repo: Path, escaped: bool) -> None:
-    ui = server(repo, "secret.txt")
+@pytest.mark.parametrize("active", [False, True])
+def test_bounded_read_redacts_long_secret_across_cap(
+    repo: Path, escaped: bool, active: bool
+) -> None:
+    ui = server(repo, "secret.txt", active=active)
     secret = "unique-prefix-" + "é" * 300 + "-tail"
     ui.guard.register(secret)
     value = json.dumps(secret)[1:-1] if escaped else secret
     (repo / "secret.txt").write_text("x" * 199_900 + value + "y" * 5_000_000)
     response = code(ui)
     assert response.status_code == 200
-    body = response.json()["files"][0]["content"]
+    file = next(
+        file for file in response.json()["files"] if file["path"] == "secret.txt"
+    )
+    body = file["diff" if active else "content"]
     assert "unique-prefix" not in body
     assert "truncated by specvania (200 kB cap)" in body
 
 
+@pytest.mark.parametrize("active", [False, True])
 def test_bounded_read_discards_partial_secret_after_redaction_shrinks_body(
-    repo: Path,
+    repo: Path, active: bool
 ) -> None:
-    ui = server(repo, "secret.txt")
+    ui = server(repo, "secret.txt", active=active)
     secret = "unique-prefix-" + "s" * 600 + "-tail"
     ui.guard.register(secret)
     prefix = secret * 300
@@ -320,18 +331,25 @@ def test_bounded_read_discards_partial_secret_after_redaction_shrinks_body(
     )
     response = code(ui)
     assert response.status_code == 200
-    body = response.json()["files"][0]["content"]
+    file = next(
+        file for file in response.json()["files"] if file["path"] == "secret.txt"
+    )
+    body = file["diff" if active else "content"]
     assert "[redacted]" in body and "unique-prefix" not in body
     assert "truncated by specvania (200 kB cap)" in body
-    assert response.json()["files"][0]["truncated"] is True
+    assert file["truncated"] is True
 
 
-def test_bounded_read_detects_nul_in_lookahead(repo: Path) -> None:
-    ui = server(repo, "binary.dat")
+@pytest.mark.parametrize("active", [False, True])
+def test_bounded_read_detects_nul_in_lookahead(repo: Path, active: bool) -> None:
+    ui = server(repo, "binary.dat", active=active)
     (repo / "binary.dat").write_bytes(b"x" * 200_005 + b"\0" + b"y" * 5_000_000)
     response = code(ui)
     assert response.status_code == 200
-    body = response.json()["files"][0]["content"]
+    file = next(
+        file for file in response.json()["files"] if file["path"] == "binary.dat"
+    )
+    body = file["diff" if active else "content"]
     assert "binary" in body.lower() and "xxxxx" not in body
 
 
@@ -669,3 +687,168 @@ def test_metadata_alone_is_response_capped_with_visible_marker() -> None:
     assert len(result.model_dump_json().encode()) <= 1_000_000
     assert result.truncated
     assert "truncated by specvania" in result.model_dump_json()
+
+
+@pytest.mark.parametrize("cleared,count", [(True, 20), (False, 30)])
+def test_room_code_git_subprocess_count_is_constant(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, cleared: bool, count: int
+) -> None:
+    ui = server(repo, active=not cleared)
+    git(repo, "add", "world")
+    git(repo, "commit", "-m", "world")
+    names = [f"file {index:02}.txt" for index in range(count)]
+    for index, name in enumerate(names):
+        (repo / name).write_text(f"addition {index}\n")
+    if cleared:
+        git(repo, "add", ".")
+        git(repo, "commit", "-m", "room")
+        ui = server(repo, commit=git(repo, "rev-parse", "HEAD"))
+    original = subprocess.run
+    commands: list[list[str]] = []
+
+    def recorded(command: list[str], **kwargs: Any) -> Any:
+        commands.append(command)
+        return original(command, **kwargs)
+
+    monkeypatch.setattr("specvania.run.gitops.subprocess.run", recorded)
+    response = code(ui)
+    assert response.status_code == 200
+    files = {file["path"]: file["diff"] for file in response.json()["files"]}
+    assert set(files) == set(names)
+    for index, name in enumerate(names):
+        assert f"+addition {index}\n" in files[name]
+    assert len(commands) <= 6, [command[3:] for command in commands]
+
+
+@pytest.mark.parametrize("cleared", [False, True])
+def test_batched_diffs_map_unusual_paths_and_isolate_binary_markers(
+    repo: Path, cleared: bool
+) -> None:
+    names = [
+        "space name.txt",
+        'quote"name.txt',
+        "tab\tname.txt",
+        "line\nname.txt",
+        "café.txt",
+        ":(glob)*.txt",
+    ]
+    for index, name in enumerate(names):
+        (repo / name).write_text(f"unique {index}\n")
+    (repo / "binary.dat").write_bytes(b"\0private-binary\xff")
+    (repo / ".gitattributes").write_text("binary.dat diff\n")
+    commit = None
+    if cleared:
+        git(repo, "add", ".")
+        git(repo, "commit", "-m", "unusual paths")
+        commit = git(repo, "rev-parse", "HEAD")
+    response = code(server(repo, active=not cleared, commit=commit))
+    assert response.status_code == 200
+    files = {file["path"]: file["diff"] for file in response.json()["files"]}
+    for index, name in enumerate(names):
+        assert f"+unique {index}\n" in files[name]
+        assert all(
+            f"+unique {other}\n" not in files[name]
+            for other in range(len(names))
+            if other != index
+        )
+    assert "private-binary" not in response.text
+    assert files["binary.dat"] == "Binary file (diff omitted).\n"
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        b"",
+        b"one\n",
+        b"one",
+        b"one\r\ntwo\r\n",
+        b"one\n\n",
+        b"\0binary\xff",
+        b"x" * 200_000,
+        b"x" * 199_999 + b"\n",
+        "é".encode() * 100_000,
+    ],
+)
+def test_untracked_addition_matches_git_no_index(repo: Path, data: bytes) -> None:
+    from specvania.run.gitops import GitOps
+
+    name = 'quote" space.txt'
+    path = repo / name
+    path.write_bytes(data)
+    ops = GitOps(repo)
+    patch, truncated = ops.code_addition(name, path)
+    assert patch == ops.code_diff(name)
+    assert truncated is False
+
+
+@pytest.mark.parametrize("active", [False, True])
+def test_response_cap_stops_file_reads_and_git_subprocesses(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, active: bool
+) -> None:
+    folder = repo / "many"
+    folder.mkdir()
+    for index in range(30):
+        (folder / f"{index:02}.txt").write_text('"\\\n' * 30_000)
+    ui = server(repo, "many/", active=active)
+    original_open = Path.open
+    original_run = subprocess.run
+    reads: list[str] = []
+    commands_at_read: list[int] = []
+    commands: list[list[str]] = []
+
+    def recorded(command: list[str], **kwargs: Any) -> Any:
+        commands.append(command)
+        return original_run(command, **kwargs)
+
+    def watched_open(path: Path, *args: Any, **kwargs: Any) -> Any:
+        if path.parent == folder:
+            reads.append(path.name)
+            commands_at_read.append(len(commands))
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", watched_open)
+    monkeypatch.setattr("specvania.run.gitops.subprocess.run", recorded)
+    response = code(ui)
+    assert response.status_code == 200 and len(response.content) <= 1_000_000
+    result = response.json()
+    assert result["truncated"]
+    returned = [
+        file["path"].removeprefix("many/")
+        for file in result["files"]
+        if file["path"].startswith("many/")
+    ]
+    assert reads == returned and len(reads) < 30
+    assert commands_at_read[-1] == len(commands)
+
+
+@pytest.mark.parametrize(
+    "attribute,data",
+    [("-diff", b"text treated as binary\n"), ("diff", b"\0forced-text\xff")],
+)
+def test_untracked_binary_attributes_keep_git_marker(
+    repo: Path, attribute: str, data: bytes
+) -> None:
+    from specvania.run.gitops import GitOps
+
+    (repo / ".gitattributes").write_text(f"addition.dat {attribute}\n")
+    (repo / "addition.dat").write_bytes(data)
+    expected = GitOps(repo).code_diff("addition.dat")
+    response = code(server(repo, active=True))
+    assert response.status_code == 200
+    file = next(
+        file for file in response.json()["files"] if file["path"] == "addition.dat"
+    )
+    assert file["diff"] == expected
+
+
+def test_untracked_symlink_keeps_git_link_diff(repo: Path) -> None:
+    from specvania.run.gitops import GitOps
+
+    (repo / "public-link.txt").symlink_to("tracked.txt")
+    expected = GitOps(repo).code_diff("public-link.txt")
+    response = code(server(repo, active=True))
+    assert response.status_code == 200
+    file = next(
+        file for file in response.json()["files"] if file["path"] == "public-link.txt"
+    )
+    assert file["diff"] == expected

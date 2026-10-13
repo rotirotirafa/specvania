@@ -1,7 +1,11 @@
 """Local Git operations for a run; no remote or destructive operations."""
 
+import codecs
+import hashlib
+import os
 import re
 import subprocess
+from collections.abc import Callable, Iterable
 from pathlib import Path
 
 from specvania.agent.sandbox import Sandbox, SandboxRefusal
@@ -9,6 +13,14 @@ from specvania.agent.sandbox import Sandbox, SandboxRefusal
 
 class GitError(Exception):
     """The player can fix repository state, Git identity or permissions."""
+
+
+class _CodeSandbox(Sandbox):
+    def __init__(self, root: Path) -> None:
+        # GitOps already verified this canonical repository root. Reuse that
+        # result; all inherited path/target/secret checks remain in force.
+        self.root = root
+        self._git_repository = True
 
 
 class GitOps:
@@ -22,11 +34,23 @@ class GitOps:
         allowed_codes: tuple[int, ...] = (0,),
         binary_marker: bool = False,
     ) -> str:
+        data = self._git_bytes(*args, allowed_codes=allowed_codes)
+        if binary_marker:
+            return self._code_text(data)
+        return data.decode("utf-8")
+
+    def _git_bytes(
+        self,
+        *args: str,
+        allowed_codes: tuple[int, ...] = (0,),
+        input: bytes | None = None,
+    ) -> bytes:
         try:
             result = subprocess.run(
                 ["git", "-C", str(self.root), *args],
                 capture_output=True,
                 check=False,
+                input=input,
             )
         except OSError:
             raise GitError("Cannot run Git; check its installation.") from None
@@ -36,14 +60,55 @@ class GitOps:
                 f"Git {args[0]} failed; check repository state, "
                 "identity and permissions."
             )
-        if binary_marker:
-            if b"\0" in result.stdout:
-                return "Binary file (diff omitted).\n"
+        return result.stdout
+
+    @staticmethod
+    def _code_text(data: bytes) -> str:
+        if b"\0" not in data:
             try:
-                return result.stdout.decode("utf-8")
+                return data.decode("utf-8")
             except UnicodeError:
-                return "Binary file (diff omitted).\n"
-        return result.stdout.decode("utf-8")
+                pass
+        return "Binary file (diff omitted).\n"
+
+    def code_resolver(self, names: Iterable[str]) -> Callable[[str], Path]:
+        """Batch ignores for names, targets and directory ancestors; fail closed.
+
+        Sandbox still checks traversal, root boundaries and secret components
+        on every resolution, including a target changed since this snapshot.
+        """
+        sandbox = _CodeSandbox(self.root)
+        checked: set[Path] = {Path(".")}
+
+        def collect(path: Path) -> None:
+            checked.add(path)
+            checked.update(path.parents)
+
+        for name in names:
+            try:
+                sandbox._resolve(name, collect)
+            except SandboxRefusal:
+                continue
+        ignored = {
+            Path(name.decode("utf-8"))
+            for name in self._git_bytes(
+                "check-ignore",
+                "--no-index",
+                "--stdin",
+                "-z",
+                allowed_codes=(0, 1),
+                input=b"".join(
+                    b"./" + str(path).encode("utf-8") + b"\0" for path in checked
+                ),
+            ).split(b"\0")
+            if name
+        }
+
+        def check(path: Path) -> None:
+            if path not in checked or path in ignored:
+                raise SandboxRefusal("The path is ignored by the repository.")
+
+        return lambda name: sandbox._resolve(name, check)
 
     def check(self, *, allow_dirty: bool = False) -> None:
         self.head()  # A run needs an existing HEAD, not an unborn repository.
@@ -93,7 +158,9 @@ class GitOps:
     def head(self) -> str:
         return self._git("rev-parse", "HEAD").strip()
 
-    def code_paths(self, commit: str | None = None) -> tuple[tuple[str, str], ...]:
+    def code_paths(
+        self, commit: str | None = None, *, untracked: tuple[str, ...] | None = None
+    ) -> tuple[tuple[str, str], ...]:
         """Read changed paths without rename pairs containing protected names."""
         if commit is not None:
             if re.fullmatch(r"[0-9a-fA-F]{7,64}", commit) is None:
@@ -123,8 +190,154 @@ class GitOps:
         parts = records.split("\0")
         paths = [(parts[i + 1], parts[i]) for i in range(0, len(parts) - 1, 2)]
         if commit is None:
-            paths.extend((name, "A") for name in self._paths("--others"))
+            paths.extend(
+                (name, "A")
+                for name in (
+                    self._paths("--others") if untracked is None else untracked
+                )
+            )
         return tuple(sorted(set(paths)))
+
+    def code_diffs(
+        self, paths: tuple[str, ...], *, commit: str | None = None
+    ) -> dict[str, str]:
+        """One patch call; NUL raw names map ordered patches without parsing quotes."""
+        if not paths:
+            return {}
+        data = self._git_bytes(
+            "--literal-pathspecs",
+            "show" if commit is not None else "diff",
+            *(("--format=",) if commit is not None else ()),
+            "--raw",
+            "-z",
+            "--patch",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--no-renames",
+            "--no-color",
+            "--no-relative",
+            "--src-prefix=a/",
+            "--dst-prefix=b/",
+            commit or "HEAD",
+            "--",
+            *paths,
+        )
+        raw, separator, patch = data.partition(b"\0\0")
+        if not separator:
+            return {}
+        names = [name.decode("utf-8") for name in raw.split(b"\0")[1::2]]
+        patches = re.split(rb"(?m)(?=^diff --git )", patch)[1:]
+        if len(names) != len(patches) or not set(names).issubset(paths):
+            raise GitError("Git diff unavailable; check repository state.")
+        return dict(zip(names, map(self._code_text, patches), strict=True))
+
+    def code_attributes(self, names: tuple[str, ...]) -> dict[str, str]:
+        """Snapshot binary/text attributes for untracked additions in one call."""
+        if not names:
+            return {}
+        records = self._git_bytes(
+            "check-attr",
+            "--all",
+            "-z",
+            "--stdin",
+            input=b"".join(name.encode() + b"\0" for name in names),
+        ).split(b"\0")
+        attributes = dict.fromkeys(names, "unspecified")
+        for index in range(0, len(records) - 1, 3):
+            if records[index + 1] == b"diff":
+                attributes[records[index].decode()] = records[index + 2].decode()
+        return attributes
+
+    def code_addition(
+        self,
+        name: str,
+        path: Path,
+        *,
+        attribute: str = "unspecified",
+        limit: int = 200_000,
+        margin: int = 5,
+    ) -> tuple[str, bool]:
+        """Read a bounded addition; omit the blob index if content exceeds the cap."""
+        requested = self.root / name
+        symlink = requested.is_symlink()
+        if symlink:
+            data = os.fsencode(os.readlink(requested))
+        else:
+            with path.open("rb") as stream:
+                data = stream.read(limit + margin)
+        truncated = len(data) > limit
+        index = ""
+        if not truncated:
+            digest = hashlib.sha1(f"blob {len(data)}\0".encode() + data).hexdigest()[:7]
+            index = f"index 0000000..{digest}\n"
+        mode = (
+            "120000"
+            if symlink
+            else "100755"
+            if path.stat().st_mode & 0o100
+            else "100644"
+        )
+        old, new = self._code_quote("a/" + name), self._code_quote("b/" + name)
+        header = f"diff --git {old} {new}\nnew file mode {mode}\n"
+        if attribute == "unset" or (attribute != "set" and b"\0" in data[:8000]):
+            return (
+                header + index + f"Binary files /dev/null and {new} differ\n",
+                False,
+            )
+        if b"\0" in data:
+            return "Binary file (diff omitted).\n", False
+        try:
+            text = codecs.getincrementaldecoder("utf-8")().decode(
+                data, final=not truncated
+            )
+        except UnicodeError:
+            return "Binary file (diff omitted).\n", False
+        if not data:
+            hunk = ""
+        else:
+            lines = text.split("\n")
+            if lines[-1] == "":
+                lines.pop()
+                ending = ""
+            else:
+                ending = "" if truncated else "\\ No newline at end of file\n"
+            count = "1" if len(lines) == 1 else f"1,{len(lines)}"
+            hunk = (
+                f"@@ -0,0 +{count} @@\n"
+                + "".join(f"+{line}\n" for line in lines)
+                + ending
+            )
+        if not data:
+            return header + index, False
+        tab = "\t" if " " in name else ""
+        return (
+            header + index + f"--- /dev/null\n+++ {new}{tab}\n" + hunk,
+            truncated,
+        )
+
+    @staticmethod
+    def _code_quote(name: str) -> str:
+        escapes = {
+            7: r"\a",
+            8: r"\b",
+            9: r"\t",
+            10: r"\n",
+            11: r"\v",
+            12: r"\f",
+            13: r"\r",
+            34: r"\"",
+            92: r"\\",
+        }
+        if all(32 <= byte < 127 and byte not in escapes for byte in name.encode()):
+            return name
+        return (
+            '"'
+            + "".join(
+                escapes.get(byte, chr(byte) if 32 <= byte < 127 else f"\\{byte:03o}")
+                for byte in name.encode()
+            )
+            + '"'
+        )
 
     def code_diff(self, path: str, *, commit: str | None = None) -> str:
         """One Sandbox-approved path; external diff and textconv never run."""

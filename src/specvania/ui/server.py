@@ -31,7 +31,7 @@ from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocketDisconnect
 
 from specvania.agent.approval import ApprovalRequest, DesktopResponder
-from specvania.agent.sandbox import Sandbox, SandboxRefusal
+from specvania.agent.sandbox import SandboxRefusal
 from specvania.clock import Clock
 from specvania.config import Language
 from specvania.ledger import Ledger, LedgerError
@@ -633,7 +633,6 @@ class UIServer:
                 )
                 state = fold_events(snapshot)
             git = GitOps(root)
-            sandbox = Sandbox(git.root)
             progress = next((room for room in state.rooms if room.id == room_id), None)
             if state.rooms and progress is None:
                 raise RoomCodeError("Room unavailable in the current world.")
@@ -652,6 +651,21 @@ class UIServer:
             directory = directory or (
                 git.root / ".specvania/specs" / state.feature if state.feature else None
             )
+            untracked = git._paths("--others") if kind == "working" else ()
+            available = git.code_files() if kind == "files" else ()
+            paths = (
+                tuple((name, "file") for name in available)
+                if kind == "files"
+                else git.code_paths(commit, untracked=untracked)
+            )
+            document_names = (
+                tuple(
+                    str(directory.absolute() / name) for name in ("spec.md", "tasks.md")
+                )
+                if directory is not None
+                else ()
+            )
+            resolve = git.code_resolver((*document_names, *(name for name, _ in paths)))
             world = None
             if directory is not None and (
                 kind == "files"
@@ -661,9 +675,9 @@ class UIServer:
                 )
             ):
                 # Validate the documents before parsing: they too can be symlinks.
-                safe_directory = sandbox.resolve(str(directory.absolute()))
+                safe_directory = resolve(str(directory.absolute()))
                 for name in ("spec.md", "tasks.md"):
-                    sandbox.resolve(str(safe_directory / name))
+                    resolve(str(safe_directory / name))
                 world = parse_world(safe_directory)
             room = (
                 next((room for room in world.rooms if room.id == room_id), None)
@@ -731,10 +745,9 @@ class UIServer:
                 if room is None:
                     raise RoomCodeError("Room files unavailable in the current world.")
                 selected: set[str] = set()
-                available = git.code_files()
                 for entry in room.files:
                     try:
-                        path = sandbox.resolve(entry)
+                        path = resolve(entry)
                     except SandboxRefusal:
                         continue
                     name = path.relative_to(git.root).as_posix()
@@ -748,13 +761,22 @@ class UIServer:
                     elif path.is_file():
                         selected.add(name)
                 paths = tuple((name, "file") for name in sorted(selected))
-            else:
-                paths = git.code_paths(commit)
+
+            approved: list[tuple[str, str]] = []
+            for name, status in paths:
+                try:
+                    resolve(name)
+                except SandboxRefusal:
+                    continue
+                approved.append((name, status))
+            untracked_set = frozenset(untracked)
 
             def bodies() -> Iterator[RoomCodeFile]:
-                for name, status in paths:
+                diffs: dict[str, str] | None = None
+                attributes: dict[str, str] | None = None
+                for name, status in approved:
                     try:
-                        path = sandbox.resolve(name)
+                        path = resolve(name)
                     except SandboxRefusal:
                         continue
                     truncated = False
@@ -781,7 +803,30 @@ class UIServer:
                             truncated = False
                         key = "content"
                     else:
-                        body = git.code_diff(name, commit=commit)
+                        if name in untracked_set:
+                            if attributes is None:
+                                attributes = git.code_attributes(
+                                    tuple(
+                                        candidate
+                                        for candidate, _ in approved
+                                        if candidate in untracked_set
+                                    )
+                                )
+                            margin = self.guard.max_secret_bytes + 5
+                            body, truncated = git.code_addition(
+                                name, path, attribute=attributes[name], margin=margin
+                            )
+                        else:
+                            if diffs is None:
+                                diffs = git.code_diffs(
+                                    tuple(
+                                        candidate
+                                        for candidate, _ in approved
+                                        if candidate not in untracked_set
+                                    ),
+                                    commit=commit,
+                                )
+                            body = diffs.get(name, "")
                         key = "diff"
                     redacted = self._redact_code(body)
                     if truncated:
