@@ -40,9 +40,9 @@ export function createMapAnimations(browser = window) {
     render(currentScene,layout,activeRoom) {
       scene = currentScene;
       const room = layout.rooms.find(room => room.id === activeRoom);
-      if (room && !layout.overview) {
+      if (room) {
         ["mage","warrior","paladin"].forEach((role,index) => {
-          const target = {x:room.x + 16 + index * 20,y:room.y + 36};
+          const target = {x:room.x + 24 + index * 16,y:room.y + 24};
           let member = party.get(role);
           if (!member) {
             member = {sprite:scene.add.image(target.x,target.y,textureKey(role,"idle")),target};
@@ -53,7 +53,7 @@ export function createMapAnimations(browser = window) {
           member.target = target;
           if (changed) {
             stop(member.sprite); alpha(member.sprite,1);
-            if (!reduced && scene.tweens && roomId !== null) {
+            if (!reduced && !layout.overview && scene.tweens && roomId !== null) {
               texture(member.sprite,textureKey(role,"walk"));
               scene.tweens.add({targets:member.sprite,x:target.x,y:target.y,duration:500,
                 ease:"Linear",onUpdate:tween => texture(member.sprite,textureKey(role,"walk",Math.floor(tween.progress * 4) % 2)),
@@ -94,18 +94,19 @@ export function createMapAnimations(browser = window) {
         if (monster?.closing) { stop(monster.sprite); monster.sprite.destroy(); monsters.delete(bug.bug_id); monster = null; }
         const siblings = bugs.filter(other => other.room_id === bug.room_id).sort((a,b) => a.bug_id.localeCompare(b.bug_id));
         const index = siblings.findIndex(other => other.bug_id === bug.bug_id);
-        const x = room.x + room.width - 10;
-        const y = room.y + (layout.overview ? Math.floor(room.height / 2) : Math.min(room.height - 8, 10 + index * 16));
+        const x = room.x + room.width - 24 - Math.min(index, 2) * 16;
+        const y = room.y + 24;
         if (!monster) {
           monster = {sprite:scene.add.image(x,y,textureKey(monsterForBug(bug.bug_id),"idle")),closing:false};
           monsters.set(bug.bug_id,monster);
         }
-        position(monster.sprite,{x,y}); monster.sprite.setVisible?.(!layout.overview);
+        position(monster.sprite,{x,y}); monster.sprite.setVisible?.(true);
       }
       // T16 replaces graphics on each event. Persistent sprites must be raised
       // above that new paint, including a monster still completing its defeat.
       for (const member of party.values()) scene.children?.bringToTop(member.sprite);
       for (const monster of monsters.values()) scene.children?.bringToTop(monster.sprite);
+      return room ? party.get("warrior")?.sprite : null;
     },
     destroy() {
       settle();

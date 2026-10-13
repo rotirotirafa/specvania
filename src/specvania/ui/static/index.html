@@ -11,21 +11,25 @@
       src: url("./vendor/fonts/PressStart2P-Regular.ttf") format("truetype");
       font-display: swap;
     }
-    body { margin: 16px; background: var(--background); color: var(--text);
+    body { margin: 0; background: var(--background); color: var(--text);
       font: 10px/1.8 "Press Start 2P", monospace; }
+    #desktop-title-bar { position: fixed; left: 0; right: 0; top: 0; z-index: 2; }
+    main { position: fixed; right: 12px; top: 40px; width: 240px;
+      max-height: calc(100vh - 52px); overflow: auto; z-index: 1;
+      background: var(--surface); border: 2px solid var(--border); padding: 8px; }
     h1 { font-size: 16px; color: var(--accent); }
-    #world-map { overflow: auto; min-height: 180px; }
+    #world-map { position: fixed; inset: 0; width: 100vw; height: 100vh; }
     canvas { image-rendering: pixelated; display: block; }
     #map-rooms { white-space: pre-wrap; }
   </style>
 </head>
 <body>
-  <main aria-live="polite">
+  <div id="world-map" role="img" aria-label="World map. Press M for the whole map."></div>
+  <main id="castle-hud" aria-live="polite">
     <h1>specvania</h1>
     <p id="connection">Connecting to the run…</p>
     <p id="run-state"></p>
     <p>World map · M: whole map / follow party</p>
-    <div id="world-map" role="img" aria-label="World map. Press M for the whole map."></div>
     <details><summary>Rooms and states</summary><p id="map-rooms"></p></details>
   </main>
   <script src="./vendor/phaser.min.js" data-version="3.90.0"

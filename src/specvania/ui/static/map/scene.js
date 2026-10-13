@@ -1,17 +1,20 @@
 import { PALETTE, AREA_COLORS, UI_COLORS } from "../pixel/palette.js";
+import { bossForArea, TILE_SIZE } from "../pixel/cast.js";
 import { preloadTextures, registerTextures, textureKey } from "../pixel/textures.js";
-import { worldFromRooms, layoutWorld, integerDisplayZoom } from "./layout.js";
+import { worldFromRooms, layoutWorld, castleViewZoom } from "./layout.js";
 import { createMapAnimations } from "./animations.js";
 
-/** Geometric marks and literal labels encode state even with all color removed. */
+const numeric = symbol => Number.parseInt(PALETTE[symbol].slice(1), 16);
+
+/** Luminance and pixel silhouettes both encode state, independently of hue. */
 export function roomAppearance(state) {
   const appearances = {
-    locked: { fill: "K", border: "S", mark: "fog", label: "locked" },
-    open: { fill: "S", border: "W", mark: "entrance", label: "open" },
-    active: { fill: "S", border: "Y", mark: "party", label: "active" },
+    locked: { fill: "K", border: "S", mark: "padlock", label: "locked" },
+    open: { fill: "B", border: "W", mark: "torch", label: "open" },
+    active: { fill: "Y", border: "O", mark: "party", label: "active" },
     cleared: { fill: "W", border: "G", mark: "check", label: "cleared" },
-    failed: { fill: "S", border: "R", mark: "cross", label: "failed" },
-    skipped: { fill: "K", border: "N", mark: "slash", label: "skipped" },
+    failed: { fill: "R", border: "R", mark: "cross", label: "failed" },
+    skipped: { fill: "S", border: "S", mark: "cobweb", label: "skipped" },
   };
   if (!appearances[state]) throw new Error(`Unknown room state: ${state}`);
   return appearances[state];
@@ -33,133 +36,185 @@ export function projectEvent(world, event) {
   return { ...world, rooms };
 }
 
-export function drawRoom(graphics, room, overview) {
+/** Pack omissions only: padlock, torch/glow, check, failure cross, cobweb.
+ * All accents are integer pixel rectangles, never smoothed vector strokes.
+ * Three small lights accompany the active party, visible even in overview.
+ */
+export function drawRoom(graphics, room) {
   const look = roomAppearance(room.state);
-  const color = symbol => Number.parseInt(PALETTE[symbol].slice(1), 16);
   const { x, y, width: w, height: h } = room;
-  graphics.fillStyle(color(look.fill)).fillRect(x, y, w, h);
-  graphics.lineStyle(1, color(look.border)).strokeRect(x, y, w, h);
-  const left = x + 2, right = x + w - 2, top = y + 2, bottom = y + h - 2;
-  const mid = Math.floor((top + bottom) / 2);
-  graphics.lineStyle(1, color(room.state === "cleared" ? "K" : "W"));
+  graphics.fillStyle(numeric(look.fill), 0.7).fillRect(x, y + 16, w, h - 32);
+  const pixel = (px, py, width, height, color) =>
+    graphics.fillStyle(numeric(color), 1).fillRect(x + px, y + py, width, height);
   switch (look.mark) {
-    case "fog":
-      graphics.fillStyle(color("S"));
-      for (let py = top; py < bottom; py += 4) {
-        for (let px = left; px < right; px += 4) graphics.fillRect(px, py, 1, 1);
+    case "padlock":
+      pixel(5, 20, 6, 2, "Y"); pixel(4, 22, 2, 3, "Y"); pixel(10, 22, 2, 3, "Y");
+      pixel(3, 25, 10, 6, "Y"); pixel(7, 26, 2, 3, "K");
+      break;
+    case "torch":
+      graphics.fillStyle(numeric("Y"), 0.25).fillRect(x + 17, y + 16, 16, 16);
+      pixel(24, 23, 2, 8, "N"); pixel(21, 19, 8, 5, "O"); pixel(23, 16, 4, 6, "Y");
+      pixel(24, 18, 2, 3, "W");
+      break;
+    case "party":
+      for (let i = 0; i < 3; i++) pixel(21 + i * 16, 13, 6, 2, "W");
+      break;
+    case "check":
+      for (const [px, py] of [[57, 6], [59, 8], [61, 6], [63, 4], [65, 2]]) pixel(px, py, 2, 2, "G");
+      break;
+    case "cross":
+      for (let i = 0; i < 5; i++) {
+        pixel(23 + i * 2, 18 + i * 2, 2, 2, "W");
+        pixel(31 - i * 2, 18 + i * 2, 2, 2, "W");
       }
       break;
-    case "entrance": graphics.strokeRect(left, mid, overview ? 2 : 6, bottom - mid); break;
-    case "party":
-      // Three silhouettes remain legible in overview; full sprites in detail.
-      for (let i = 0; i < 3; i++) graphics.fillStyle(color("W")).fillRect(left + i * 2, mid, 1, 3);
+    case "cobweb":
+      // Mixing the pale and slate palette inks makes a light, desaturated grey.
+      graphics.fillStyle(numeric("W"), 0.8).fillRect(x, y, w, h);
+      graphics.fillStyle(numeric("S"), 0.2).fillRect(x, y, w, h);
+      for (const mirror of [false, true]) {
+        const strand = (px, py, width, height) =>
+          pixel(mirror ? w - px - width : px, py, width, height, "W");
+        strand(0, 14, 24, 2); strand(0, 14, 2, 16);
+        for (let i = 0; i < 12; i++) strand(22 - i * 2, 14 + i, 2, 2);
+        for (let i = 0; i < 8; i++) strand(14 - i * 2, 14 + i, 2, 2);
+        for (let i = 0; i < 6; i++) strand(i * 2, 14 + i, 2, 2);
+      }
       break;
-    case "check": graphics.lineBetween(left, mid, Math.floor((left + right) / 2), bottom)
-      .lineBetween(Math.floor((left + right) / 2), bottom, right, top); break;
-    case "cross": graphics.lineBetween(left, top, right, bottom).lineBetween(left, bottom, right, top); break;
-    case "slash": graphics.lineBetween(left, bottom, right, top); break;
   }
 }
 
 /** Install listeners before Phaser's asynchronous create so no snapshot is lost. */
 export function mountMap(Phaser, host, browser = window) {
-  let world = worldFromRooms([]);
-  let scene = null;
-  let overview = false;
-  let partyRoom = null;
+  let world = worldFromRooms([]), scene = null, overview = false, partyRoom = null;
+  let width = browser.innerWidth || host.clientWidth || 960;
+  let height = browser.innerHeight || 540;
   const objects = [];
   const animations = createMapAnimations(browser);
   const media = browser.matchMedia("(prefers-reduced-motion: reduce)");
   let reducedMotion = media.matches;
   const motionChange = event => {
     reducedMotion = event.matches;
-    if (reducedMotion && scene) scene.cameras.main.stopFollow();
+    if (scene) redraw();
   };
   media.addEventListener("change", motionChange);
 
   function redraw() {
     if (!scene) return;
+    scene.cameras.main.stopFollow();
     for (const object of objects.splice(0)) object.destroy();
     const layout = layoutWorld(world, overview);
-    const graphics = scene.add.graphics();
-    objects.push(graphics);
-    const numeric = symbol => Number.parseInt(PALETTE[symbol].slice(1), 16);
-    const byId = new Map(layout.rooms.map(room => [room.id, room]));
-    for (const door of layout.doors) {
-      const open = byId.get(door.src).state === "cleared";
-      graphics.lineStyle(overview ? 1 : 3, numeric(open ? "W" : "S"));
-      for (let i = 1; i < door.points.length; i++) {
-        const a = door.points[i - 1], b = door.points[i];
-        graphics.lineBetween(a.x, a.y, b.x, b.y);
-      }
-      if (!overview) {
-        const point = door.points[0];
-        objects.push(scene.add.image(point.x + 8, point.y, textureKey("door", open ? "open" : "locked")));
-      }
-    }
-    const text = (x, y, label, color) => {
+    const tile = (x, y, name) => {
+      const object = scene.add.image(x + 8, y + 8, textureKey(name, "idle"));
+      objects.push(object);
+      return object;
+    };
+    const text = (x, y, label, color, wrap) => {
       const object = scene.add.text(x, y, label, { fontFamily: '"Press Start 2P", monospace',
-        fontSize: overview ? "6px" : "8px", color, resolution: 1 });
+        fontSize: "8px", color, resolution: 1, wordWrap: wrap ? { width: wrap, useAdvancedWrap: true } : undefined });
       objects.push(object);
     };
+    const chamber = room => {
+      for (let column = 0; column < room.width / TILE_SIZE; column++) {
+        const x = room.x + column * TILE_SIZE;
+        tile(x, room.y, column === 0 ? "wall_top_left" : column === room.width / TILE_SIZE - 1 ? "wall_top_right" : "wall_top_middle");
+        tile(x, room.y + 16, column === 0 ? "wall_left" : column === room.width / TILE_SIZE - 1 ? "wall_right" : "back_wall");
+        tile(x, room.y + 32, column === 2 ? "floor_grate" : "floor_stones");
+      }
+    };
     for (const area of layout.areas) {
-      text(area.x, area.y, area.id, PALETTE[AREA_COLORS[area.id] || "B"]);
+      // Continuous masonry joins chambers, hallway, boss arena and stairwell.
+      for (let x = 128; x < area.boss.x; x += 16) {
+        tile(x, area.y, "wall_top_middle"); tile(x, area.y + 16, "back_wall");
+        tile(x, area.y + 32, "floor_plain");
+      }
+      text(area.x, area.y + 3, `${area.id}\n${area.title}`, PALETTE[AREA_COLORS[area.id] || "B"], 104);
+      chamber(area.boss);
+      tile(area.boss.x + 16, area.boss.y + 16, "banner");
+      tile(area.boss.x + 32, area.boss.y + 16, bossForArea(area.id));
+      tile(area.boss.x + 48, area.boss.y + 16, "wall_grate");
+      text(area.boss.x + 6, area.boss.y + 4, area.id, PALETTE.W);
     }
     for (const room of layout.rooms) {
-      drawRoom(graphics, room, overview);
-      if (!overview) {
-        const ink = room.state === "cleared" ? PALETTE.K : PALETTE.W;
-        text(room.x + 8, room.y + 5, room.id, ink);
-        text(room.x + 8, room.y + 17, room.state, ink);
+      chamber(room);
+      tile(room.x, room.y + 16, room.state === "locked" ? "door_closed" : "door_open_middle");
+      const accents = scene.add.graphics(); objects.push(accents); drawRoom(accents, room);
+      if (room.state !== "active") tile(room.x + 48, room.y + 16,
+        room.state === "cleared" ? "chest_open" : "chest_closed");
+      text(room.x + 18, room.y + 4, room.id, PALETTE.W);
+      const zone = scene.add.zone(room.x + room.width / 2, room.y + room.height / 2, room.width, room.height);
+      objects.push(zone);
+      zone.setInteractive();
+      zone.on("pointerdown", () => browser.dispatchEvent(new browser.CustomEvent("specvania:room-selected", { detail: { room_id: room.id } })));
+    }
+    for (const door of layout.doors) {
+      tile(door.x, door.y + 16, door.locked ? "door_closed" : "door_open_middle");
+      if (door.locked) {
+        const accents = scene.add.graphics(); objects.push(accents);
+        drawRoom(accents, { ...door, state: "locked" });
       }
     }
-    animations.render(scene, layout, world.rooms.some(room => room.state === "active") ? partyRoom : null);
+    for (const stair of layout.stairs) {
+      // Three successive rows bridge the lower threshold to the next floor.
+      for (let row = 0; row < 3; row++) tile(stair.x, stair.y + row * 16, "stairs");
+      tile(stair.x - 16, stair.y, "door_open_middle");
+      tile(stair.x - 16, stair.y + 48, "door_open_middle");
+    }
+    const party = animations.render(scene, layout, partyRoom);
     const camera = scene.cameras.main;
-    camera.stopFollow();
-    camera.setZoom(1);
-    camera.setBounds(0, 0, layout.width, layout.height);
-    const target = byId.get(partyRoom) || layout.rooms[0];
-    if (overview || !target) camera.setScroll(0, 0);
+    camera.roundPixels = true;
+    const zoom = castleViewZoom(width, height, layout, overview);
+    camera.setZoom(zoom);
+    // A small overview needs negative bounds so Phaser does not clamp its
+    // centered scroll to the top-left. Labels share the castle's coordinates.
+    const viewWidth = width / zoom, viewHeight = height / zoom;
+    camera.setBounds(overview ? Math.min(0, (layout.width - viewWidth) / 2) : 0,
+      overview ? Math.min(0, (layout.height - viewHeight) / 2) : 0,
+      Math.max(layout.width, viewWidth), Math.max(layout.height, viewHeight));
+    if (overview || !layout.rooms.length) camera.centerOn(Math.floor(layout.width / 2), Math.floor(layout.height / 2));
     else {
-      const marker = scene.add.zone(target.x + Math.floor(target.width / 2), target.y + Math.floor(target.height / 2));
-      objects.push(marker);
-      // Snap follows, without pans/tweens. Reduced motion stays completely still.
-      if (!reducedMotion) camera.startFollow(marker, true, 1, 1);
-      camera.centerOn(marker.x, marker.y);
+      const target = party || { x: layout.rooms[0].x + 40, y: layout.rooms[0].y + 24 };
+      if (party && !reducedMotion) camera.startFollow(party, true, 1, 1);
+      camera.centerOn(Math.round(target.x), Math.round(target.y));
     }
     const description = browser.document.getElementById("map-rooms");
     if (description) description.textContent = world.rooms.map(room => `${room.area} ${room.id}: ${room.title} — ${room.state}`).join("\n");
+    const hud = browser.document.getElementById("castle-hud");
+    if (hud) hud.hidden = overview; // M exposes the entire castle, including the stairwell.
   }
   const onState = ({ detail }) => {
-    world = worldFromRooms(detail.rooms);
+    world = worldFromRooms(detail.rooms, detail.areas, detail.doors);
     partyRoom = detail.active_room || detail.party_room || null;
-    animations.setState(detail);
-    redraw();
+    animations.setState(detail); redraw();
   };
   const onEvent = ({ detail }) => {
     world = projectEvent(world, detail);
     animations.onEvent(detail);
+    if (detail.type === "world_loaded") partyRoom = null;
     if (["room_entered", "attempt_started", "respawn"].includes(detail.type)) partyRoom = detail.room_id;
-    redraw(); // No timeout or animation queue delaying room state.
+    redraw(); // No timeout or animation queue delaying chamber state.
   };
   browser.addEventListener("specvania:state", onState);
   browser.addEventListener("specvania:event", onEvent);
   const game = new Phaser.Game({
-    type: Phaser.CANVAS, parent: host, width: 320, height: 180,
+    type: Phaser.CANVAS, parent: host, width, height,
     pixelArt: true, roundPixels: true, backgroundColor: UI_COLORS.background,
     scale: { mode: Phaser.Scale.NONE, zoom: 1 }, audio: { noAudio: true }, banner: false,
     scene: { preload() { preloadTextures(this); }, create() {
       scene = this;
       registerTextures(this);
       this.input.keyboard.on("keydown-M", event => {
-        if (event.repeat) return;
-        overview = !overview;
-        redraw();
+        if (event.repeat || /^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName) || event.target?.isContentEditable) return;
+        overview = !overview; redraw();
       });
       redraw();
     } },
   });
-  const resize = () => game.scale.setZoom(integerDisplayZoom(host.clientWidth, browser.innerHeight - host.offsetTop - 24));
+  const resize = () => {
+    width = Math.max(1, Math.floor(browser.innerWidth || host.clientWidth || 960));
+    height = Math.max(1, Math.floor(browser.innerHeight || 540));
+    game.scale.resize(width, height); redraw();
+  };
   browser.addEventListener("resize", resize);
   resize();
   return { destroy() {
@@ -167,7 +222,6 @@ export function mountMap(Phaser, host, browser = window) {
     browser.removeEventListener("specvania:event", onEvent);
     browser.removeEventListener("resize", resize);
     media.removeEventListener("change", motionChange);
-    animations.destroy();
-    game.destroy(true);
+    animations.destroy(); game.destroy(true);
   } };
 }

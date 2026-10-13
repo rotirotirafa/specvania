@@ -26,14 +26,14 @@ if (process.argv[2] === "layout") {
         `${room.id} overlaps ${other.id}`);
         const areaIndex = layout.areas.findIndex(area => area.id === room.area);
         const otherIndex = layout.areas.findIndex(area => area.id === other.area);
-        if (areaIndex < otherIndex) assert.ok(room.x + room.width < other.x);
+        if (areaIndex < otherIndex) assert.ok(room.y + room.height <= other.y);
       }
       const sources = room.depends_on.map(id => layout.rooms.find(room => room.id === id))
         .filter(source => source.area === room.area);
       assert.equal(room.depth, sources.length ? Math.max(...sources.map(room => room.depth)) + 1 : 0);
-      if (overview) assert.ok(room.x + room.width <= 320 && room.y + room.height <= 180);
+      if (overview) assert.ok(room.x + room.width <= 960 && room.y + room.height <= 540);
     }
-    assert.equal(layout.doors.length, payload.doors.length);
+    assert.equal(layout.doors.length, payload.rooms.length - payload.areas.length);
     for (const door of layout.doors) {
       const src = layout.rooms.find(room => room.id === door.src);
       const dst = layout.rooms.find(room => room.id === door.dst);
@@ -55,10 +55,14 @@ if (process.argv[2] === "layout") {
 class Monochrome {
   constructor(w, h) { this.w = w; this.h = h; this.pixels = Array(w * h).fill(0); }
   point(x, y) { if (x >= 0 && y >= 0 && x < this.w && y < this.h) this.pixels[y * this.w + x] = 1; }
-  fillStyle(color) { assert.ok(Object.values(PALETTE).some(value => value && parseInt(value.slice(1), 16) === color)); return this; }
+  fillStyle(color, opacity = 1) {
+    assert.ok(Object.values(PALETTE).some(value => value && parseInt(value.slice(1), 16) === color));
+    this.opacity = opacity; return this;
+  }
   lineStyle(width, color) { return this.fillStyle(color); }
   fillRect(x, y, w, h) {
     if (w === this.w && h === this.h) return this; // Remove background shading.
+    if (this.opacity < 1) return this; // T30 tints/glows; preserve only the opaque accent silhouettes.
     for (let py = y; py < y + h; py++) for (let px = x; px < x + w; px++) this.point(px, py);
     return this;
   }
@@ -74,7 +78,7 @@ class Monochrome {
   }
 }
 if (process.argv[2] === "looks") {
-  for (const [overview, w, h] of [[false, 72, 48], [true, 9, 16]]) {
+  for (const [overview, w, h] of [[false, 80, 48], [true, 80, 48]]) {
     const images = [];
     for (const state of ["locked", "open", "active", "cleared", "failed", "skipped"]) {
       const raster = new Monochrome(w, h);
@@ -116,7 +120,7 @@ if (process.argv[2] === "mount") {
     stopFollow() { this.following = null; },
     setZoom(zoom) { this.zoom = zoom; }, setBounds() {}, setScroll(x, y) { this.center = [x, y]; },
     centerOn(x, y) { this.center = [x, y]; }, startFollow(marker) { this.following = marker; } };
-  const object = (x = 0, y = 0) => ({ x, y, destroy() {} });
+  const object = (x = 0, y = 0) => ({ x, y, destroy() {}, setInteractive() { return this; }, on() { return this; } });
   const graphics = new Monochrome(2000, 400);
   graphics.destroy = () => {};
   const scene = { cameras: {main: camera}, textures: {exists: () => true},
@@ -134,13 +138,13 @@ if (process.argv[2] === "mount") {
     addEventListener: (type, fn) => handlers.set(type, fn),
     removeEventListener: type => handlers.delete(type) };
   const Phaser = { CANVAS: 1, Scale: {NONE: 0}, Game: class {
-    constructor(value) { config = value; this.scale = {setZoom: value => { zoom = value; }}; }
+    constructor(value) { config = value; this.scale = {resize: (w, h) => { zoom = [w, h]; }}; }
     destroy() {} } };
   const mounted = mountMap(Phaser, {clientWidth: 1280, offsetTop: 0}, browser);
-  assert.equal(config.width, 320); assert.equal(config.height, 180);
+  assert.equal(config.width, 1280); assert.equal(config.height, 720);
   assert.equal(config.pixelArt, true); assert.equal(config.roundPixels, true);
   assert.equal(config.scale.mode, Phaser.Scale.NONE);
-  assert.equal(zoom, 3);
+  assert.deepEqual(zoom, [1280, 720]);
   // Snapshot arrives before asynchronous Phaser create. It must not disappear.
   handlers.get("specvania:state")({detail: {rooms: payload.rooms, active_room: null}});
   config.scene.create.call(scene);
@@ -152,7 +156,8 @@ if (process.argv[2] === "mount") {
   const target = layoutWorld(world).rooms.find(room => room.id === "T16");
   assert.deepEqual(camera.center, [target.x + target.width / 2, target.y + target.height / 2]);
   keyboard.get("keydown-M")({repeat: false});
-  assert.equal(camera.zoom, 1); assert.deepEqual(camera.center, [0, 0]);
+  assert.equal(camera.zoom, 1);
+  assert.deepEqual(camera.center, [layoutWorld(world).width / 2, layoutWorld(world).height / 2]);
   assert.equal(camera.following, null);
   keyboard.get("keydown-M")({repeat: false});
   mediaHandler({matches: true});

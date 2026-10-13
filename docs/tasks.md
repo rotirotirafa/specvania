@@ -480,11 +480,11 @@ files: src/specvania/ui/static/map/castle.js, src/specvania/ui/static/map/layout
 D23: `castle.js` is a pure function from the `world_loaded` payload to floors (one per area, in order), chambers (rooms left to right by door depth, then id), doors between consecutive chambers (locked until every dependency of the next room is cleared), a boss arena at the end of each floor and stairs down to the next floor. The scene draws the cross-section with the cast: walls, back-wall bricks, floors, banners and labels. Room states: locked (dark, padlocked door), open (lit torch), active (warm light, party inside), cleared (open chest, green check), failed (red tint), skipped (grey, cobwebs). The camera follows the party; `M` toggles the whole castle; clicking a chamber dispatches `specvania:room-selected`. Integer scaling only; the canvas fills the window.
 
 Checklist:
-- [ ] The layout is deterministic and has no overlapping chambers for this repository's world and for the sample project's world
-- [ ] Every floor ends in its boss arena, and stairs connect it to the next floor
-- [ ] Each room state has a distinct look, also distinguishable in grayscale (screenshot in the report)
-- [ ] Clicking a chamber dispatches its room id; `M` toggles the whole-castle view
-- [ ] The canvas fills a 960×540 window and larger ones with integer scaling only
+- [x] The layout is deterministic and has no overlapping chambers for this repository's world and for the sample project's world
+- [x] Every floor ends in its boss arena, and stairs connect it to the next floor
+- [x] Each room state has a distinct look, also distinguishable in grayscale (screenshot in the report)
+- [x] Clicking a chamber dispatches its room id; `M` toggles the whole-castle view
+- [x] The canvas fills a 960×540 window and larger ones with integer scaling only
 
 ### T31 · Castle animations
 depends_on: T17, T30

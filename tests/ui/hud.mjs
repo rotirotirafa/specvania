@@ -42,6 +42,7 @@ function browser(reduced = false) {
 function phaserScene() {
   const images = [], tweens = [], keyboard = new Map(), displayList=[];
   const object = (x, y, key) => ({ x, y, key, alpha: 1, destroyed: false,
+    setInteractive() { return this; }, on() { return this; },
     setTexture(key) { this.key = key; return this; }, setVisible(value) { this.visible = value; return this; },
     setPosition(x, y) { this.x = x; this.y = y; return this; }, setAlpha(value) { this.alpha = value; return this; },
     destroy() { this.destroyed = true; } });
@@ -257,7 +258,7 @@ if (["boss", "bugs", "motion", "integration"].includes(check)) {
       assert.ok(fake.tweens.every(tween => tween.stopped));
       assert.equal(party.key,"warrior:idle:0"); assert.equal(party.alpha,1);
       const target = layout.rooms.find(room => room.id === "T03");
-      assert.equal(party.x,target.x + 36);
+      assert.equal(party.x,target.x + 40);
       map.destroy();
     }
   }
@@ -267,7 +268,7 @@ if (["boss", "bugs", "motion", "integration"].includes(check)) {
     const { mountMap } = await import(new URL("map/scene.js", base));
     const ui = browser(true), fake = phaserScene(); let config;
     const Phaser = {CANVAS:1,Scale:{NONE:0},Game:class {
-      constructor(value) {config=value;this.scale={setZoom() {}};} destroy() {}
+      constructor(value) {config=value;this.scale={resize() {}};} destroy() {}
     }};
     let socket;
     globalThis.window = ui.win; globalThis.document = ui.document;
@@ -292,7 +293,8 @@ if (["boss", "bugs", "motion", "integration"].includes(check)) {
     for (const event of events) {
       socket.message({kind:"event",event});
       const lastRoomPaint = fake.displayList.findLastIndex(item => item.fillRect);
-      for (const image of fake.images.filter(image => !image.destroyed && image.visible !== false)) {
+      for (const image of fake.images.filter(image => !image.destroyed && image.visible !== false &&
+        ["mage", "warrior", "paladin", ...MONSTERS].some(name => image.key.startsWith(`${name}:`)))) {
         assert.ok(fake.displayList.indexOf(image) > lastRoomPaint,"Room redraw hides a persistent sprite");
       }
       if (event.type === "fallback") assert.match(texts(ui.host), /synthetic\/warrior-backup/);
