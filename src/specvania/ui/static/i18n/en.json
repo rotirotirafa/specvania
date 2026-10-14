@@ -1,6 +1,7 @@
 {
   "app.name": "specvania",
   "connection.connecting": "Connecting to the run…",
+  "connection.reconnecting": "Reconnecting to the run…",
   "connection.watching": "Watching the run",
   "connection.closed": "Run connection closed",
   "connection.unavailable": "Run connection unavailable",

@@ -1,6 +1,7 @@
 {
   "app.name": "specvania",
   "connection.connecting": "Conectando à execução…",
+  "connection.reconnecting": "Reconectando à execução…",
   "connection.watching": "Acompanhando a execução",
   "connection.closed": "Conexão com a execução encerrada",
   "connection.unavailable": "Conexão com a execução indisponível",

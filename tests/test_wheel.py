@@ -12,7 +12,7 @@ STATIC = ROOT / "src/specvania/ui/static"
 
 
 def resources() -> list[Path]:
-    files = [
+    files = [STATIC / "transport.js"] + [
         path
         for folder in ("i18n", "vendor/kenney-tiny-dungeon", "vendor/monaco")
         for path in (STATIC / folder).rglob("*")
@@ -20,6 +20,7 @@ def resources() -> list[Path]:
     ]
     # An empty/missing vendored directory must not turn this into a vacuous test.
     for required in (
+        "transport.js",
         "i18n/en.json",
         "i18n/pt-BR.json",
         "i18n/index.js",

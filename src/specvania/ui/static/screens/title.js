@@ -13,7 +13,7 @@ export function mountScreens({host, browser = window, socket, startup, watchDemo
   const desktop = browser.specvaniaDesktop;
   let screen = "title", project = {}, lastError = {}, labels = [], view = {}, destroyed = false;
   let settings = {language: i18n.language, tokenBudget: 1000000, specvaniaPath: "specvania", reducedMotion: false};
-  let pending = Promise.resolve(), syncing = false, studio = false;
+  let pending = Promise.resolve(), syncing = false, studio = false, resync = false;
   const css = document.createElement("style");
   css.textContent = `#screen-host { position: fixed; inset: 32px 0 0; z-index: 3; overflow: auto; box-sizing: border-box; background: ${UI_COLORS.background}; color: ${UI_COLORS.text}; padding: 16px 24px; font: 12px/1.8 "Press Start 2P", monospace; display: flex; align-items: center; justify-content: center; }
     #screen-host[hidden] { display: none; }
@@ -188,6 +188,8 @@ export function mountScreens({host, browser = window, socket, startup, watchDemo
   const message = ({data}) => {
     const value = JSON.parse(data);
     if (value.kind === "studio_state" || value.kind === "state" && value.phase) {
+      const restore = resync && value.kind === "studio_state";
+      if (restore) resync = false;
       if (!studio) {studio = true; send("set_language", {language: settings.language}); show("title");}
       if (value.kind === "studio_state") project = value;
       if (["running", "finished", "replaying"].includes(value.phase)) {
@@ -197,7 +199,7 @@ export function mountScreens({host, browser = window, socket, startup, watchDemo
       if (value.kind === "studio_state") {
         if (value.phase === "project_open") savedSlug = revealedSlug = null;
         if (value.phase === "world_ready" && savingSlug === value.world_slug) {savedSlug = savingSlug; savingSlug = null;}
-        if (screen === "idea") view.update?.(value);
+        if (screen === "idea") {if (restore) show("idea"); else view.update?.(value);}
         else if (desktop?.controlToken?.() && ["planning", "world_ready"].includes(value.phase)) show("idea");
         else if (desktop?.controlToken?.() && value.project?.initialized && value.error) show("idea");
         else if (value.error) showError({reason: value.error});
@@ -214,7 +216,7 @@ export function mountScreens({host, browser = window, socket, startup, watchDemo
   const revealed = ({detail}) => {revealedSlug = detail.slug; view.previewReady?.();};
   browser.addEventListener("specvania:world-revealed", revealed);
   const opened = () => {if (screen === "title") show("title");};
-  const closed = () => showError({kind:"connection"});
+  const closed = () => {resync = Boolean(socket.reconnecting); if (!resync) showError({kind:"connection"});};
   host.addEventListener("keydown", keydown);
   socket?.addEventListener("open", opened);
   socket?.addEventListener("message", message); socket?.addEventListener("close", closed); socket?.addEventListener("error", closed);

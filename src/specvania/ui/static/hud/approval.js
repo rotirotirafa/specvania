@@ -67,8 +67,15 @@ export function mountApproval(socket, { window = globalThis.window, document = g
 
   const message = ({ data }) => {
     const message = JSON.parse(data);
-    if (message.kind === "state" && message.approval_request) {
-      show(message.approval_request);
+    if (message.kind === "state") {
+      const restore = !connected;
+      connected = true;
+      if (message.approval_request) {
+        if (restore || message.approval_request.request_id !== requestId || !dialog.root) show(message.approval_request);
+      } else {
+        dialog.close(); panel?.remove(); panel = null;
+        bindings = []; choices = []; requestId = undefined; status = statusText = null;
+      }
     } else if (message.kind === "event") {
       const event = message.event;
       if (event.type === "approval_requested") show(message.approval_request || event);
@@ -93,7 +100,7 @@ export function mountApproval(socket, { window = globalThis.window, document = g
   const disconnected = () => {
     connected = false;
     disable();
-    if (status) updateStatus(() => t("connection.closed"));
+    if (status) updateStatus(() => t(socket.reconnecting ? "connection.reconnecting" : "connection.closed"));
   };
   socket.addEventListener("close", disconnected);
   return { destroy() { unsubscribe(); dialog.destroy(); panel?.remove(); socket.removeEventListener?.("message", message); socket.removeEventListener?.("close", disconnected); } };

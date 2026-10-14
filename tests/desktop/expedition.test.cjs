@@ -91,6 +91,43 @@ test("pause_and_stamina_keyboard_mouse_send_only_studio_choices",async()=>{
   }
 });
 
+test("connected_pause_snapshots_preserve_dialog_focus_and_pending_choice_until_reconnect",async()=>{
+  const h=await harness();try{
+    const snapshot={kind:"state",phase:"running",state:{status:"paused",reason:"out of lives"}};
+    const panel=()=>flat(h.doc.body).find(n=>n.id==="pause");
+    h.message(snapshot);const original=panel(), retry=h.button("Retry");retry.focus();
+    h.message(snapshot);assert.ok(panel()===original);assert.ok(h.doc.activeElement===retry);
+    retry.click();assert.equal(h.sent.length,1);
+    h.message(snapshot);assert.ok(panel()===original);assert.ok(h.doc.activeElement===retry);
+    for(const label of ["Retry","Skip","Abort"]) {assert.equal(h.button(label).disabled,true);h.button(label).click();}
+    assert.equal(h.sent.length,1);
+    h.socket.readyState=3;h.socket.emit("close");const disconnected=panel();
+    h.socket.readyState=1;h.message(snapshot);
+    assert.ok(panel()!==original);assert.ok(panel()!==disconnected);
+    for(const label of ["Retry","Skip","Abort"]) assert.equal(h.button(label).disabled,false);
+    h.button("Retry").click();assert.equal(h.sent.length,2);
+    assert.deepEqual(h.sent.at(-1),{kind:"pause_decision",choice:"retry",control_token:"control"});
+  }finally{h.destroy();}
+});
+
+test("connected_approval_snapshots_preserve_dialog_focus_and_pending_answer_until_reconnect",async()=>{
+  const h=await harness();try{
+    const snapshot={kind:"state",phase:"running",state:{status:"running"},approval_request:request};
+    const panel=()=>flat(h.doc.body).find(n=>n.id==="approval-choice");
+    h.message(snapshot);const original=panel(), allow=h.button("Allow");allow.focus();
+    h.message(snapshot);assert.ok(panel()===original);assert.ok(h.doc.activeElement===allow);
+    allow.click();assert.equal(h.sent.length,1);
+    h.message(snapshot);assert.ok(panel()===original);assert.ok(h.doc.activeElement===allow);
+    for(const label of ["Allow","Deny"]) {assert.equal(h.button(label).disabled,true);h.button(label).click();}
+    assert.equal(h.sent.length,1);
+    h.socket.readyState=3;h.socket.emit("close");
+    h.socket.readyState=1;h.message(snapshot);assert.ok(panel()!==original);
+    for(const label of ["Allow","Deny"]) assert.equal(h.button(label).disabled,false);
+    h.button("Allow").click();assert.equal(h.sent.length,2);
+    assert.deepEqual(h.sent.at(-1),{kind:"approval_answer",request_id:"a1",answer:true,control_token:"control"});
+  }finally{h.destroy();}
+});
+
 test("known_pause_reasons_translate_live_unknown_reason_is_literal_text",async()=>{
   const h=await harness(); try {
     const {setLanguage}=await load("i18n/index.js");

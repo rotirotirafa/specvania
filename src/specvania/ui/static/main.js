@@ -1,4 +1,5 @@
 import { t, onLanguageChange, i18n, bindDocument, connectLanguage } from "./i18n/index.js";
+import { connectSocket } from "./transport.js";
 // T14 transport; subsequent Map rooms project these state/event notifications.
 import { UI_COLORS } from "./pixel/palette.js";
 import { mountScreens } from "./screens/title.js";
@@ -59,7 +60,8 @@ function connectRun() {
   const socketUrl = new URL("/ws", window.location.href);
   socketUrl.protocol = "ws:";
   socketUrl.searchParams.set("view_token", viewToken || "");
-  const socket = new WebSocket(socketUrl);
+  let replayFromStart = false;
+  const socket = connectSocket(socketUrl, {shouldReconnect: () => !replayFromStart});
   const screenHost = document.getElementById("screen-host");
   let screens;
   if (screenHost) mountReplay(socket, {browser: window, back: () => screens?.showTitle()});
@@ -86,6 +88,7 @@ function connectRun() {
   });
   socket.addEventListener("message", ({ data }) => {
     const message = JSON.parse(data);
+    if (message.kind === "state") replayFromStart = Boolean(message.replay && !message.phase);
     current = message.kind === "state" || message.kind === "studio_state" || message.kind === "event" ? message : current;
     if (message.kind === "studio_state") {
       window.dispatchEvent(new CustomEvent("specvania:studio-state", {detail: message}));
@@ -102,11 +105,10 @@ function connectRun() {
     }
     render();
   });
-  socket.addEventListener("close", () => {
-    connectionKey = "connection.closed"; render();
-  });
-  socket.addEventListener("error", () => {
-    connectionKey = "connection.unavailable"; render();
-  });
+  const disconnected = () => {
+    connectionKey = socket.reconnecting ? "connection.reconnecting" : "connection.closed"; render();
+  };
+  socket.addEventListener("close", disconnected);
+  socket.addEventListener("error", disconnected);
 }
 connectRun();

@@ -33,6 +33,7 @@ export function mountReplay(socket, {browser = window, back = () => {}} = {}) {
   const listeners = new Map();
   const source = {
     get readyState() {return socket.readyState;},
+    get reconnecting() {return socket.reconnecting;},
     send(data) {socket.send(data);},
     addEventListener(kind, callback) {const list = listeners.get(kind) || []; list.push(callback); listeners.set(kind, list);},
     removeEventListener(kind, callback) {listeners.set(kind, (listeners.get(kind) || []).filter(fn => fn !== callback));},
@@ -189,7 +190,7 @@ export function mountReplay(socket, {browser = window, back = () => {}} = {}) {
   // Register before the expedition listeners so readonly mode is set first.
   // mounts are reset on the first replay snapshot, before any replay event.
   socket.addEventListener("message", message);
-  const disconnected = () => forward("close", {});
+  const disconnected = () => {forward("close", {}); render();};
   socket.addEventListener("close", disconnected);
   const keydown = event => {
     if (!replay || event.repeat || /^(INPUT|TEXTAREA|SELECT)$/i.test(event.target?.tagName) || event.target?.isContentEditable) return;

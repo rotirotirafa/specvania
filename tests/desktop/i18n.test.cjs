@@ -216,7 +216,7 @@ function harness(desktop) {
     send(data) {sent.push(JSON.parse(data));}};
   return {document, browser, host, body, ids, sent, socket, emit(type, detail) {browser.dispatchEvent({type,detail});},
     message(value) {for (const fn of socketEvents.get("message")||[]) fn({data:JSON.stringify(value)});},
-    socketEvent(name) {for (const fn of socketEvents.get(name)||[]) fn();}};
+    socketEvent(name, event = {}) {for (const fn of socketEvents.get(name)||[]) fn(event);}};
 }
 
 test("language_source_storage_fallback_and_inert_placeholders", async () => {
@@ -279,7 +279,11 @@ test("switch_updates_static_transport_map_party_bestiary_dialogue_and_approval_t
   global.window=h.browser; global.document=h.document;
   global.CustomEvent=class {constructor(type,options){Object.assign(this,{type,...options});}};
   h.browser.CustomEvent=global.CustomEvent;
-  global.WebSocket=class {constructor(){return h.socket;}};
+  const replacement=harness(), timers=new Map(); let connections=0;
+  const savedTimers={setTimeout:global.setTimeout,clearTimeout:global.clearTimeout};
+  global.setTimeout=(fn,delay)=>{assert.equal(delay,1000);timers.set(1,fn);return 1;};
+  global.clearTimeout=id=>timers.delete(id);
+  global.WebSocket=class {constructor(){return connections++ ? replacement.socket : h.socket;}};
   try {
     await import(`${pathToFileURL(path.join(root,"main.js"))}?i18n-test`);
     h.socketEvent("open");
@@ -313,12 +317,20 @@ test("switch_updates_static_transport_map_party_bestiary_dialogue_and_approval_t
     for (const [message,key] of [[{kind:"studio_state",phase:"project_open",language:"pt-BR"},"status.project_open"], [{kind:"state",state:{run_id:"r",rooms:[],status:"paused"}},"status.paused"]]) {
       h.message(message); assert.ok(h.ids["run-state"].textContent.includes(pt[key]));
     }
-    h.socketEvent("close"); assert.equal(h.ids.connection.textContent,pt["connection.closed"]);
-    setLanguage("en"); assert.equal(h.ids.connection.textContent,en["connection.closed"]);
-    h.socketEvent("error"); setLanguage("pt-BR"); assert.equal(h.ids.connection.textContent,pt["connection.unavailable"]);
+    h.socketEvent("error"); assert.equal(h.ids.connection.textContent,pt["connection.reconnecting"]);
+    h.socket.readyState=3; h.socketEvent("close",{code:1006});
+    assert.equal(h.ids.connection.textContent,pt["connection.reconnecting"]);
+    setLanguage("en"); assert.equal(h.ids.connection.textContent,en["connection.reconnecting"]);
+    assert.equal(timers.size,1); const retry=timers.get(1); timers.clear(); retry();
+    replacement.socketEvent("open"); assert.equal(h.ids.connection.textContent,en["connection.watching"]);
+    replacement.socket.readyState=3; replacement.socketEvent("close",{code:1008});
+    assert.equal(h.ids.connection.textContent,en["connection.closed"]);
+    setLanguage("pt-BR"); assert.equal(h.ids.connection.textContent,pt["connection.closed"]);
+    assert.equal(timers.size,0);
     assert.equal(reloads,0);
   } finally {
     unbind(); mounts.forEach(m=>m.destroy()); map.destroy();
+    Object.assign(global,savedTimers);
     setLanguage("en"); delete global.window; delete global.document; delete global.CustomEvent; delete global.WebSocket;
   }
 });

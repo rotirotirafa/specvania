@@ -142,6 +142,7 @@ export function mountPause(socket, {browser = window} = {}) {
       if (value.pause_request) show(value.pause_request);
       else if (reason && !pending) close();
     } else if (value.kind === "state") {
+      if (!connected) {connected = true; close();}
       if (value.state.status === "paused") show(value.state.reason || ""); else close();
     } else if (value.kind === "event") {
       if (value.event.type === "run_paused") show(value.event.reason);
