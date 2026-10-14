@@ -116,7 +116,7 @@ def _party_statuses(event: Event) -> dict[Role, PartyStatus]:
             return {Role.WARRIOR: "thinking", Role.MAGE: "idle", Role.PALADIN: "idle"}
         case "attempt_started" | "respawn" | "tool_refused":
             return {Role.WARRIOR: "thinking"}
-        case "model_call" | "fallback":
+        case "model_requested" | "model_call" | "fallback":
             return {event.role: "thinking"}
         case "cooldown":
             return {event.role: "cooldown"}
@@ -284,6 +284,8 @@ def fold_events(events: Iterable[Event]) -> RunState:
                 rooms[event.room_id] = room
                 if event.type in ("room_cleared", "room_failed", "room_skipped"):
                     state = state.model_copy(update={"active_room": None})
+            case "model_requested":
+                party[event.role] = PartyMember(role=event.role, model=event.model)
             case "model_call":
                 spent = event.tokens_in + event.tokens_out
                 role_spent = state.tokens_spent_by_role

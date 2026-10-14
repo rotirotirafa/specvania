@@ -13,6 +13,7 @@ from specvania.config import initialize_config
 from specvania.ledger import Ledger
 from specvania.provider.client import Completion, ProviderError
 from specvania.provider.fake import ScriptedProvider
+from specvania.run.events import Role
 from specvania.sdd.planner import PlanResult, Question
 from specvania.ui.server import UIServer
 
@@ -124,11 +125,15 @@ def test_cli_plan_ui_launches_before_mage_and_streams_without_ledger(
     assert len(servers) == 1 and launched == [expected]
     server = servers[0]
     assert server.live_snapshot is not None
-    received = [subscriptions[0].get(timeout=0) for _ in range(2)]
+    received = [subscriptions[0].get(timeout=0) for _ in range(3)]
     subscriptions[0].close()
     assert list(server.live_snapshot()) == received
-    assert [event.type for event in received] == ["model_call", "spec_written"]
-    assert [event.seq for event in received] == [1, 2]
+    assert [event.type for event in received] == [
+        "model_requested",
+        "model_call",
+        "spec_written",
+    ]
+    assert [event.seq for event in received] == [1, 2, 3]
     assert "bus only" in result.output.lower()
     with Ledger.open(
         f"sqlite:///{tmp_path / '.specvania/ledger.db'}",
@@ -144,7 +149,7 @@ def test_cli_plan_ui_launches_before_mage_and_streams_without_ledger(
             headers={"Origin": server.origin},
         ) as websocket:
             state = websocket.receive_json()["state"]
-            assert state["run_id"] == server.run_id and state["seq"] == 2
+            assert state["run_id"] == server.run_id and state["seq"] == 3
             assert state["models"][0]["calls"] == 1
 
 
@@ -458,14 +463,17 @@ def test_success_persists_ordered_events_versions_and_reuses_feature(
         assert version.tasks_md == (result.directory / "tasks.md").read_text()
         events = ledger.list_events(run.id)
         assert [e.type for e in events] == [
+            "model_requested",
             "model_call",
             "clarify_question",
             "clarify_answer",
             "cooldown",
+            "model_requested",
             "model_call",
             "spec_written",
         ]
-        assert [e.seq for e in events] == [1, 2, 3, 4, 5, 6]
+        assert [e.seq for e in events] == [1, 2, 3, 4, 5, 6, 7, 8]
+        assert all(e.role == Role.MAGE for e in events if e.type == "model_requested")
         assert all(e.run_id == run.id for e in events)
         assert (
             events[-1].type == "spec_written" and events[-1].spec_version == version.id

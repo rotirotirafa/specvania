@@ -660,7 +660,16 @@ with Ledger.open(url, clock=clock, guard=guard) as ledger:
         assert state.rooms[1].attempt == 1
         assert reopened.get_run(run_id).rooms_cleared == 1
         assert [e.seq for e in events] == list(range(1, len(events) + 1))
-        assert events[-1].type == "cooldown" and events[-1].role == Role.WARRIOR
+        request = events[-1]
+        assert request.type == "model_requested" and request.role == Role.WARRIOR
+        assert request.room_id == "T02"
+        assert events[-2].type == "cooldown" and events[-2].role == Role.WARRIOR
+        assert (
+            next(m for m in state.party if m.role == Role.WARRIOR).status == "thinking"
+        )
+        assert sum(e.type == "model_requested" for e in events) == 3
+        assert sum(e.type == "model_call" for e in events) == 2
+        assert reopened.get_run(run_id).calls == 2
         attempts = [e for e in events if e.type == "attempt_started"]
         assert [(e.room_id, e.attempt) for e in attempts] == [("T01", 1), ("T02", 1)]
         assert not any(e.type == "run_finished" for e in events)
@@ -830,6 +839,23 @@ def test_unfinished_attempt_cannot_be_cleared_by_passing_review(
     events = harness.ledger.list_events(engine.run_id)
     assert not any(e.type == "room_cleared" for e in events)
     assert any(e.type == "room_failed" and "max_steps" in e.reason for e in events)
+
+
+def test_model_requested_room_context_excludes_boss(harness: Harness) -> None:
+    directory = write_world(harness.root, [("T01", "A1", ())])
+    engine = harness.engine([*success("T01"), boss()])
+    engine.run(directory)
+    requests = [
+        event.model_dump()
+        for event in harness.ledger.list_events(engine.run_id)
+        if event.type == "model_requested"
+    ]
+    assert [request.get("room_id") for request in requests] == [
+        "T01",
+        "T01",
+        "T01",
+        None,
+    ]
 
 
 def test_secret_rejected_before_bus_publish_or_sequence_consumption(

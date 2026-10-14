@@ -12,6 +12,7 @@ from specvania import cli
 from specvania.clock import FakeClock
 from specvania.ledger.repo import Ledger
 from specvania.run.events import (
+    EVENT_ADAPTER,
     AttemptStarted,
     ModelCall,
     RedactionGuard,
@@ -36,8 +37,9 @@ def ledger_url(request: pytest.FixtureRequest, tmp_path: Path) -> str:
     return f"sqlite:///{tmp_path / 'ledger.db'}"
 
 
-@pytest.fixture
+@pytest.fixture(params=[False, True], ids=["legacy", "model_requested"])
 def saved_history(
+    request: pytest.FixtureRequest,
     tmp_path: Path,
     ledger_url: str,
     monkeypatch: pytest.MonkeyPatch,
@@ -75,6 +77,20 @@ def saved_history(
                 ts=clock.now(), run_id=first_run.id, seq=0, room_id="T01", attempt=1
             )
         )
+        if request.param:
+            ledger.append_event(
+                EVENT_ADAPTER.validate_python(
+                    {
+                        "type": "model_requested",
+                        "ts": clock.now(),
+                        "run_id": first_run.id,
+                        "seq": 0,
+                        "role": "warrior",
+                        "model": "w1",
+                        "room_id": "T01",
+                    }
+                )
+            )
         ledger.append_event(
             ModelCall(
                 ts=clock.now(),

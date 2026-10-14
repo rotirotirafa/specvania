@@ -643,6 +643,9 @@ def test_shutdown_during_provider_call_aborts_without_provider_failure(
         assert events[-1].type == "run_finished" and events[-1].status == "aborted"
         assert sum(event.type == "run_finished" for event in events) == 1
         assert not any(event.type in ("run_paused", "model_call") for event in events)
+        assert sum(event.type == "model_requested" for event in events) == (
+            1 if timing == "during_call" else 0
+        )
         assert ledger.get_run(state.run_id).status == "aborted"
 
 

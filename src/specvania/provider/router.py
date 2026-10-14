@@ -11,7 +11,14 @@ from specvania.clock import Clock
 from specvania.config import Config
 from specvania.provider.client import ChatMessage, Completion, Provider, ProviderError
 from specvania.provider.ratelimit import RateLimiter
-from specvania.run.events import Cooldown, Event, Fallback, ModelCall, Role
+from specvania.run.events import (
+    Cooldown,
+    Event,
+    Fallback,
+    ModelCall,
+    ModelRequested,
+    Role,
+)
 
 
 class ChainExhaustedError(ProviderError):
@@ -42,12 +49,14 @@ class Router:
         emit: Callable[[Event], None],
         jitter: Callable[[], float] | None = None,
         limiter: RateLimiter | None = None,
+        before_request: Callable[[], None] | None = None,
     ) -> None:
         self.provider = provider
         self.ui = config.ui
         self._clock = clock
         self._run_id = run_id
         self._emit = emit
+        self._before_request = before_request
         self._chains = {role: tuple(getattr(config.roles, role.value)) for role in Role}
         self._limit = config.limits.failures_before_fallback
         self.limiter = limiter or RateLimiter(rpm=config.limits.rpm, clock=clock)
@@ -55,15 +64,22 @@ class Router:
         self._index = dict.fromkeys(Role, 0)
         self._failures = dict.fromkeys(Role, 0)
         self._room_id: str | None = None
+        self._request_room_id: str | None = None
         self._lock = RLock()
 
     def start_room(self, room_id: str) -> None:
         """A different room restores each role's full model chain."""
         with self._lock:
+            self._request_room_id = room_id
             if room_id != self._room_id:
                 self._index = dict.fromkeys(Role, 0)
                 self._failures = dict.fromkeys(Role, 0)
                 self._room_id = room_id
+
+    def end_room(self) -> None:
+        """Boss requests have no room context; keep the current fallback chains."""
+        with self._lock:
+            self._request_room_id = None
 
     def _cooldown(self, role: Role, model: str, seconds: float, reason: str) -> None:
         self._emit(
@@ -104,13 +120,24 @@ class Router:
             while self._index[role] < len(chain):
                 model = chain[self._index[role]]
                 self.limiter.acquire(partial(self._limiter_wait, role, model))
+                if self._before_request is not None:
+                    self._before_request()
+                prepared = messages() if callable(messages) else messages
+                self._emit(
+                    ModelRequested(
+                        ts=self._clock.now(),
+                        run_id=self._run_id,
+                        seq=0,
+                        role=role,
+                        model=model,
+                        room_id=self._request_room_id,
+                    )
+                )
                 started = self._clock.now()
                 failure: ProviderError | None = None
                 reply: Completion | None = None
                 try:
-                    reply = self.provider.complete(
-                        model, messages() if callable(messages) else messages
-                    )
+                    reply = self.provider.complete(model, prepared)
                 except ProviderError as error:
                     failure = error
                 self._emit(

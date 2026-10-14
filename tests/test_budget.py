@@ -108,7 +108,9 @@ def test_budget_pauses_before_each_kind_of_call_and_abort(
     assert seen == [("stamina exhausted", len(script))]
     assert state.tokens_spent == 200000
     assert state.token_budget == 200000
-    assert harness.ledger.list_events(engine.run_id)[-1].type == "run_finished"
+    events = harness.ledger.list_events(engine.run_id)
+    assert events[-1].type == "run_finished"
+    assert sum(event.type == "model_requested" for event in events) == len(script)
 
 
 def test_rest_uses_original_budget_twice_and_continues_same_call(

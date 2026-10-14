@@ -368,3 +368,53 @@ def test_summary_rejects_all_secret_types(harness: Harness, secret: str) -> None
         write_summary(harness.root, harness.ledger, engine.run_id, secrets=(secret,))
     assert secret not in str(error.value)
     assert destination.read_text() == before
+
+
+def test_model_requested_preserves_summary_latency_and_coins(tmp_path: Path) -> None:
+    from specvania.run.events import EVENT_ADAPTER, Event
+
+    ts = FakeClock().now()
+    calls = [
+        ModelCall(
+            ts=ts,
+            run_id="run",
+            seq=1,
+            role=Role.WARRIOR,
+            model="priced",
+            tokens_in=1200,
+            tokens_out=200,
+            latency=284,
+            status=200,
+        )
+    ]
+    events: list[Event] = [
+        EVENT_ADAPTER.validate_python(
+            {
+                "type": "model_requested",
+                "ts": ts,
+                "run_id": "run",
+                "seq": 1,
+                "role": "warrior",
+                "model": "priced",
+                "room_id": "T01",
+            }
+        ),
+        calls[0].model_copy(update={"seq": 2}),
+        EVENT_ADAPTER.validate_python(
+            {
+                "type": "model_requested",
+                "ts": ts,
+                "run_id": "run",
+                "seq": 3,
+                "role": "mage",
+                "model": "unused",
+            }
+        ),
+    ]
+    prices = load_pricing(pricing_file(tmp_path))
+    assert summarize(events) == summarize(calls)
+    assert render_summary(summarize(events), prices) == render_summary(
+        summarize(calls), prices
+    )
+    result = summarize(events)
+    assert result.calls == 1 and result.models[0].latency == 284

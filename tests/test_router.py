@@ -125,7 +125,8 @@ def test_model_call_metrics_roundtrip_and_fold_without_content() -> None:
 
     router.provider = ScriptedProvider([response])
     router.complete(Role.PALADIN, messages())
-    event = events[0]
+    event = events[1]
+    assert events[0].type == "model_requested"
     assert isinstance(event, ModelCall)
     assert (event.role, event.model, event.tokens_in, event.tokens_out) == (
         Role.PALADIN,
@@ -204,8 +205,9 @@ def test_invalid_retry_after_uses_backoff(retry_after: str) -> None:
         jitter=0.5,
     )
     router.complete(Role.MAGE, messages())
-    assert events[1].type == "cooldown"
-    assert isinstance(events[1], Cooldown) and events[1].seconds == 1.5
+    assert events[0].type == "model_requested"
+    assert events[2].type == "cooldown"
+    assert isinstance(events[2], Cooldown) and events[2].seconds == 1.5
 
 
 def test_http_date_retry_after_uses_clock() -> None:
@@ -216,13 +218,15 @@ def test_http_date_retry_after_uses_clock() -> None:
         ]
     )
     router.complete(Role.MAGE, messages())
-    assert isinstance(events[1], Cooldown) and events[1].seconds == 5
+    assert events[0].type == "model_requested"
+    assert isinstance(events[2], Cooldown) and events[2].seconds == 5
 
 
 def test_transport_failure_uses_synthetic_599_without_changing_schema() -> None:
     router, _, _, events = setup_router([ProviderError(), Completion(content="ok")])
     router.complete(Role.MAGE, messages())
-    call = events[0]
+    assert events[0].type == "model_requested"
+    call = events[1]
     assert isinstance(call, ModelCall) and call.status == 599
     assert call.tokens_in == call.tokens_out == 0
     assert decode_events(
@@ -239,8 +243,8 @@ def test_non_retryable_http_error_is_typed_and_not_retried(status: int) -> None:
         router.complete(Role.MAGE, messages())
     assert caught.value is error
     assert len(provider.calls) == 1
-    assert len(events) == 1
-    assert isinstance(events[0], ModelCall) and events[0].status == status
+    assert [event.type for event in events] == ["model_requested", "model_call"]
+    assert isinstance(events[1], ModelCall) and events[1].status == status
     assert clock.now() == start
 
 
@@ -265,9 +269,15 @@ def test_unavailable_model_falls_back_without_cooldown_or_sleep(
     router.start_room("T01")
     assert router.complete(Role.MAGE, messages()).content == "fallback"
     assert [call.model for call in provider.calls] == ["first", "second"]
-    assert [event.type for event in events] == ["model_call", "fallback", "model_call"]
-    assert isinstance(events[0], ModelCall) and events[0].status == 404
-    fallback = events[1]
+    assert [event.type for event in events] == [
+        "model_requested",
+        "model_call",
+        "fallback",
+        "model_requested",
+        "model_call",
+    ]
+    assert isinstance(events[1], ModelCall) and events[1].status == 404
+    fallback = events[2]
     assert isinstance(fallback, Fallback)
     assert (fallback.role, fallback.from_model, fallback.to_model, fallback.reason) == (
         Role.MAGE,
@@ -296,8 +306,8 @@ def test_unavailable_last_model_exhausts_chain_without_cooldown() -> None:
         router.complete(Role.WARRIOR, messages())
     assert caught.value.role == Role.WARRIOR
     assert [call.model for call in provider.calls] == ["first"]
-    assert len(events) == 1
-    assert isinstance(events[0], ModelCall) and events[0].status == 404
+    assert [event.type for event in events] == ["model_requested", "model_call"]
+    assert isinstance(events[1], ModelCall) and events[1].status == 404
     assert clock.now() == start
     with pytest.raises(ChainExhaustedError):
         router.complete(Role.WARRIOR, messages())
@@ -405,3 +415,80 @@ def test_backoff_stays_exponential_with_larger_configured_threshold() -> None:
         for event in events
         if isinstance(event, Cooldown) and event.reason == "provider backoff"
     ] == [1.5, 2.5, 4.5, 8.5, 16.5, 32.5, 64.5, 128.5]
+
+
+@pytest.mark.parametrize("role", list(Role))
+@pytest.mark.parametrize("room_id", [None, "T01"])
+def test_model_requested_is_visible_before_provider_attempt(
+    role: Role, room_id: str | None
+) -> None:
+    router, _, clock, events = setup_router([])
+    if room_id is not None:
+        router.start_room(room_id)
+
+    def response() -> Completion:
+        assert [event.type for event in events] == ["model_requested"]
+        request = events[0].model_dump(mode="json")
+        assert request["role"] == role.value
+        assert request["model"] == ("third" if role == Role.PALADIN else "first")
+        assert request.get("room_id") == room_id
+        assert ("room_id" in request) == (room_id is not None)
+        clock.sleep(284)
+        return Completion(content="private answer")
+
+    router.provider = ScriptedProvider([response])
+    router.complete(role, messages())
+    assert [event.type for event in events] == ["model_requested", "model_call"]
+    assert isinstance(events[-1], ModelCall) and events[-1].latency == 284
+
+
+@pytest.mark.parametrize("status", [429, 503, 404])
+def test_model_requested_pairs_every_retry_and_fallback_attempt(status: int) -> None:
+    router, provider, _, events = setup_router(
+        [
+            *[ProviderError(status=status) for _ in range(3 if status != 404 else 1)],
+            Completion(content="ok"),
+        ]
+    )
+    router.start_room("T01")
+    router.complete(Role.MAGE, messages())
+    attempts = [
+        event for event in events if event.type in ("model_requested", "model_call")
+    ]
+    assert len(attempts) == 2 * len(provider.calls)
+    for request, call, provider_call in zip(
+        attempts[::2], attempts[1::2], provider.calls, strict=True
+    ):
+        assert request.type == "model_requested" and call.type == "model_call"
+        assert request.role == call.role == Role.MAGE
+        assert request.model == call.model == provider_call.model
+        assert request.model_dump()["room_id"] == "T01"
+    for index, event in enumerate(events):
+        if event.type == "model_call":
+            assert events[index - 1].type == "model_requested"
+        if event.type == "cooldown":
+            # Provider backoff and limiter waits can be consecutive cooldowns.
+            prefix = events[:index]
+            assert sum(e.type == "model_requested" for e in prefix) == sum(
+                e.type == "model_call" for e in prefix
+            )
+            assert any(e.type == "model_requested" for e in events[index + 1 :])
+
+
+def test_no_model_requested_when_chain_exhausted_or_messages_refused() -> None:
+    router, provider, _, events = setup_router([ProviderError(status=404)])
+    with pytest.raises(ChainExhaustedError):
+        router.complete(Role.WARRIOR, messages())
+    before = tuple(events)
+    with pytest.raises(ChainExhaustedError):
+        router.complete(Role.WARRIOR, messages())
+    assert tuple(events) == before
+    router.start_room("T02")
+
+    def refused() -> tuple[ChatMessage, ...]:
+        raise RuntimeError("request refused")
+
+    with pytest.raises(RuntimeError, match="request refused"):
+        router.complete(Role.WARRIOR, refused)
+    assert not any(event.type == "model_requested" for event in events[len(before) :])
+    assert len(provider.calls) == 1

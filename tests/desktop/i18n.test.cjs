@@ -399,3 +399,12 @@ test("vendored_font_cmap_covers_every_Portuguese_character", () => {
   const characters=new Set(Object.values(pt).join(""));
   for (const char of characters) if (char!=="\n") assert.ok(has(char.codePointAt(0)), `${char} U+${char.codePointAt(0).toString(16)}`);
 });
+
+test("model_requested_status_line_is_translated_in_both_languages", async () => {
+  const {t, setLanguage} = await load("i18n/index.js");
+  for (const [language, expected] of [["en", "Model requested"], ["pt-BR", "pedido ao modelo"]]) {
+    setLanguage(language);
+    assert.equal(t("event.model_requested"), expected);
+  }
+  setLanguage("en");
+});

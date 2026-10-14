@@ -189,9 +189,14 @@ test("end_screen_matches_python_summary_fixture_events_and_reconnect",async()=>{
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),"t36-summary-"));
   try {
     const data=fixture(), state=pythonSummary(data,directory), markdown=fs.readFileSync(path.join(directory,"summary.md"),"utf8");
-    for(const snapshot of [false,true]) {
+    for(const requested of [false,true]) for(const snapshot of [false,true]) {
+      const events = data.events.flatMap(event => requested && event.type === "model_call"
+        ? [{type:"model_requested",role:event.role,model:event.model,run_id:event.run_id,ts:event.ts}, event] : [event])
+        .map((event,index) => ({...event,seq:index+1}));
+      const replayState = requested ? pythonSummary({...data,events},directory) : state;
+      assert.equal(fs.readFileSync(path.join(directory,"summary.md"),"utf8"),markdown);
       const h=await harness({studio:false,title:true});try {
-        if(snapshot) h.message({kind:"state",state}); else for(const event of data.events) h.event(event);
+        if(snapshot) h.message({kind:"state",state:replayState}); else for(const event of events) h.event(event);
         const value=id=>flat(h.doc.body).find(n=>n.dataset.metric===id)?.textContent;
         for(const [metric,label] of [["cleared","Rooms cleared"],["calls","Calls"],["tokens_in","Tokens in"],["tokens_out","Tokens out"]]) assert.equal(value(metric),markdown.match(new RegExp(`^${label}: (.+)$`,"m"))[1]);
         for(const metric of ["failed","skipped"]) assert.equal(value(metric),String([...markdown.matchAll(new RegExp(`^\\| T\\d+ \\| \\d+ \\| ${metric} \\|`,"gm"))].length));

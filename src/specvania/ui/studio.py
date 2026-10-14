@@ -91,12 +91,14 @@ class _RunProvider:
     def __init__(self, provider: Provider, cancelled: ThreadEvent) -> None:
         self.provider, self.cancelled = provider, cancelled
 
+    def check_cancelled(self) -> None:
+        if self.cancelled.is_set():
+            raise RunCancelled()
+
     def complete(self, model: str, messages: Sequence[ChatMessage]) -> Completion:
-        if self.cancelled.is_set():
-            raise RunCancelled()
+        self.check_cancelled()
         result = self.provider.complete(model, messages)
-        if self.cancelled.is_set():
-            raise RunCancelled()
+        self.check_cancelled()
         return result
 
     def list_models(self) -> tuple[str, ...]:
@@ -450,15 +452,17 @@ class Studio:
                             final_state = self._run_state()
                         else:
                             assert directory is not None
+                            run_provider = _RunProvider(provider, self._cancelled)
                             engine = Engine(
                                 root=root,
                                 config=config,
-                                provider=_RunProvider(provider, self._cancelled),
+                                provider=run_provider,
                                 ledger=ledger,
                                 bus=self.server.bus,
                                 clock=self.clock,
                                 responders=[self.server.desktop_responder],
                                 decide=self._decide,
+                                before_request=run_provider.check_cancelled,
                             )
 
                             def run_started(run_id: str) -> None:

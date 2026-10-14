@@ -195,6 +195,15 @@ class AttemptStarted(RoomEvent):
     attempt: PositiveInt
 
 
+class ModelRequested(EventBase):
+    type: Literal["model_requested"] = "model_requested"
+    role: Role
+    model: ShortText
+    room_id: ShortText | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
+
 class ModelCall(EventBase):
     type: Literal["model_call"] = "model_call"
     role: Role
@@ -350,6 +359,7 @@ type Event = Annotated[
     | SpecWritten
     | RoomEntered
     | AttemptStarted
+    | ModelRequested
     | ModelCall
     | Cooldown
     | Fallback

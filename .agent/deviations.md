@@ -14,6 +14,12 @@ Every change to the spec's intent, logged before the commit that introduces it. 
 
 ## Entries
 
+### DEV-016 · 2026-10-14 · T05
+**What changed:** new event `model_requested` (role, model, room_id when present) emitted by the router immediately before every provider request; the HUD shows that role as thinking until the matching `model_call`.
+**Why:** the owner's T23 dogfood run — `action` precedes the tool and `model_call` arrives only after a call completes, so the Warrior showed its last action as "acting" during a 284-second model wait.
+**Impact:** T03 events, T05 router, T17 party HUD (state.py and party.js mapping), status-line i18n. T11/T27: the stamina check and studio cancellation now run in the router's `before_request` hook, before `model_requested` is recorded (replacing the engine's `_BudgetProvider` wrapper), so a stamina pause or a stop never leaves a request without its call. Call counts, latency, cost and summaries still come only from `model_call`; existing recordings and the synthetic demo stay valid.
+**Approved by:** owner, 2026-10-14
+
 ### DEV-015 · 2026-10-14 · T27
 **What changed:** Stopping a run from the studio raises `RunCancelled`; the engine finishes the run as aborted with no `run_paused`, no synthetic `model_call` (HTTP 400) and no `approval_answered` denial for a pending approval.
 **Why:** The owner's T23 dogfood run recorded a fake "Provider call failed (HTTP 400); check provider configuration" pause and model call when the desktop app quit, which misled diagnosis.

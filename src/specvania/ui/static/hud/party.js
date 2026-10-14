@@ -7,7 +7,7 @@ const ROLES = Object.freeze(["mage", "warrior", "paladin"]);
 /** Event → status table (asserted independently in tests/ui/hud.mjs):
  * room_entered → Warrior thinking, Mage/Paladin idle (resume from a pause)
  * attempt_started / respawn / tool_refused → Warrior thinking
- * model_call / fallback → event.role thinking
+ * model_requested / model_call / fallback → event.role thinking
  * cooldown → event.role cooldown; timer expiry → thinking
  * action → Warrior acting (finish → idle)
  * gate_result → Warrior idle, Paladin thinking
@@ -18,14 +18,15 @@ const ROLES = Object.freeze(["mage", "warrior", "paladin"]);
  * boss_started → Paladin thinking, Mage/Warrior idle (resume from a pause)
  * boss_scenario / boss_result → Paladin acting / idle
  * run_paused / run_finished → all waiting for player / idle
- * Everything else preserves status. No provider request-start event exists;
- * thinking begins at the room/attempt boundary or a completed model_call.
+ * model_requested marks each provider attempt after limiter/backoff waits.
+ * Only model_call contributes call, token, latency and coin metrics.
+ * Everything else preserves status; older streams keep the same mapping.
  */
 export function eventStatuses(event) {
   switch (event.type) {
     case "room_entered": return {warrior: "thinking", mage: "idle", paladin: "idle"};
     case "attempt_started": case "respawn": case "tool_refused": return {warrior: "thinking"};
-    case "model_call": case "fallback": return {[event.role]: "thinking"};
+    case "model_requested": case "model_call": case "fallback": return {[event.role]: "thinking"};
     case "cooldown": return {[event.role]: "cooldown"};
     case "action": return {warrior: event.action === "finish" ? "idle" : "acting"};
     case "gate_result": return {warrior: "idle", paladin: "thinking"};

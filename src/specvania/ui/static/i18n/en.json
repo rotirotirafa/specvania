@@ -93,6 +93,7 @@
   "event.room_entered": "room entered",
   "event.attempt_started": "attempt started",
   "event.model_call": "model call",
+  "event.model_requested": "Model requested",
   "event.fallback": "fallback",
   "event.cooldown": "cooldown",
   "event.action": "action",

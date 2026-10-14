@@ -355,3 +355,36 @@ def test_bus_rejects_secrets_before_delivery_without_consuming_seq() -> None:
         )
         bus.publish(clean)
         assert subscription.get(timeout=0) == clean
+
+
+@pytest.mark.parametrize("room", [{}, {"room_id": "T01"}])
+def test_model_requested_roundtrip_is_frozen_and_summary_only(
+    room: dict[str, object],
+) -> None:
+    payload = {
+        **event_samples()[0],
+        "type": "model_requested",
+        "role": "mage",
+        "model": "fake/model",
+        **room,
+    }
+    payload.pop("feature")
+    payload.pop("branch")
+    event = EVENT_ADAPTER.validate_python(payload)
+    assert json.loads(event.model_dump_json()) == payload
+    assert EVENT_ADAPTER.validate_json(event.model_dump_json()) == event
+    with pytest.raises(ValidationError, match="frozen"):
+        event.seq = 999
+    for mutation in (
+        {"role": "unknown"},
+        {"model": "x" * 201},
+        {"room_id": "x" * 201},
+        {"prompt": "private"},
+        {"tokens_in": 1},
+    ):
+        with pytest.raises(ValidationError):
+            EVENT_ADAPTER.validate_python({**payload, **mutation})
+    guard = RedactionGuard()
+    guard.register("fake/model")
+    with pytest.raises(SecretLeakError):
+        guard.validate(event)

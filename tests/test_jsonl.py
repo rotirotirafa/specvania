@@ -131,3 +131,27 @@ def test_jsonl_redaction_runs_on_export_and_decode() -> None:
         encode_events(events, guard)
     with pytest.raises(SecretLeakError):
         decode_events(encoded, guard)
+
+
+@pytest.mark.parametrize("room", [{}, {"room_id": "T01"}])
+def test_model_requested_jsonl_roundtrip_and_guard(room: dict[str, object]) -> None:
+    event = EVENT_ADAPTER.validate_python(
+        {
+            "type": "model_requested",
+            "ts": "2026-10-14T12:00:00Z",
+            "run_id": "demo",
+            "seq": 4,
+            "role": "warrior",
+            "model": "fake/model",
+            **room,
+        }
+    )
+    events = (*sample_events(), event)
+    encoded = encode_events(events, RedactionGuard())
+    assert decode_events(encoded, RedactionGuard()) == events
+    guard = RedactionGuard()
+    guard.register("fake/model")
+    with pytest.raises(SecretLeakError):
+        encode_events(events, guard)
+    with pytest.raises(SecretLeakError):
+        decode_events(encoded, guard)

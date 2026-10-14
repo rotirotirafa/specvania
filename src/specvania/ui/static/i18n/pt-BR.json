@@ -93,6 +93,7 @@
   "event.room_entered": "entrada na sala",
   "event.attempt_started": "tentativa iniciada",
   "event.model_call": "chamada de modelo",
+  "event.model_requested": "pedido ao modelo",
   "event.fallback": "troca de modelo",
   "event.cooldown": "recarga",
   "event.action": "ação",

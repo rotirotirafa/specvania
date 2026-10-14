@@ -193,3 +193,66 @@ def test_fold_refuses_mixed_runs_or_non_increasing_seq(
     )
     with pytest.raises(StateFoldError):
         fold_events((first, invalid))
+
+
+@pytest.mark.parametrize("role", ["mage", "warrior", "paladin"])
+def test_model_requested_sets_thinking_without_spending_or_changing_room(
+    role: str,
+) -> None:
+    payloads: list[dict[str, object]] = [
+        {"type": "room_entered", "room_id": "T01"},
+        {
+            "type": "action",
+            "room_id": "T01",
+            "thought": "Read",
+            "action": "read_file",
+            "args_summary": "README.md",
+        },
+    ]
+    before = fold_events(stream(*payloads))
+    assert (
+        next(member for member in before.party if member.role == "warrior").status
+        == "acting"
+    )
+    after = fold_events(
+        stream(
+            *payloads,
+            {
+                "type": "model_requested",
+                "role": role,
+                "model": "next",
+                "room_id": "T01",
+            },
+        )
+    )
+    member = next(member for member in after.party if member.role == role)
+    assert member.status == "thinking" and member.model == "next"
+    assert member.cooldown_seconds == 0
+    assert after.models == before.models == ()
+    assert after.tokens_spent == before.tokens_spent == 0
+    assert after.tokens_spent_by_role == before.tokens_spent_by_role
+    assert after.rooms == before.rooms and after.active_room == before.active_room
+    assert after.dialogue == before.dialogue and after.bugs == before.bugs
+
+
+def test_model_requested_clears_role_cooldown_without_changing_other_roles() -> None:
+    events = stream(
+        {
+            "type": "cooldown",
+            "role": "warrior",
+            "model": "old",
+            "seconds": 10,
+            "reason": "backoff",
+        },
+        {
+            "type": "cooldown",
+            "role": "mage",
+            "model": "mage",
+            "seconds": 20,
+            "reason": "rate limit",
+        },
+        {"type": "model_requested", "role": "warrior", "model": "new"},
+    )
+    warrior, mage = fold_events(events).party
+    assert warrior.status == "thinking" and warrior.cooldown_seconds == 0
+    assert mage.status == "cooldown" and mage.cooldown_seconds == 20

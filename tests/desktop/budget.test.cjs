@@ -33,3 +33,23 @@ test("HUD old streams and plan show only tokens and run_started resets spending"
   assert.equal(partyView(state).stamina, 0);
   assert.equal(partyView(state).staminaText, "300000 / 200000 tokens");
 });
+
+
+test("model_requested changes acting to thinking and preserves spending and coins", async () => {
+  const { partyFromState, projectParty, partyView, eventStatuses } = await import(modulePath);
+  for (const role of ["mage", "warrior", "paladin"]) {
+    let state = partyFromState({token_budget: 1000});
+    state = projectParty(state, {type:"model_call",role:"warrior",model:"old",tokens_in:10,tokens_out:20});
+    state = projectParty(state, {type:"action",room_id:"T01",action:"read_file"});
+    assert.equal(partyView(state).members[1].status, "acting");
+    const before = state;
+    state = projectParty(state, {type:"model_requested",role,model:"next",room_id:"T01"});
+    assert.deepEqual(eventStatuses({type:"model_requested",role}), {[role]: "thinking"});
+    const member = partyView(state).members.find(member => member.role === role);
+    assert.equal(member.status, "thinking"); assert.equal(member.model, "next");
+    assert.equal(state.tokens_spent, 30); assert.deepEqual(state.models, before.models);
+    assert.equal(state.members[1].tokens_spent, 30);
+    const snapshot = partyFromState({party:[{role,model:"next",status:"thinking"}],tokens_spent:30});
+    assert.equal(partyView(snapshot).members.find(member => member.role === role).status, member.status);
+  }
+});

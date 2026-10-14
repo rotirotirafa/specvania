@@ -17,7 +17,7 @@ from specvania.clock import Clock
 from specvania.config import Config
 from specvania.ledger.repo import Ledger, RunIdTakenError, generate_run_id
 from specvania.pricing import load_pricing
-from specvania.provider.client import ChatMessage, Completion, Provider, ProviderError
+from specvania.provider.client import Provider, ProviderError
 from specvania.provider.router import Router
 from specvania.run.bus import EventBus
 from specvania.run.events import (
@@ -65,20 +65,6 @@ class _StaminaStop(Exception):
     """Unwind the pending call without treating a player pause as a failure."""
 
 
-class _BudgetProvider:
-    """Check every actual request, including router retries and JSON repairs."""
-
-    def __init__(self, engine: "Engine") -> None:
-        self.engine = engine
-
-    def complete(self, model: str, messages: Sequence[ChatMessage]) -> Completion:
-        self.engine._check_budget()
-        return self.engine.provider.complete(model, messages)
-
-    def list_models(self) -> tuple[str, ...]:
-        return self.engine.provider.list_models()
-
-
 def rebuild_run_state(ledger: Ledger, run_id: str) -> RunState:
     """Recovery is a fresh projection of durable events, with no model calls."""
     return fold_events(ledger.list_events(run_id))
@@ -105,6 +91,7 @@ class Engine:
         decide: Callable[[RunPaused], PauseDecision | None] = lambda pause: None,
         shell_timeout: float = 60,
         gate_timeout: float = 300,
+        before_request: Callable[[], None] | None = None,
     ) -> None:
         self.git = GitOps(root)
         self.config = config
@@ -118,6 +105,7 @@ class Engine:
         self.gate_timeout = gate_timeout
         self.run_id = ""
         self._emit_lock = RLock()
+        self._before_request = before_request
 
     def emit(self, event: Event) -> None:
         """Allocate and guard in the ledger before publishing, as one ordered pair."""
@@ -168,14 +156,21 @@ class Engine:
                 )
         write_summary(self.git.root, self.ledger, self.run_id, config=self.config)
 
+    def _check_request(self) -> None:
+        """Refuse budget/cancellation stops before recording a provider request."""
+        self._check_budget()
+        if self._before_request is not None:
+            self._before_request()
+
     def _reset_router(self) -> None:
         # Explicit player retry restores an exhausted chain, preserving stamina.
         self.router = Router(
             config=self.config,
-            provider=_BudgetProvider(self),
+            provider=self.provider,
             clock=self.clock,
             run_id=self.run_id,
             emit=self.emit,
+            before_request=self._check_request,
             limiter=self.router.limiter,
         )
 
@@ -324,6 +319,7 @@ class Engine:
                 return None
 
     def _boss(self, area: Area, world: World, room_id: str) -> bool:
+        self.router.end_room()
         room_ids = {room.id for room in world.rooms if room.area_id == area.id}
         commits = tuple(
             event.commit
@@ -450,10 +446,11 @@ class Engine:
         self.sandbox = Sandbox(self.git.root)
         self.router = Router(
             config=self.config,
-            provider=_BudgetProvider(self),
+            provider=self.provider,
             clock=self.clock,
             run_id=self.run_id,
             emit=self.emit,
+            before_request=self._check_request,
         )
         self.gates = GateRunner(
             config=self.config,

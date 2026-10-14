@@ -550,3 +550,36 @@ def test_ci_starts_compose_postgres_and_runs_ledger_contract() -> None:
     assert start < suite
     assert job["env"]["SPECVANIA_TEST_DATABASE_URL"].startswith("postgresql+psycopg://")
     assert any("--extra postgres" in command for command in commands)
+
+
+@pytest.mark.parametrize("room", [{}, {"room_id": "T01"}])
+def test_model_requested_ledger_payload_roundtrip_without_migration(
+    ledger: Ledger, ledger_url: str, tmp_path: Path, room: dict[str, object]
+) -> None:
+    from specvania.run.events import EVENT_ADAPTER
+    from specvania.run.jsonl import decode_events, encode_events
+
+    run_id = make_run(ledger, tmp_path)
+    event = EVENT_ADAPTER.validate_python(
+        {
+            "type": "model_requested",
+            "ts": "2026-10-14T12:00:00Z",
+            "run_id": run_id,
+            "seq": 0,
+            "role": "mage",
+            "model": "fake/model",
+            **room,
+        }
+    )
+    version = ledger.migration_version
+    stored = ledger.append_event(event)
+    assert stored.seq == 1
+    assert ledger.migration_version == version == "0002"
+    with Ledger.open(ledger_url, clock=FakeClock(), guard=RedactionGuard()) as reopened:
+        assert reopened.list_events(run_id) == [stored]
+        assert decode_events(
+            encode_events(reopened.list_events(run_id), RedactionGuard()),
+            RedactionGuard(),
+        ) == (stored,)
+        run = reopened.get_run(run_id)
+        assert run.calls == run.tokens_in == run.tokens_out == 0
