@@ -238,6 +238,29 @@ const styleRule = selector => {
   const escaped=selector.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
   const match=source.match(new RegExp(escaped+"\\s*\\{([^}]+)\\}"));assert.ok(match,selector);return match[1];
 };
+test("mage_dialogue_stays_left_of_party_column_at_960_and_1920_without_clipping_content",async()=>{
+  const h=await entrance();try {
+    const shell=styleRule("#screen-host[data-screen=idea]"),hud=styleRule("main");
+    const pixels=(rule,property,fallback=0)=>Number(new RegExp(`(?:^|;)\\s*${property}:\\s*(\\d+)px`).exec(rule)?.[1] ?? fallback);
+    const screenCSS=text(h.doc.head);
+    const panel=screenCSS.match(/#screen-host \.screen-panel\s*\{([^}]+)\}/)[1];
+    const hostCSS=screenCSS.match(/#screen-host\s*\{([^}]+)\}/)[1];
+    const padding=Number(/padding:\s*\d+px (\d+)px/.exec(hostCSS)[1]);
+    for(const [width,height]of [[960,540],[1920,1080]]) {
+      const hudLeft=width-pixels(hud,"right")-pixels(hud,"width")-2*pixels(hud,"padding")-2*pixels(hud,"border");
+      const contentWidth=width-pixels(shell,"right")-2*padding;
+      for(const mode of ["idea","clarify","working","world"]) {
+        const panelWidth=mode==="world"?contentWidth:Math.min(pixels(panel,"width"),contentWidth);
+        const dialogueRight=padding+(contentWidth+panelWidth)/2;
+        assert.ok(dialogueRight<hudLeft,`${mode} dialogue overlaps the party at ${width}×${height}`);
+        assert.ok(panelWidth>0);
+      }
+    }
+    ask(h,{...question,text:"A long question ".repeat(50)});
+    assert.ok(text(h.host).includes("A long question ".repeat(50)));
+    assert.match(styleRule(".dialogue-content"),/overflow:\s*auto/);
+  }finally{h.screens.destroy();}
+});
 test("dialogue_layout_fits_viewport_with_actions_outside_scroll_content",async()=>{
   const h=await entrance();try {
     const check=()=>{
