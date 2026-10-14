@@ -198,11 +198,12 @@ export function mountMap(Phaser, host, browser = window) {
       objects.push(zone);
       zone.setInteractive();
       const select = () => browser.dispatchEvent(new browser.CustomEvent("specvania:room-selected", { detail: { room_id: room.id } }));
-      zone.on("pointerdown", () => {if (!scrollBounds) select();});
+      // Phaser's window listeners also deliver presses/releases on DOM overlays.
+      zone.on("pointerdown", pointer => {if (!scrollBounds && pointer.downElement === game.canvas) select();});
       // In a scrollable overview wait for release, so dragging a chamber does
       // not open its panel. Keep the result after DOM pointerup: Phaser's
       // compatibility mouseup (or touchend) can arrive after that event.
-      zone.on("pointerup", () => {if (scrollBounds && !dragged) select();});
+      zone.on("pointerup", pointer => {if (scrollBounds && !dragged && pointer.downElement === game.canvas) select();});
     }
     for (const door of layout.doors) {
       tile(door.x, door.y + 16, door.locked ? "door_closed" : "door_open_middle");

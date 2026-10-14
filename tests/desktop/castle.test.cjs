@@ -150,6 +150,7 @@ const cameraMethod = name => {
 };
 
 function harness(width = 960, height = 540, reduced = false) {
+  const canvas = {tagName: "CANVAS"};
   const handlers = new Map(), hostHandlers = new Map(), keys = new Map(), paints = [], selections = [], resizes = [];
   const descriptions = {"map-rooms": {}, "castle-hud": {hidden: false}};
   const object = (kind, x = 0, y = 0, key) => ({kind, x, y, key, destroyed: false, visible: true, alpha: 1, listeners: new Map(),
@@ -188,7 +189,7 @@ function harness(width = 960, height = 540, reduced = false) {
   const media = {matches: reduced, addEventListener(type, fn) {mediaHandlers.add(fn);}, removeEventListener(type, fn) {mediaHandlers.delete(fn);} };
   let config, destroyed = false;
   const Phaser = {CANVAS: 1, Scale: {NONE: 0}, Game: class {
-    constructor(options) {config = options; this.scale = {resize: (w, h) => (resizes.push([w, h]), camera.width = w, camera.height = h)};}
+    constructor(options) {config = options; this.canvas = canvas; this.scale = {resize: (w, h) => (resizes.push([w, h]), camera.width = w, camera.height = h)};}
     destroy() {destroyed = true;}
   } };
   const browser = {innerWidth: width, innerHeight: height, matchMedia: () => media,
@@ -209,7 +210,7 @@ function harness(width = 960, height = 540, reduced = false) {
     return event;
   };
   const emit = (type, detail) => handlers.get(type).forEach(fn => fn({detail}));
-  return {Phaser, browser, host, scene, paints, camera, keys, descriptions, selections, resizes, mediaHandlers,
+  return {Phaser, browser, host, canvas, scene, paints, camera, keys, descriptions, selections, resizes, mediaHandlers,
     emit, dom, config: () => config, create: () => config.scene.create.call(scene),
     resize(w, h) {browser.innerWidth = w; browser.innerHeight = h; emit("resize");},
     reduce() {media.matches = true; [...mediaHandlers].forEach(fn => fn({matches: true}));},
@@ -280,7 +281,7 @@ test("oversized_overview_arrow_and_page_keys_scroll_only_with_castle_focus", asy
 test("oversized_overview_drag_scrolls_integer_pixels_clamps_and_does_not_select_chambers", async () => {
   const {h, map} = await overviewHarness();
   const zone = h.live().find(item => item.kind === "zone");
-  zone.listeners.get("pointerdown")({});
+  zone.listeners.get("pointerdown")({downElement: h.canvas});
   h.dom("host", "pointerdown", {button: 0, pointerId: 1, clientX: 400, clientY: 300});
   assert.equal(h.browser.document.activeElement, h.host);
   h.dom("browser", "pointermove", {pointerId: 1, clientX: 390.4, clientY: 279.3});
@@ -291,16 +292,54 @@ test("oversized_overview_drag_scrolls_integer_pixels_clamps_and_does_not_select_
   assert.equal(h.camera.scrollY, 0);
   // DOM Pointer Events precede Phaser's compatibility mouseup event.
   h.dom("browser", "pointerup", {pointerId: 1});
-  zone.listeners.get("pointerup")?.({});
+  zone.listeners.get("pointerup")?.({downElement: h.canvas});
   assert.ok(!h.selections.some(event => event.type === "specvania:room-selected"));
   h.dom("browser", "pointermove", {pointerId: 1, clientX: 400, clientY: 200});
   assert.equal(h.camera.scrollY, 0, "Released drag stops scrolling");
   h.dom("host", "pointerdown", {button: 0, pointerId: 2, clientX: 150, clientY: 50});
-  zone.listeners.get("pointerdown")({});
+  zone.listeners.get("pointerdown")({downElement: h.canvas});
   h.dom("browser", "pointerup", {pointerId: 2});
-  zone.listeners.get("pointerup")?.({});
+  zone.listeners.get("pointerup")?.({downElement: h.canvas});
   assert.deepEqual(h.selections.at(-1).detail, {room_id: "T01"}, "A click still selects the chamber");
   map.destroy();
+});
+
+test("oversized_overview_ignores_overlay_presses_and_releases_but_selects_canvas_clicks", async () => {
+  const {h, map} = await overviewHarness();
+  try {
+    const zone = h.live().find(item => item.kind === "zone");
+    // Phaser's window listeners deliver both events even for DOM overlays.
+    for (const downElement of [{tagName: "BUTTON"}, {tagName: "SECTION"}, undefined]) {
+      const pointer = {downElement, event: {target: downElement}};
+      zone.listeners.get("pointerdown")(pointer);
+      zone.listeners.get("pointerup")(pointer);
+    }
+    assert.ok(!h.selections.some(event => event.type === "specvania:room-selected"));
+    zone.listeners.get("pointerdown")({downElement: h.canvas});
+    zone.listeners.get("pointerup")({downElement: h.canvas});
+    assert.deepEqual(h.selections.filter(event => event.type === "specvania:room-selected").map(event => event.detail),
+      [{room_id: "T01"}]);
+  } finally {map.destroy();}
+});
+
+test("non_scrolling_castle_selects_on_canvas_press_and_ignores_overlay_presses_and_releases", async () => {
+  const {h, map} = await overviewHarness(sample);
+  try {
+    const zone = h.live().find(item => item.kind === "zone");
+    // The same window events reach the zone in the non-scrolling path.
+    for (const downElement of [{tagName: "BUTTON"}, {tagName: "SECTION"}, undefined]) {
+      const pointer = {downElement, event: {target: downElement}};
+      zone.listeners.get("pointerdown")(pointer);
+      assert.ok(!h.selections.some(event => event.type === "specvania:room-selected"));
+      zone.listeners.get("pointerup")(pointer);
+      assert.ok(!h.selections.some(event => event.type === "specvania:room-selected"));
+    }
+    zone.listeners.get("pointerdown")({downElement: h.canvas});
+    assert.deepEqual(h.selections.at(-1).detail, {room_id: "T01"}, "Canvas press selects without waiting for release");
+    zone.listeners.get("pointerup")({downElement: h.canvas});
+    assert.deepEqual(h.selections.filter(event => event.type === "specvania:room-selected").map(event => event.detail),
+      [{room_id: "T01"}]);
+  } finally {map.destroy();}
 });
 
 test("oversized_overview_scrolls_both_axes_to_last_arena_left_of_measured_hud_overlay", async () => {
@@ -512,10 +551,10 @@ test("chamber_click_dispatches_dom_room_id_and_M_toggles_same_castle_geometry", 
     for (const [index, zone] of zones.entries()) {
       assert.equal(zone.interactive, true);
       const selections = h.selections.length;
-      zone.listeners.get("pointerdown")();
+      zone.listeners.get("pointerdown")({downElement: h.canvas});
       if (overview) {
         assert.equal(h.selections.length, selections, "Scrollable overview waits for release");
-        zone.listeners.get("pointerup")();
+        zone.listeners.get("pointerup")({downElement: h.canvas});
       }
       const selected = h.selections.at(-1);
       assert.equal(h.selections.length, selections + 1);
