@@ -50,6 +50,8 @@
   "approval.resolving": "waiting for player — resolving approval",
   "approval.allow": "Allow",
   "approval.deny": "Deny",
+  "approval.reason": "Reason for denial (optional)",
+  "approval.deniedReason": "denied in {responder}: {reason}",
   "approval.approved": "approved",
   "approval.denied": "denied",
   "approval.result": "{answer} in {responder}",

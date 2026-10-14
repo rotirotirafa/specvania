@@ -5,7 +5,7 @@ import os
 import shutil
 import subprocess
 from collections.abc import Iterator
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from pathlib import Path
 from threading import Event as ThreadEvent
 
@@ -66,12 +66,16 @@ def publish(ui: UIServer, event: Event) -> None:
     ui.bus.publish(ui.ledger.append_event(event))
 
 
+@pytest.mark.parametrize(
+    "reason", [None, "", "   ", " Syntax is corrupted ", "x" * 200]
+)
 @pytest.mark.parametrize("allowed, word", [(True, "approved"), (False, "denied")])
 def test_desktop_answer_runs_or_denies_command_and_closes_terminal(
     desktop_ui: UIServer,
     tmp_path: Path,
     allowed: bool,
     word: str,
+    reason: str | None,
 ) -> None:
     ui = desktop_ui
     reader, writer = os.pipe()
@@ -106,24 +110,34 @@ def test_desktop_answer_runs_or_denies_command_and_closes_terminal(
                     requested = ws.receive_json()["event"]
                     assert requested["command"] == "printf allowed > approved.txt"
                     assert requested["cwd"] == str(tmp_path)
-                    ws.send_json(
-                        {
-                            "kind": "approval_answer",
-                            "request_id": requested["request_id"],
-                            "answer": allowed,
-                            "control_token": ui.control_token,
-                        }
-                    )
-                    answered = ws.receive_json()["event"]
-                    result = running.result(timeout=5)
+                    try:
+                        ws.send_json(
+                            {
+                                "kind": "approval_answer",
+                                "request_id": requested["request_id"],
+                                "answer": allowed,
+                                "reason": reason,
+                                "control_token": ui.control_token,
+                            }
+                        )
+                        answered = ws.receive_json()["event"]
+                        result = running.result(timeout=5)
+                    finally:
+                        ui.desktop_responder.answer(requested["request_id"], False)
                 assert answered["responder"] == "desktop window"
                 assert answered["answer"] is allowed
+                expected = (reason or "").strip() or None
+                if allowed:
+                    expected = None
+                assert answered["reason"] == expected
                 assert messages[-1] == f"{word} in desktop window"
                 assert os.get_blocking(reader)
                 assert (tmp_path / "approved.txt").exists() is allowed
                 assert result.exit_code == (0 if allowed else None)
                 if not allowed:
-                    assert result.output == "denied by user"
+                    assert result.output == (
+                        f"denied by user: {expected}" if expected else "denied by user"
+                    )
                 assert ui.ledger is not None
                 assert ui.control_token not in repr(ui.ledger.list_events(ui.run_id))
     finally:
@@ -380,7 +394,7 @@ def test_full_transient_prompt_is_checked_for_secrets_beyond_event_summary(
     command = "printf " + "x" * 250 + ui.control_token
     ui.desktop_responder.start(
         ApprovalRequest(request_id="secret-tail", command=command, cwd="."),
-        lambda _: None,
+        lambda _, reason=None: None,
     )
     with TestClient(ui.app, base_url=ui.origin) as client:
         with client.websocket_connect(
@@ -436,3 +450,142 @@ def test_replay_rejects_even_valid_control_and_keeps_watching() -> None:
                     "reason": "control unavailable",
                 }
     assert not answers
+
+
+@pytest.mark.parametrize(
+    "reason", ["x" * 201, "bad\nreason", "\tbad", "bad\x00", "bad\x7f", "bad\x85", 42]
+)
+def test_invalid_denial_reason_is_rejected_without_resolving_or_echoing(
+    desktop_ui: UIServer,
+    tmp_path: Path,
+    reason: object,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    ui = desktop_ui
+    broker = ApprovalBroker(
+        [ui.desktop_responder],
+        clock=ui.clock,
+        emit=lambda event: publish(ui, event),
+        run_id=ui.run_id,
+    )
+    with TestClient(ui.app, base_url=ui.origin) as client:
+        with client.websocket_connect(
+            f"{ui.origin.replace('http:', 'ws:')}/ws?view_token={ui.view_token}",
+            headers={"Origin": ui.origin},
+        ) as ws:
+            ws.receive_json()
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                running = pool.submit(broker.request, "printf ok", tmp_path)
+                request_id = ws.receive_json()["event"]["request_id"]
+                try:
+                    ws.send_json(
+                        {
+                            "kind": "approval_answer",
+                            "request_id": request_id,
+                            "answer": False,
+                            "reason": reason,
+                            "control_token": ui.control_token,
+                        }
+                    )
+                    assert ws.receive_json() == {
+                        "kind": "approval_rejected",
+                        "reason": "invalid message",
+                    }
+                    assert ui.desktop_responder.pending is not None
+                    ws.send_json(
+                        {
+                            "kind": "approval_answer",
+                            "request_id": request_id,
+                            "answer": False,
+                            "control_token": ui.control_token,
+                        }
+                    )
+                    assert ws.receive_json()["event"]["type"] == "approval_answered"
+                    assert running.result(timeout=5).reason is None
+                finally:
+                    ui.desktop_responder.answer(request_id, False)
+    assert ui.control_token not in caplog.text
+    assert "bad" not in caplog.text and "x" * 201 not in caplog.text
+
+
+def test_secret_denial_reason_is_refused_before_ledger_or_observation(
+    desktop_ui: UIServer,
+    tmp_path: Path,
+) -> None:
+    ui = desktop_ui
+    broker = ApprovalBroker(
+        [ui.desktop_responder],
+        clock=ui.clock,
+        emit=lambda event: publish(ui, event),
+        run_id=ui.run_id,
+    )
+    tools = Tools(
+        Sandbox(tmp_path),
+        broker=broker,
+        clock=ui.clock,
+        emit=lambda event: publish(ui, event),
+        run_id=ui.run_id,
+        room_id="T20",
+        observation_kb=8,
+        shell_timeout=5,
+    )
+    with TestClient(ui.app, base_url=ui.origin) as client:
+        with client.websocket_connect(
+            f"{ui.origin.replace('http:', 'ws:')}/ws?view_token={ui.view_token}",
+            headers={"Origin": ui.origin},
+        ) as ws:
+            ws.receive_json()
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                running = pool.submit(tools.run_shell, "printf allowed > approved.txt")
+                requested = ws.receive_json()["event"]
+                try:
+                    ws.send_json(
+                        {
+                            "kind": "approval_answer",
+                            "request_id": requested["request_id"],
+                            "answer": False,
+                            "reason": ui.control_token,
+                            "control_token": ui.control_token,
+                        }
+                    )
+                    with pytest.raises(TimeoutError):
+                        running.result(timeout=0.1)
+                    rejected = ws.receive_json()
+                    assert rejected == {
+                        "kind": "approval_rejected",
+                        "reason": "invalid message",
+                    }
+                    assert ui.control_token not in repr(rejected)
+                    assert ui.desktop_responder.pending is not None
+                    assert (
+                        ui.desktop_responder.pending.request_id
+                        == requested["request_id"]
+                    )
+                    assert ui.ledger is not None
+                    assert [
+                        event.type for event in ui.ledger.list_events(ui.run_id)
+                    ] == ["approval_requested"]
+                    ws.send_json(
+                        {
+                            "kind": "approval_answer",
+                            "request_id": requested["request_id"],
+                            "answer": False,
+                            "control_token": ui.control_token,
+                        }
+                    )
+                    answered = ws.receive_json()["event"]
+                    assert answered["type"] == "approval_answered"
+                    assert answered["reason"] is None
+                    result = running.result(timeout=5)
+                    assert result.output == "denied by user"
+                    assert ui.control_token not in result.output
+                finally:
+                    ui.desktop_responder.answer(requested["request_id"], False)
+    assert not (tmp_path / "approved.txt").exists()
+    assert ui.ledger is not None
+    assert [event.type for event in ui.ledger.list_events(ui.run_id)] == [
+        "approval_requested",
+        "approval_answered",
+    ]
+    assert ui.control_token not in repr(ui.ledger.list_events(ui.run_id))
+    assert ui.desktop_responder.pending is None

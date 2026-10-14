@@ -1,6 +1,6 @@
 import { t, onLanguageChange } from "../i18n/index.js";
 import { UI_COLORS } from "../pixel/palette.js";
-import { mageDialogue } from "../hud/dialogue.js";
+import { approvalResult, mageDialogue } from "../hud/dialogue.js";
 import { mountApproval } from "../hud/approval.js";
 import { mountPause, pauseReason } from "./pause.js";
 import { mountBoss } from "./boss.js";
@@ -156,7 +156,7 @@ export function mountReplay(socket, {browser = window, back = () => {}} = {}) {
       const choice = {room_skipped: "skip", attempt_started: "retry", stamina_restored: "rest", boss_started: "retry", run_finished: "abort"}[event.type];
       if (choice) {const reason = pause.reason; receipt = () => t("replay.choice", {choice: t(`pause.${choice}`), reason: pauseReason(reason)}); pause = null;}
     }
-    if (event.type === "approval_answered") receipt = () => t("approval.result", {answer: t(event.answer ? "approval.approved" : "approval.denied"), responder: t(`responder.${event.responder}`)});
+    if (event.type === "approval_answered") receipt = () => approvalResult(event);
     if (event.type === "run_started") {receipt = () => t("replay.feature", {feature: event.feature.replaceAll("-", String.fromCharCode(32))}); if (!pending) mage(event);}
     render();
   }

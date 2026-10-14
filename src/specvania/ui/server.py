@@ -38,6 +38,7 @@ from specvania.ledger import Ledger, LedgerError
 from specvania.provider.client import ProbeModelResult
 from specvania.run.bus import EventBus, Subscription
 from specvania.run.events import (
+    ApprovalAnswered,
     ApprovalRequested,
     Event,
     FrozenModel,
@@ -256,7 +257,17 @@ class ApprovalAnswer(FrozenModel):
     kind: Literal["approval_answer"]
     request_id: ShortText
     answer: bool = Field(strict=True)
+    reason: ShortText | None = None
     control_token: str = Field(default="", repr=False, exclude=True)
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def denial_reason(cls, value: object) -> object:
+        if isinstance(value, str):
+            if any(ord(char) < 32 or 127 <= ord(char) <= 159 for char in value):
+                raise ValueError("Approval reason must not contain control characters.")
+            return value.strip() or None
+        return value
 
 
 class OpenReplay(FrozenModel):
@@ -600,7 +611,9 @@ class UIServer:
         return f"specvania_view_{self.port}"
 
     def _answer_approval(self, message: ApprovalAnswer) -> bool:
-        accepted = self.desktop_responder.answer(message.request_id, message.answer)
+        accepted = self.desktop_responder.answer(
+            message.request_id, message.answer, message.reason
+        )
         if accepted:
             self.publish_studio_info()
         return accepted
@@ -1188,6 +1201,22 @@ class UIServer:
                     ):
                         await reject("control unavailable")
                         continue
+                    if not answer.answer and answer.reason:
+                        try:
+                            self.guard.validate(
+                                ApprovalAnswered(
+                                    ts=self.clock.now(),
+                                    run_id=self.run_id,
+                                    seq=0,
+                                    request_id=answer.request_id,
+                                    answer=False,
+                                    responder=self.desktop_responder.name,
+                                    reason=answer.reason,
+                                )
+                            )
+                        except SecretLeakError:
+                            await reject("invalid message")
+                            continue
                     accepted = await asyncio.to_thread(self.approval_responder, answer)
                 elif self.control_responder is not None:
                     accepted = await asyncio.to_thread(self.control_responder, answer)

@@ -50,6 +50,8 @@
   "approval.resolving": "aguardando o jogador — resolvendo a aprovação",
   "approval.allow": "Permitir",
   "approval.deny": "Negar",
+  "approval.reason": "Motivo da negação (opcional)",
+  "approval.deniedReason": "negado em {responder}: {reason}",
   "approval.approved": "aprovado",
   "approval.denied": "negado",
   "approval.result": "{answer} em {responder}",

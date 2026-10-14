@@ -32,13 +32,18 @@ class ApprovalResolution(BaseModel):
     request_id: str
     answer: bool
     responder: str
+    reason: str | None = None
+
+
+class ApprovalCallback(Protocol):
+    def __call__(self, answer: bool, reason: str | None = None, /) -> None: ...
 
 
 class ApprovalResponder(Protocol):
     @property
     def name(self) -> str: ...
 
-    def start(self, request: ApprovalRequest, answer: Callable[[bool], None]) -> None:
+    def start(self, request: ApprovalRequest, answer: ApprovalCallback) -> None:
         """Display a request and retain the callback; never block for input."""
         ...
 
@@ -75,7 +80,9 @@ class ApprovalBroker:
         self._active: ApprovalRequest | None = None
         self._resolution: ApprovalResolution | None = None
 
-    def _answer(self, request_id: str, responder: str, answer: bool) -> None:
+    def _answer(
+        self, request_id: str, responder: str, answer: bool, reason: str | None = None
+    ) -> None:
         with self._lock:
             if (
                 self._active is None
@@ -84,7 +91,10 @@ class ApprovalBroker:
             ):
                 return
             self._resolution = ApprovalResolution(
-                request_id=request_id, answer=answer, responder=responder
+                request_id=request_id,
+                answer=answer,
+                responder=responder,
+                reason=None if answer else reason,
             )
 
     def request(self, command: str, cwd: Path) -> ApprovalResolution:
@@ -109,8 +119,8 @@ class ApprovalBroker:
                     )
                     responder.start(
                         request,
-                        lambda answer, name=responder.name: self._answer(
-                            request.request_id, name, answer
+                        lambda answer, reason=None, name=responder.name: self._answer(
+                            request.request_id, name, answer, reason
                         ),
                     )
                 self._emit(
@@ -140,6 +150,7 @@ class ApprovalBroker:
                                 request_id=request.request_id,
                                 answer=resolution.answer,
                                 responder=resolution.responder,
+                                reason=resolution.reason,
                             )
                         )
                         return resolution
@@ -162,14 +173,14 @@ class DesktopResponder:
     def __init__(self) -> None:
         self._lock = RLock()
         self._request: ApprovalRequest | None = None
-        self._callback: Callable[[bool], None] | None = None
+        self._callback: ApprovalCallback | None = None
 
     @property
     def pending(self) -> ApprovalRequest | None:
         with self._lock:
             return self._request
 
-    def start(self, request: ApprovalRequest, answer: Callable[[bool], None]) -> None:
+    def start(self, request: ApprovalRequest, answer: ApprovalCallback) -> None:
         with self._lock:
             if self._request is not None:
                 raise ApprovalError(
@@ -178,7 +189,7 @@ class DesktopResponder:
             self._request = request
             self._callback = answer
 
-    def answer(self, request_id: str, answer: bool) -> bool:
+    def answer(self, request_id: str, answer: bool, reason: str | None = None) -> bool:
         with self._lock:
             if (
                 self._request is None
@@ -188,7 +199,7 @@ class DesktopResponder:
                 return False
             callback, self._callback = self._callback, None
         # Do not hold the responder lock while acquiring the broker lock.
-        callback(answer)
+        callback(answer, None if answer else reason)
         return True
 
     def poll(self) -> None:

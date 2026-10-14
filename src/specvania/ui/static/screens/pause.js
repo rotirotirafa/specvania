@@ -79,7 +79,7 @@ export function expeditionDialog(name, {browser, document = browser.document}) {
         const controls = nodes();
         if (event.key === "Escape") {event.preventDefault(); escape?.();}
         else if (["Tab", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
-          if (event.key !== "Tab" && document.activeElement === content) return;
+          if (event.key !== "Tab" && (document.activeElement === content || document.activeElement?.tagName.toLowerCase() === "input")) return;
           event.preventDefault();
           const navigable = event.key === "Tab" ? controls : controls.filter(node => node.tagName.toLowerCase() === "button");
           const index = navigable.indexOf(document.activeElement);

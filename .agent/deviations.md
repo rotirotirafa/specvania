@@ -14,6 +14,12 @@ Every change to the spec's intent, logged before the commit that introduces it. 
 
 ## Entries
 
+### DEV-017 · 2026-10-14 · T20
+**What changed:** when denying a model-proposed command in the desktop window the player may add an optional reason (≤200 characters); it is stored in `approval_answered.reason` and the Warrior's observation becomes "denied by user: <reason>". Terminal answers are unchanged.
+**Why:** the owner's T23 dogfood run — the player denied a syntactically corrupted script and had no way to tell the Warrior why.
+**Impact:** D8 (approval flow) and T20 desktop approval UI/transport, T08 broker and run_shell observation, T03 `approval_answered` (new optional field; old records stay valid), i18n.
+**Approved by:** owner, 2026-10-14
+
 ### DEV-016 · 2026-10-14 · T05
 **What changed:** new event `model_requested` (role, model, room_id when present) emitted by the router immediately before every provider request; the HUD shows that role as thinking until the matching `model_call`.
 **Why:** the owner's T23 dogfood run — `action` precedes the tool and `model_call` arrives only after a call completes, so the Warrior showed its last action as "acting" during a 284-second model wait.

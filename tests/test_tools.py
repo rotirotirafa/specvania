@@ -7,11 +7,11 @@ from typing import Any
 import pytest
 
 from specvania.agent import sandbox as sandbox_module
-from specvania.agent.approval import ApprovalBroker, ScriptedResponder
+from specvania.agent.approval import ApprovalBroker, DesktopResponder, ScriptedResponder
 from specvania.agent.sandbox import Sandbox, SandboxRefusal
 from specvania.agent.tools import ToolError, Tools
 from specvania.clock import FakeClock
-from specvania.run.events import Event, ToolRefused
+from specvania.run.events import ApprovalRequested, Event, ToolRefused
 
 
 def make_tools(
@@ -359,3 +359,37 @@ def test_observations_are_utf8_bounded_with_visible_marker(
     assert "[truncated]" in result.output
     assert len(result.output.encode("utf-8")) <= 1024
     assert "�" not in result.output
+
+
+@pytest.mark.parametrize(
+    "reason, output",
+    [
+        (None, "denied by user"),
+        ("Syntax is corrupted", "denied by user: Syntax is corrupted"),
+    ],
+)
+def test_denied_shell_observation_includes_optional_reason(
+    tmp_path: Path, reason: str | None, output: str
+) -> None:
+    desktop = DesktopResponder()
+    clock = FakeClock()
+
+    def emit(event: Event) -> None:
+        if isinstance(event, ApprovalRequested):
+            desktop.answer(event.request_id, False, reason)
+
+    broker = ApprovalBroker([desktop], clock=clock, emit=emit, run_id="run")
+    tools = Tools(
+        Sandbox(tmp_path),
+        broker=broker,
+        clock=clock,
+        emit=emit,
+        run_id="run",
+        room_id="T08",
+        observation_kb=8,
+        shell_timeout=5,
+    )
+    observation = tools.run_shell("printf bad > denied.txt")
+    assert observation.output == output
+    assert observation.exit_code is None
+    assert not (tmp_path / "denied.txt").exists()

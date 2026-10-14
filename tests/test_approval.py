@@ -9,11 +9,18 @@ from specvania.agent.approval import (
     ApprovalError,
     ApprovalRequest,
     ApprovalResolution,
+    DesktopResponder,
     ScriptedResponder,
     TerminalResponder,
 )
 from specvania.clock import FakeClock
-from specvania.run.events import ApprovalAnswered, ApprovalRequested, Event
+from specvania.run.events import (
+    ApprovalAnswered,
+    ApprovalRequested,
+    Event,
+    RedactionGuard,
+    SecretLeakError,
+)
 
 
 class RecordingResponder(ScriptedResponder):
@@ -47,6 +54,7 @@ def test_first_answer_wins_and_loser_is_cancelled(
     result = broker.request("pytest -q", tmp_path)
     assert result.answer is answer
     assert result.responder == winner
+    assert result.reason is None
     assert slow.resolutions == [result]
     # Polling a cancelled responder cannot override the recorded answer.
     for _ in range(5):
@@ -126,6 +134,7 @@ def test_terminal_prompt_uses_nonblocking_pipe(
         result = broker.request("pytest -q", tmp_path)
         assert result.answer is allowed
         assert result.responder == "terminal"
+        assert result.reason is None
         assert "pytest -q" in messages[0] and str(tmp_path) in messages[0]
         assert "y/N" in messages[0]
         assert os.get_blocking(reader)
@@ -248,3 +257,47 @@ def test_sequential_approvals_have_unique_ids_and_no_stale_answers(
         "approval_requested",
         "approval_answered",
     ]
+
+
+@pytest.mark.parametrize("allowed", [True, False])
+def test_desktop_resolution_carries_reason_only_for_denial(
+    tmp_path: Path, allowed: bool
+) -> None:
+    desktop = DesktopResponder()
+    events: list[Event] = []
+
+    def emit(event: Event) -> None:
+        events.append(event)
+        if isinstance(event, ApprovalRequested):
+            assert desktop.answer(event.request_id, allowed, "Syntax is corrupted")
+
+    broker = ApprovalBroker([desktop], clock=FakeClock(), emit=emit, run_id="run")
+    resolution = broker.request("printf ok", tmp_path)
+    expected = None if allowed else "Syntax is corrupted"
+    assert resolution.reason == expected
+    assert isinstance(events[-1], ApprovalAnswered)
+    assert events[-1].reason == expected
+    assert desktop.pending is None
+
+
+def test_broker_refuses_secret_reason_even_without_server_validation(
+    tmp_path: Path,
+) -> None:
+    desktop = DesktopResponder()
+    guard = RedactionGuard()
+    secret = "fake-registered-secret"
+    guard.register(secret)
+    events: list[Event] = []
+
+    def emit(event: Event) -> None:
+        guard.validate(event)
+        events.append(event)
+        if isinstance(event, ApprovalRequested):
+            desktop.answer(event.request_id, False, secret)
+
+    broker = ApprovalBroker([desktop], clock=FakeClock(), emit=emit, run_id="run")
+    with pytest.raises(SecretLeakError) as refused:
+        broker.request("printf ok", tmp_path)
+    assert secret not in str(refused.value)
+    assert [event.type for event in events] == ["approval_requested"]
+    assert desktop.pending is None

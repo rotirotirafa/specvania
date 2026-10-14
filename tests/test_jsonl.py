@@ -155,3 +155,29 @@ def test_model_requested_jsonl_roundtrip_and_guard(room: dict[str, object]) -> N
         encode_events(events, guard)
     with pytest.raises(SecretLeakError):
         decode_events(encoded, guard)
+
+
+@pytest.mark.parametrize("reason", [None, "Syntax is corrupted"])
+def test_approval_answered_reason_and_old_payload_load(reason: str | None) -> None:
+    payload = {
+        "type": "approval_answered",
+        "ts": "2026-10-12T12:00:00Z",
+        "run_id": "demo",
+        "seq": 1,
+        "request_id": "req",
+        "answer": False,
+        "responder": "desktop window",
+    }
+    if reason is not None:
+        payload["reason"] = reason
+    guard = RedactionGuard()
+    (event,) = decode_events(json.dumps(payload) + "\n", guard)
+    assert event.type == "approval_answered"
+    assert event.reason == reason
+    assert decode_events(encode_events((event,), guard), guard) == (event,)
+    if reason:
+        guard.register("corrupted")
+        with pytest.raises(SecretLeakError):
+            encode_events((event,), guard)
+        with pytest.raises(SecretLeakError):
+            decode_events(json.dumps(payload) + "\n", guard)

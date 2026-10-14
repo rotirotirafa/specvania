@@ -13,7 +13,7 @@ const load = name => import(pathToFileURL(path.join(root, name)).href);
 const flat = node => [node, ...node.children.flatMap(flat)];
 const texts = node => flat(node).map(n => n.textContent || "").join("\n");
 class Element {
-  constructor(tag, document) {Object.assign(this, {tagName:tag, document, children:[], style:{}, dataset:{}, attrs:{}, listeners:{}, _text:"", hidden:false, disabled:false});}
+  constructor(tag, document) {Object.assign(this, {tagName:tag, document, children:[], style:{}, dataset:{}, attrs:{}, listeners:{}, _text:"", value:"", hidden:false, disabled:false});}
   set textContent(value) {this._text=String(value); this.replaceChildren();}
   get textContent() {return this._text;}
   append(...nodes) {for (const node of nodes) {node.remove(); node.parent=this; this.children.push(node);}}
@@ -65,7 +65,7 @@ test("approval_keyboard_mouse_escape_control_and_focus_restore",async()=>{
       assert.ok(flat(h.doc.body).some(n=>n.dataset.cast==="warrior"));
       assert.ok(texts(h.doc.body).includes(request.command)); assert.ok(texts(h.doc.body).includes(request.cwd));
       assert.equal(h.game.getAttribute("inert"),""); assert.equal(h.doc.activeElement,h.button("Deny"));
-      h.key("Tab"); assert.equal(h.doc.activeElement.className,"expedition-content"); h.key("Tab"); assert.equal(h.doc.activeElement,h.button("Allow")); h.key("Tab",true); assert.equal(h.doc.activeElement.className,"expedition-content"); h.key("Tab",true); assert.equal(h.doc.activeElement,h.button("Deny"));
+      h.key("Tab"); assert.equal(h.doc.activeElement.className,"expedition-content"); h.key("Tab"); assert.equal(h.doc.activeElement,h.button("Allow")); h.key("Tab"); assert.equal(h.doc.activeElement.tagName,"input"); h.key("Tab"); assert.equal(h.doc.activeElement,h.button("Deny")); h.key("Tab",true); assert.equal(h.doc.activeElement.tagName,"input"); h.key("Tab",true); assert.equal(h.doc.activeElement,h.button("Allow")); h.key("Tab",true); assert.equal(h.doc.activeElement.className,"expedition-content"); h.key("Tab",true); assert.equal(h.doc.activeElement,h.button("Deny"));
       if(method.startsWith("mouse")) h.button(method.endsWith("allow")?"Allow":"Deny").click();
       else if(method==="escape") h.key("Escape"); else {h.key("ArrowLeft");h.key("Enter");}
       assert.deepEqual(h.sent,[{kind:"approval_answer",request_id:"a1",answer:method.endsWith("allow"),control_token:"control"}]);
@@ -279,7 +279,7 @@ test("long_dialog_content_is_keyboard_scrollable_without_leaving_the_trap",async
     h.key("Tab");const content=h.doc.activeElement;
     assert.equal(content.className,"expedition-content");assert.equal(content.tabIndex,0);
     const event={key:"ArrowDown",preventDefault(){this.prevented=true;}};content.dispatch("keydown",event);assert.equal(event.prevented,undefined,"Arrows scroll content using the browser default");
-    h.key("Tab");assert.equal(h.doc.activeElement,h.button("Allow"));h.key("Tab");assert.equal(h.doc.activeElement,h.button("Deny"));
+    h.key("Tab");assert.equal(h.doc.activeElement,h.button("Allow"));h.key("Tab");assert.equal(h.doc.activeElement.tagName,"input");h.key("Tab");assert.equal(h.doc.activeElement,h.button("Deny"));
     h.event({type:"approval_answered",request_id:"a1",answer:false,responder:"terminal"});restored(h);
   }finally{h.destroy();}
 });

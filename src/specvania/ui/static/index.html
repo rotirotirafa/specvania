@@ -51,6 +51,11 @@
     .expedition-dialog button { font: inherit; color: var(--text); background: var(--background);
       border: 2px solid var(--accent); padding: 12px; min-height: 40px; cursor: pointer; }
     .expedition-dialog button:disabled { opacity: 0.6; cursor: default; }
+    #approval-choice .expedition-actions { align-items: center; }
+    #approval-choice label { max-width: 240px; }
+    #approval-choice input { flex: 1; min-width: 0; box-sizing: border-box; font: inherit;
+      color: var(--text); background: var(--background); border: 2px solid var(--border); padding: 8px; min-height: 40px; }
+    #approval-choice input:disabled { opacity: 0.6; }
     .expedition-dialog [hidden] { display: none; }
     .expedition-dialog :focus-visible, .expedition-dialog:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
     .expedition-dialog[data-screen=end] { inset: 48px 24px 16px; }

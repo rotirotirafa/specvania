@@ -255,6 +255,7 @@ class ApprovalAnswered(EventBase):
     request_id: ShortText
     answer: bool
     responder: ShortText
+    reason: ShortText | None = None
 
 
 class GateResult(RoomEvent):

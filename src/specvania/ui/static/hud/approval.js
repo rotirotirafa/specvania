@@ -1,4 +1,5 @@
 import { t, onLanguageChange } from "../i18n/index.js";
+import { approvalResult } from "./dialogue.js";
 import { expeditionDialog } from "../screens/pause.js";
 
 /** One projection for both shells. Only the desktop preload supplies control. */
@@ -8,6 +9,7 @@ export function mountApproval(socket, { window = globalThis.window, document = g
   let requestId;
   let choices = [];
   let status;
+  let reasonInput;
   let connected = true;
   let bindings = [];
   let statusText;
@@ -26,13 +28,16 @@ export function mountApproval(socket, { window = globalThis.window, document = g
     for (const render of bindings) render();
     if (status && statusText) status.textContent = statusText();
   });
-  const disable = () => { for (const button of choices) button.disabled = true; };
+  const disable = () => {
+    for (const button of choices) button.disabled = true;
+    if (reasonInput) reasonInput.disabled = true;
+  };
 
   function show(request) {
     panel?.remove();
     bindings = []; statusText = null;
     requestId = request.request_id;
-    choices = [];
+    choices = []; reasonInput = null;
     const token = window.specvaniaDesktop?.controlToken?.() || "";
     panel = dialog.open("approval.label", (content, actions, ui) => {
       ui.portrait(content, "warrior");
@@ -40,6 +45,14 @@ export function mountApproval(socket, { window = globalThis.window, document = g
       status = text("p", waitingHint); content.append(status);
       if (token && connected) {
         for (const [label, answer] of [["approval.allow", true], ["approval.deny", false]]) {
+          if (!answer) {
+            const reasonLabel = text("label", () => t("approval.reason"));
+            reasonLabel.htmlFor = "approval-denial-reason";
+            reasonInput = document.createElement("input");
+            reasonInput.id = reasonLabel.htmlFor; reasonInput.type = "text";
+            reasonInput.maxLength = 200; reasonInput.tabIndex = 0;
+            actions.append(reasonLabel, reasonInput);
+          }
           const button = ui.button(actions, label, () => respond(answer));
           choices.push(button);
         }
@@ -48,7 +61,10 @@ export function mountApproval(socket, { window = globalThis.window, document = g
     function respond(answer) {
       if (!token || !connected || socket.readyState !== 1 || choices.some(button => button.disabled)) return;
       disable(); updateStatus(() => t("approval.resolving"));
-      socket.send(JSON.stringify({ kind: "approval_answer", request_id: requestId, answer, control_token: token }));
+      const message = { kind: "approval_answer", request_id: requestId, answer, control_token: token };
+      const reason = reasonInput?.value.trim();
+      if (!answer && reason) message.reason = reason;
+      socket.send(JSON.stringify(message));
     }
   }
 
@@ -85,14 +101,16 @@ export function mountApproval(socket, { window = globalThis.window, document = g
         bindings = []; statusText = null;
         choices = [];
         requestId = undefined;
-        status = text("p", () => t("approval.result", {answer: t(event.answer ? "approval.approved" : "approval.denied"), responder: t(`responder.${event.responder}`)}));
+        status = text("p", () => approvalResult(event));
         status.setAttribute("role", "status");
         panel = status;
         (document.getElementById?.("castle-hud") || document.body).append(panel);
       }
       notify(event);
     } else if (message.kind === "approval_rejected" && status) {
-      disable();
+      const disabled = !connected || socket.readyState !== 1;
+      for (const button of choices) button.disabled = disabled;
+      if (reasonInput) reasonInput.disabled = disabled;
       updateStatus(waitingHint);
     }
   };

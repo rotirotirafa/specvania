@@ -59,7 +59,7 @@ const technical = new Set(`en pt-BR specvania.language specvania.settings text/j
   click message close error open resize pointerdown pointerup pointermove pointercancel wheel keydown-M change
   function boolean anywhere json pt Linear shake kenney-tiny-dungeon slime bat ghost spider rat red_crab hooded_figure coin stamina_pip V C P L idle thinking acting cooldown running paused finished aborted locked active cleared failed skipped
   mage warrior paladin state event studio_state set_language approval_answer approval_rejected desktop-title-bar connection run-state
-  view_token ws: /ws world-map castle-hud map-rooms party-hud bestiary-hud dialogue-hud approval-choice
+  view_token ws: /ws world-map castle-hud map-rooms party-hud bestiary-hud dialogue-hud approval-choice approval-denial-reason
   action finish pass fail walk act rest defeated escaped swing shield plan hit escape bossResult arena reveal defeat
   party torch padlock check cross cobweb castle boss monster door heart label zone
   wall_top_left wall_top_right wall_top_middle wall_left wall_right back_wall floor_grate floor_stones
@@ -407,4 +407,13 @@ test("model_requested_status_line_is_translated_in_both_languages", async () => 
     assert.equal(t("event.model_requested"), expected);
   }
   setLanguage("en");
+});
+
+test("denial_reason_template_places_responder_before_reason_in_both_languages", async () => {
+  const {createI18n} = await load("i18n/index.js");
+  const service = createI18n({navigator:{language:"en"}});
+  const params = {responder:"desktop window", reason:"Syntax is corrupted"};
+  assert.equal(service.t("approval.deniedReason", params), "denied in desktop window: Syntax is corrupted");
+  service.setLanguage("pt-BR");
+  assert.equal(service.t("approval.deniedReason", {...params,responder:"janela desktop"}), "negado em janela desktop: Syntax is corrupted");
 });

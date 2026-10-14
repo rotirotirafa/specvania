@@ -218,7 +218,10 @@ class Tools:
         """
         resolution = self._broker.request(command, self._sandbox.root)
         if not resolution.answer:
-            return self._observation("denied by user")
+            output = "denied by user"
+            if resolution.reason:
+                output += f": {resolution.reason}"
+            return self._observation(output)
         with tempfile.TemporaryFile() as output:
             try:
                 process = subprocess.Popen(

@@ -302,3 +302,20 @@ for (const result of ["aborted", "finished"]) {
     } finally {h.destroy();}
   });
 }
+
+test("recorded_denial_reason_appears_in_receipt_and_reconnect_in_both_languages", async () => {
+  const h = await harness();
+  const {setLanguage} = await load("i18n/index.js");
+  const answer = {type:"approval_answered", request_id:"denial", answer:false, responder:"desktop window", reason:"Syntax is corrupted"};
+  try {
+    begin(h);
+    h.message({kind:"event",event:answer});
+    const bar = h.document.getElementById("replay-bar");
+    assert.match(text(bar), /denied in desktop window: Syntax is corrupted/);
+    setLanguage("pt-BR");
+    assert.match(text(bar), /negado em janela desktop: Syntax is corrupted/);
+    h.message({kind:"state",phase:"replaying",replay:{...status,dialogue:answer},state:{rooms:[]}});
+    assert.match(text(bar), /negado em janela desktop: Syntax is corrupted/);
+    assert.equal(h.sent.filter(message => message.kind === "approval_answer").length, 0);
+  } finally {setLanguage("en"); h.destroy();}
+});
