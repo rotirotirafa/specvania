@@ -15,7 +15,7 @@ export function mountScreens({host, browser = window, socket, startup, watchDemo
   let settings = {language: i18n.language, tokenBudget: 1000000, specvaniaPath: "specvania", reducedMotion: false};
   let pending = Promise.resolve(), syncing = false, studio = false, resync = false;
   const css = document.createElement("style");
-  css.textContent = `#screen-host { position: fixed; inset: 32px 0 0; z-index: 3; overflow: auto; box-sizing: border-box; background: ${UI_COLORS.background}; color: ${UI_COLORS.text}; padding: 16px 24px; font: 12px/1.8 "Press Start 2P", monospace; display: flex; align-items: center; justify-content: center; }
+  css.textContent = `#screen-host { position: fixed; inset: 32px 0 0; z-index: 3; overflow: auto; box-sizing: border-box; background: ${UI_COLORS.background}; color: ${UI_COLORS.text}; padding: 16px 24px; font: 12px/1.8 "Press Start 2P", monospace; display: flex; align-items: safe center; justify-content: safe center; }
     #screen-host[hidden] { display: none; }
     #screen-host .screen-panel { width: 720px; max-width: 100%; margin: auto; text-align: center; }
     #screen-host button, #screen-host input, #screen-host select { box-sizing: border-box; font: inherit; color: ${UI_COLORS.text}; background: ${UI_COLORS.surface}; border: 2px solid ${UI_COLORS.border}; padding: 12px; }
@@ -39,6 +39,7 @@ export function mountScreens({host, browser = window, socket, startup, watchDemo
     #screen-host .title-footer button { min-height: 32px; padding: 8px 16px; margin: 0 6px; }`;
   document.head.append(css);
   let savingSlug = null, savedSlug = null, revealedSlug = null;
+  let pendingProbe = null;
   const send = (kind, fields = {}) => {
     const token = desktop?.controlToken?.();
     if (!token || !socket || socket.readyState !== 1) return false;
@@ -150,7 +151,10 @@ export function mountScreens({host, browser = window, socket, startup, watchDemo
     host.dataset.screen = next; container = host;
     container = element("div"); container.className = "screen-panel";
     if (next === "idea") view = ideaScreen(ui, reason ? {...project, world_slug: reason} : project);
-    else if (next === "project") view = projectScreen(ui, project, reason);
+    else if (next === "project") {
+      view = projectScreen(ui, project, reason);
+      if (pendingProbe) view.probe(pendingProbe.results, pendingProbe.models, false);
+    }
     else if (next === "settings") view = settingsScreen(ui);
     else if (next === "error") view = errorScreen(ui, lastError);
     else if (next === "starting") view = startingScreen(ui, browser);
@@ -188,6 +192,7 @@ export function mountScreens({host, browser = window, socket, startup, watchDemo
   const message = ({data}) => {
     const value = JSON.parse(data);
     if (value.kind === "studio_state" || value.kind === "state" && value.phase) {
+      if (value.kind === "state") pendingProbe = null;
       const restore = resync && value.kind === "studio_state";
       if (restore) resync = false;
       if (!studio) {studio = true; send("set_language", {language: settings.language}); show("title");}
@@ -205,7 +210,10 @@ export function mountScreens({host, browser = window, socket, startup, watchDemo
         else if (value.error) showError({reason: value.error});
         else if (screen === "project" || screen === "title" && value.project) show("project");
       }
-    } else if (value.kind === "probe_result" && screen === "project") view.probe?.(value.results);
+    } else if (value.kind === "probe_result") {
+      pendingProbe = value.done === false ? value : null;
+      if (screen === "project") view.probe?.(value.results, value.models, value.done);
+    }
     else if (value.kind === "approval_rejected") {
       savingSlug = null;
       if (screen === "idea" && !host.hidden) view.reject?.(value);

@@ -1,6 +1,7 @@
 """Synchronous OpenAI-compatible port; retries and timing belong to the router."""
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from types import TracebackType
 from typing import Literal, Protocol, Self
 
@@ -66,14 +67,18 @@ class ProbeModelResult(FrozenModel):
 
 
 def probe_party(
-    config: Config, provider: Provider, clock: Clock
+    config: Config,
+    provider: Provider,
+    clock: Clock,
+    *,
+    on_result: Callable[[ProbeModelResult], None] | None = None,
 ) -> tuple[ProbeModelResult, ...]:
     """One minimal request per distinct model; discard all completion contents."""
     models = dict.fromkeys(
         config.roles.mage + config.roles.warrior + config.roles.paladin
     )
-    results: list[ProbeModelResult] = []
-    for model in models:
+
+    def probe(model: str) -> ProbeModelResult:
         started = clock.now()
         try:
             provider.complete(
@@ -94,8 +99,19 @@ def probe_party(
                 status="ok",
                 latency_ms=max(0.0, (clock.now() - started).total_seconds() * 1000),
             )
-        results.append(result)
-    return tuple(results)
+        return result
+
+    results: dict[str, ProbeModelResult] = {}
+    with ThreadPoolExecutor(
+        max_workers=len(models), thread_name_prefix="specvania-probe"
+    ) as pool:
+        futures = [pool.submit(probe, model) for model in models]
+        for future in as_completed(futures):
+            result = future.result()
+            results[result.model] = result
+            if on_result is not None:
+                on_result(result)
+    return tuple(results[model] for model in models)
 
 
 class OpenAIProvider:

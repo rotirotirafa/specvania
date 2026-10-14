@@ -85,7 +85,7 @@ const exact = new Set([
   ".", "heart:idle:0", "monster:${}", "boss:${}", "♥", "♡", "■", "□", "pre-wrap",
 ]);
 // Technical CSS only: reviewed T33 screen styles, without text content.
-exact.add(`#screen-host { position: fixed; inset: 32px 0 0; z-index: 3; overflow: auto; box-sizing: border-box; background: \${}; color: \${}; padding: 16px 24px; font: 12px/1.8 "Press Start 2P", monospace; display: flex; align-items: center; justify-content: center; }
+exact.add(`#screen-host { position: fixed; inset: 32px 0 0; z-index: 3; overflow: auto; box-sizing: border-box; background: \${}; color: \${}; padding: 16px 24px; font: 12px/1.8 "Press Start 2P", monospace; display: flex; align-items: safe center; justify-content: safe center; }
     #screen-host[hidden] { display: none; }
     #screen-host .screen-panel { width: 720px; max-width: 100%; margin: auto; text-align: center; }
     #screen-host button, #screen-host input, #screen-host select { box-sizing: border-box; font: inherit; color: \${}; background: \${}; border: 2px solid \${}; padding: 12px; }

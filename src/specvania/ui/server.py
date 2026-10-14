@@ -361,6 +361,9 @@ class ProbeParty(FrozenModel):
 class ProbeResult(FrozenModel):
     kind: Literal["probe_result"] = "probe_result"
     results: tuple[ProbeModelResult, ...]
+    # Transient snapshots seed pending rows and end progress with done, off the ledger.
+    models: tuple[str, ...] = ()
+    done: bool = True
 
 
 class PauseReply(FrozenModel):
@@ -508,7 +511,10 @@ class UIServer:
         self.studio_snapshot = studio_snapshot
         self.control_responder = control_responder
         self._state_lock = RLock()
-        self._state_queues: list[Queue[StateMessage | StudioState | EventMessage]] = []
+        self._state_queues: list[
+            Queue[StateMessage | StudioState | EventMessage | ProbeResult]
+        ] = []
+        self._probe_result: ProbeResult | None = None
         self._serving: uvicorn.Server | None = None
         self.guard = guard
         self.clock = clock
@@ -551,6 +557,8 @@ class UIServer:
             message = self.studio_snapshot()
             info = self.studio_info() if self.studio_info else None
             with self._state_lock:
+                if self._probe_result is not None and self._probe_result.done:
+                    self._probe_result = None
                 for queue in self._state_queues:
                     queue.put(message)
                     if info is not None:
@@ -568,6 +576,14 @@ class UIServer:
             with self._state_lock:
                 for queue in self._state_queues:
                     queue.put(message)
+                    if self._probe_result is not None:
+                        queue.put(self._probe_result)
+
+    def publish_probe_result(self, message: ProbeResult) -> None:
+        with self._state_lock:
+            self._probe_result = message
+            for queue in self._state_queues:
+                queue.put(message)
 
     def stop(self) -> None:
         if self._panel_subscription is not None:
@@ -974,18 +990,22 @@ class UIServer:
             if self.replay is None and self.bus
             else None
         )
-        state_queue: Queue[StateMessage | StudioState | EventMessage] | None = None
+        state_queue: (
+            Queue[StateMessage | StudioState | EventMessage | ProbeResult] | None
+        ) = None
         if self.studio_snapshot is not None:
             state_queue = Queue()
             with self._state_lock:
                 self._state_queues.append(state_queue)
+                if self._probe_result is not None:
+                    state_queue.put(self._probe_result)
         sender: asyncio.Task[None] | None = None
         receiver: asyncio.Task[None] | None = None
         try:
             initial: StateMessage | None = None
             pending: ApprovalRequested | None = None
             if self.studio_snapshot is not None:
-                initial = self.studio_snapshot()
+                initial = await asyncio.to_thread(self.studio_snapshot)
                 state = initial.state
             elif subscription is not None:
                 if self.ledger is not None:
@@ -1027,7 +1047,7 @@ class UIServer:
                 ).model_dump(mode="json")
             )
             if self.studio_info is not None:
-                info = self.studio_info()
+                info = await asyncio.to_thread(self.studio_info)
                 if info is not None:
                     await websocket.send_json(info.model_dump(mode="json"))
             sender = asyncio.create_task(
@@ -1070,7 +1090,8 @@ class UIServer:
         websocket: WebSocket,
         subscription: Subscription | None,
         seq: int,
-        state_queue: Queue[StateMessage | StudioState | EventMessage] | None = None,
+        state_queue: Queue[StateMessage | StudioState | EventMessage | ProbeResult]
+        | None = None,
     ) -> None:
         if subscription is None:
             previous: Event | None = None
@@ -1094,9 +1115,9 @@ class UIServer:
                 previous = event
             return
         loop = asyncio.get_running_loop()
-        queue: asyncio.Queue[Event | StateMessage | StudioState | EventMessage] = (
-            asyncio.Queue()
-        )
+        queue: asyncio.Queue[
+            Event | StateMessage | StudioState | EventMessage | ProbeResult
+        ] = asyncio.Queue()
         stopped = ThreadEvent()
 
         def bridge() -> None:
@@ -1123,7 +1144,7 @@ class UIServer:
                     await websocket.send_json(event.model_dump(mode="json"))
                     seq = event.state.seq
                     continue
-                if isinstance(event, (StudioState, EventMessage)):
+                if isinstance(event, (StudioState, EventMessage, ProbeResult)):
                     await websocket.send_json(event.model_dump(mode="json"))
                     continue
                 if self.studio_snapshot is not None and event.run_id != self.run_id:
@@ -1162,7 +1183,8 @@ class UIServer:
                 if isinstance(answer, ApprovalAnswer):
                     if (
                         self.studio_snapshot
-                        and self.studio_snapshot().replay is not None
+                        and (await asyncio.to_thread(self.studio_snapshot)).replay
+                        is not None
                     ):
                         await reject("control unavailable")
                         continue

@@ -25,6 +25,7 @@ from specvania.provider.client import (
     ChatMessage,
     Completion,
     OpenAIProvider,
+    ProbeModelResult,
     Provider,
     ProviderError,
     probe_party,
@@ -719,7 +720,7 @@ class Studio:
         if self._job is not None and not isinstance(
             message, (ClarifyReply, PauseReply)
         ):
-            raise StudioError("The studio already has an active plan or run.")
+            raise StudioError("The studio already has an active plan, run or probe.")
         if isinstance(message, OpenReplay):
             self._open_replay(message)
         elif isinstance(message, (ReplaySpeed, ReplayPause)):
@@ -796,10 +797,51 @@ class Studio:
             self._condition.notify_all()
         elif isinstance(message, ProbeParty):
             _, config, key = self._settings()
-            with OpenAIProvider(config.provider, api_key=key) as provider:
-                result = ProbeResult(results=probe_party(config, provider, self.clock))
-            self._safe(result.model_dump_json())
-            return result
+            models = tuple(
+                dict.fromkeys(
+                    config.roles.mage + config.roles.warrior + config.roles.paladin
+                )
+            )
+            results: dict[str, ProbeModelResult] = {}
+
+            def publish(done: bool) -> None:
+                result = ProbeResult(
+                    models=models,
+                    results=tuple(
+                        results[model] for model in models if model in results
+                    ),
+                    done=done,
+                )
+                self._safe(result.model_dump_json())
+                self.server.publish_probe_result(result)
+
+            def progress(result: ProbeModelResult) -> None:
+                results[result.model] = result
+                publish(False)
+
+            def execute() -> None:
+                try:
+                    with OpenAIProvider(config.provider, api_key=key) as provider:
+                        probe_party(config, provider, self.clock, on_result=progress)
+                except Exception as error:
+                    with self._lock:
+                        self._error = self._error_message(
+                            error,
+                            "Cannot check the party; check provider configuration.",
+                        )
+                finally:
+                    with self._lock:
+                        self._job = None
+                        publish(True)
+                        if self._error:
+                            self.server.publish_studio_info()
+
+            self._error = None
+            publish(False)
+            self._job = Thread(
+                target=execute, name="specvania-studio-probe", daemon=True
+            )
+            self._job.start()
         return None
 
     def serve(self, *, on_started: Callable[[], None]) -> None:

@@ -137,11 +137,69 @@ test("outside_git_reason_init_worlds_bugs_and_probe_results",async()=>{
     assert.match(text(h.host),/hello-world/);assert.match(text(h.host),/other-world/);assert.match(text(h.host),/2 open bugs/);
     h.button("Check the party").click();assert.deepEqual(h.sent.at(-1),{kind:"probe_party",control_token:"control"});assert.ok(h.button("Check the party").disabled);
     h.message({kind:"probe_result",results:[{model:"ok/model",status:"ok",latency_ms:12.5},{model:"bad/model",status:404,latency_ms:null},{model:"slow/model",status:"timeout",latency_ms:null}]});
-    assert.match(text(h.host),/12.5 ms/);assert.match(text(h.host),/HTTP 404/);assert.match(text(h.host),/Timeout/);
+    assert.match(text(h.host),/0.0 s/);assert.match(text(h.host),/HTTP 404/);assert.match(text(h.host),/Timeout/);
     const rows=flat(h.host).filter(n=>n.dataset.probe);assert.equal(rows.length,3);assert.notEqual(rows[0].style.color,rows[1].style.color);assert.equal(rows[1].style.color,rows[2].style.color);
     h.folder(null);const count=h.sent.length;h.button("Choose folder").click();await h.tick();assert.equal(h.sent.length,count);
   } finally {h.screens.destroy();}
 });
+test("project_probe_pending_rows_fill_in_arrival_order_and_enable_only_when_done",async()=>{
+  const h=await harness();try {
+    h.message({kind:"studio_state",phase:"project_open",project:{path:"/repo",initialized:true},worlds:[],open_bugs:0});
+    const button=h.button("Check the party");button.click();
+    const rows=()=>flat(h.host).filter(node=>node.dataset.probe);
+    h.message({kind:"probe_result",models:["one","two"],results:[],done:false});
+    const pending=rows();assert.deepEqual(pending.map(node=>node.textContent),["one: checking…","two: checking…"]);
+    assert.equal(button.disabled,true);
+    h.message({kind:"probe_result",models:["one","two"],results:[{model:"two",status:"ok",latency_ms:37775.874}],done:false});
+    assert.deepEqual(rows(),pending);assert.equal(rows()[0].textContent,"one: checking…");
+    assert.equal(rows()[1].textContent,"two: OK · 37.8 s");assert.equal(button.disabled,true);
+    h.message({kind:"probe_result",models:["one","two"],results:[{model:"one",status:"timeout",latency_ms:null},{model:"two",status:"ok",latency_ms:37775.874}],done:true});
+    assert.deepEqual(rows(),pending);assert.equal(rows()[0].textContent,"one: Timeout");assert.equal(button.disabled,false);
+  } finally {h.screens.destroy();}
+});
+test("project_probe_stays_pending_after_folder_rejection_and_screen_navigation",async()=>{
+  const h=await harness();try {
+    h.message({kind:"studio_state",phase:"project_open",project:{path:"/repo",initialized:true},worlds:[],open_bugs:0});
+    h.button("Check the party").click();
+    h.message({kind:"probe_result",models:["one","two"],results:[],done:false});
+    h.button("Choose folder").click();await h.tick();
+    h.message({kind:"approval_rejected",reason:"The studio already has an active plan, run or probe."});
+    assert.equal(h.button("Check the party").disabled,true);
+    assert.deepEqual(flat(h.host).filter(node=>node.dataset.probe).map(node=>node.textContent),["one: checking…","two: checking…"]);
+    h.button("Settings").click();h.key("Escape");h.button("Open project").click();await h.tick();
+    assert.equal(h.button("Check the party").disabled,true);
+    assert.equal(flat(h.host).filter(node=>node.dataset.probe).length,2);
+    h.message({kind:"probe_result",models:["one","two"],results:[{model:"one",status:"ok",latency_ms:700},{model:"two",status:404}],done:true});
+    assert.equal(h.button("Check the party").disabled,false);
+  } finally {h.screens.destroy();}
+});
+test("project_probe_reconnect_discards_stale_pending_and_restores_active_snapshot",async()=>{
+  const h=await harness();try {
+    h.message({kind:"studio_state",phase:"project_open",project:{path:"/repo",initialized:true},worlds:[],open_bugs:0});
+    h.message({kind:"probe_result",models:["old"],results:[],done:false});
+    h.socket.reconnecting=true;h.socket.emit("close");
+    h.message({kind:"state",phase:"project_open",state:{}});
+    h.message({kind:"studio_state",phase:"project_open",project:{path:"/another",initialized:true},worlds:[],open_bugs:0});
+    assert.equal(h.button("Check the party").disabled,false);
+    assert.equal(flat(h.host).filter(node=>node.dataset.probe).length,0);
+    h.message({kind:"probe_result",models:["current"],results:[],done:false});
+    assert.equal(h.button("Check the party").disabled,true);
+    assert.deepEqual(flat(h.host).filter(node=>node.dataset.probe).map(node=>node.textContent),["current: checking…"]);
+  } finally {h.screens.destroy();}
+});
+for(const [language,long,short] of [["en","37.8","0.7"],["pt-BR","37,8","0,7"]]) {
+  test(`project_probe_seconds_format_and_pending_translation_${language}`,async()=>{
+    const h=await harness();try {
+      h.message({kind:"studio_state",phase:"project_open",project:{path:"/repo",initialized:true},worlds:[],open_bugs:0});
+      h.message({kind:"probe_result",models:["long","short","pending"],results:[{model:"long",status:"ok",latency_ms:37775.874},{model:"short",status:"ok",latency_ms:700}],done:false});
+      const {setLanguage}=await load("i18n/index.js");setLanguage(language);
+      const rows=flat(h.host).filter(node=>node.dataset.probe);
+      assert.equal(rows[0].textContent,`long: OK · ${long} s`);assert.equal(rows[1].textContent,`short: OK · ${short} s`);
+      assert.equal(rows[2].textContent,language==="en"?"pending: checking…":"pending: verificando…");
+      assert.equal(h.button(language==="en"?"Check the party":"Verificar o grupo").disabled,true);
+    } finally {h.screens.destroy();}
+  });
+}
 function preload() {
   let api;const calls=[];
   vm.runInNewContext(fs.readFileSync(path.join(desktop,"preload.js"),"utf8"),{require:()=>({contextBridge:{exposeInMainWorld:(_,value)=>{api=value;}},ipcRenderer:{sendSync:()=>"control",send:(...a)=>calls.push(a),invoke:async(...a)=>{calls.push(a);return a;}}})});
@@ -282,6 +340,6 @@ test("title_uses_cast_party_at_integer_scale_with_castle_and_shared_centered_lay
     for(const name of ["mage","warrior","paladin","back_wall","floor_stones","door_closed","banner"]) assert.ok(tiles.some(n=>n.dataset.cast===name),name);
     for(const tile of tiles) {assert.equal(tile.style.width,"48px");assert.equal(tile.style.height,"48px");assert.equal(tile.style.imageRendering,"pixelated");}
     assert.match(text(h.host),/Kenney Tiny Dungeon/);
-    assert.match(text(h.doc.head),/align-items: center/);assert.match(text(h.doc.head),/font-size: 36px/);
+    assert.match(text(h.doc.head),/#screen-host \{[^}]*align-items: safe center; justify-content: safe center/);assert.match(text(h.doc.head),/font-size: 36px/);
   } finally {h.screens.destroy();}
 });
