@@ -1001,6 +1001,8 @@ class UIServer:
                 for event in snapshot:
                     if event.type == "approval_requested":
                         pending = event
+                    elif event.type == "run_finished":
+                        pending = None
                     elif (
                         event.type == "approval_answered"
                         and pending is not None

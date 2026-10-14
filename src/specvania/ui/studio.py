@@ -30,7 +30,13 @@ from specvania.provider.client import (
     probe_party,
 )
 from specvania.run.bus import EventBus
-from specvania.run.engine import Engine, EngineError, PauseDecision, rebuild_run_state
+from specvania.run.engine import (
+    Engine,
+    EngineError,
+    PauseDecision,
+    RunCancelled,
+    rebuild_run_state,
+)
 from specvania.run.events import (
     ApprovalRequested,
     Event,
@@ -79,17 +85,17 @@ class StudioError(ControlError):
 
 
 class _RunProvider:
-    """Cancellation reaches the engine's existing provider-error/abort path."""
+    """Cancellation unwinds to the engine without recording a provider failure."""
 
     def __init__(self, provider: Provider, cancelled: ThreadEvent) -> None:
         self.provider, self.cancelled = provider, cancelled
 
     def complete(self, model: str, messages: Sequence[ChatMessage]) -> Completion:
         if self.cancelled.is_set():
-            raise ProviderError(status=400)
+            raise RunCancelled()
         result = self.provider.complete(model, messages)
         if self.cancelled.is_set():
-            raise ProviderError(status=400)
+            raise RunCancelled()
         return result
 
     def list_models(self) -> tuple[str, ...]:
@@ -102,8 +108,8 @@ class _StudioResponder(DesktopResponder):
         self.cancelled = cancelled
 
     def poll(self) -> None:
-        if self.cancelled.is_set() and (pending := self.pending) is not None:
-            self.answer(pending.request_id, False)
+        if self.cancelled.is_set():
+            raise RunCancelled()
 
 
 class Studio:

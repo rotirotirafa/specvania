@@ -14,6 +14,12 @@ Every change to the spec's intent, logged before the commit that introduces it. 
 
 ## Entries
 
+### DEV-015 · 2026-10-14 · T27
+**What changed:** Stopping a run from the studio raises `RunCancelled`; the engine finishes the run as aborted with no `run_paused`, no synthetic `model_call` (HTTP 400) and no `approval_answered` denial for a pending approval.
+**Why:** The owner's T23 dogfood run recorded a fake "Provider call failed (HTTP 400); check provider configuration" pause and model call when the desktop app quit, which misled diagnosis.
+**Impact:** T11 engine, T27 studio cancellation. `run_finished` now clears an unanswered approval from the folded run state (`state.py`) and from the server's transient `approval_request` on connect (`server.py`, T14/T20 projection). Event types and fields unchanged; aborted runs keep their working tree.
+**Approved by:** owner, 2026-10-14
+
 ### DEV-014 · 2026-10-14 · T07
 **What changed:** the Mage's Clarify/spec inputs and the Warrior's attempt context include `config.gates`; the spec and Warrior prompts require every room to leave the gates passing (tests live with the behavior they cover; the first room installs what the gates need).
 **Why:** the owner's T23 dogfood run — the map put tests only in T02 while `uv run pytest -q` ran after T01; pytest exit 5 (no tests collected) failed T01 on every attempt, and attempt 1 also failed because pytest was not installed.

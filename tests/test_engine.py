@@ -15,14 +15,20 @@ import pytest
 from typer.testing import CliRunner
 
 from specvania import cli
-from specvania.agent.approval import ScriptedResponder, TerminalResponder
+from specvania.agent.approval import (
+    ApprovalResolution,
+    DesktopResponder,
+    ScriptedResponder,
+    TerminalResponder,
+)
+from specvania.agent.gates import GateExecution, GateRunner
 from specvania.clock import FakeClock
 from specvania.config import Config, LimitsConfig, RolesConfig
 from specvania.ledger.repo import Ledger
 from specvania.provider.client import Completion, ProviderError
 from specvania.provider.fake import ScriptedProvider
 from specvania.run.bus import EventBus
-from specvania.run.engine import Engine, PauseDecision, rebuild_run_state
+from specvania.run.engine import Engine, PauseDecision, RunCancelled, rebuild_run_state
 from specvania.run.events import (
     Action,
     RedactionGuard,
@@ -344,6 +350,136 @@ def test_abort_finishes_run_with_aborted_status(harness: Harness) -> None:
     events = harness.ledger.list_events(engine.run_id)
     assert events[-2].type == "run_paused" and events[-1].type == "run_finished"
     assert not any(e.type == "room_cleared" for e in events)
+
+
+@pytest.mark.parametrize("stage", ["warrior", "room_review", "boss_review"])
+def test_provider_cancellation_aborts_without_pause_or_synthetic_call(
+    harness: Harness, stage: str
+) -> None:
+    directory = write_world(harness.root, [("T01", "A1", ())])
+
+    def cancel() -> Completion:
+        raise RunCancelled()
+
+    script: list[Reply] = [
+        action("write_file", path="T01.txt", content="inspect this\n"),
+        action("write_file", path="partial.txt", content="keep this\n"),
+    ]
+    if stage != "warrior":
+        script.append(action())
+    if stage == "boss_review":
+        script.append(review())
+    engine = harness.engine([*script, cancel])
+    state = engine.run(directory)
+    events = harness.ledger.list_events(engine.run_id)
+    run = harness.ledger.get_run(engine.run_id)
+    assert state == rebuild_run_state(harness.ledger, engine.run_id)
+    assert state.status == run.status == "aborted" and run.finished_at is not None
+    assert events[-1].type == "run_finished" and events[-1].status == "aborted"
+    assert sum(e.type == "run_finished" for e in events) == 1
+    assert not any(e.type == "run_paused" for e in events)
+    calls = [e for e in events if e.type == "model_call"]
+    assert len(calls) == run.calls == len(script)
+    assert all(e.status == 200 for e in calls)
+    assert (harness.root / "T01.txt").read_text() == "inspect this\n"
+    assert (harness.root / "partial.txt").read_text() == "keep this\n"
+    assert git(harness.root, "stash", "list") == ""
+    if stage != "boss_review":
+        assert git(harness.root, "show", "HEAD:T01.txt") == "original"
+        assert not any(e.type == "room_cleared" for e in events)
+
+
+@pytest.mark.parametrize("stage", ["room", "boss"])
+def test_gate_cancellation_aborts_without_pause(
+    harness: Harness, monkeypatch: pytest.MonkeyPatch, stage: str
+) -> None:
+    directory = write_world(harness.root, [("T01", "A1", ())])
+    engine = harness.engine(success("T01"))
+    calls = 0
+
+    def gates(self: GateRunner, room_id: str) -> tuple[GateExecution, ...]:
+        nonlocal calls
+        calls += 1
+        if calls == (1 if stage == "room" else 2):
+            raise RunCancelled()
+        return ()
+
+    monkeypatch.setattr(GateRunner, "run", gates)
+    assert engine.run(directory).status == "aborted"
+    events = harness.ledger.list_events(engine.run_id)
+    assert events[-1].type == "run_finished" and events[-1].status == "aborted"
+    assert sum(e.type == "run_finished" for e in events) == 1
+    assert not any(e.type == "run_paused" for e in events)
+
+
+@pytest.mark.parametrize("stage", ["budget", "room", "boss"])
+def test_decision_cancellation_aborts_without_another_pause_or_call(
+    harness: Harness, stage: str
+) -> None:
+    directory = write_world(harness.root, [("T01", "A1", ())])
+    settings = config(lives=1)
+    script: list[Reply] = [action()]
+    if stage == "budget":
+        settings.limits.token_budget = 5
+    elif stage == "room":
+        script.append(review(False))
+    else:
+        script.extend([review(), boss(passed=False)])
+
+    def decide(pause: RunPaused) -> PauseDecision:
+        raise RunCancelled()
+
+    engine = harness.engine(script, settings=settings, decide=decide)
+    assert engine.run(directory).status == "aborted"
+    events = harness.ledger.list_events(engine.run_id)
+    assert events[-2].type == "run_paused"
+    assert events[-1].type == "run_finished" and events[-1].status == "aborted"
+    assert sum(e.type == "run_finished" for e in events) == 1
+    assert sum(e.type == "run_paused" for e in events) == 1
+    assert sum(e.type == "model_call" for e in events) == len(script)
+
+
+def test_approval_cancellation_aborts_without_answer_and_cleans_responders(
+    harness: Harness,
+) -> None:
+    directory = write_world(harness.root, [("T01", "A1", ())])
+    cancelled: list[tuple[str, ApprovalResolution | None]] = []
+
+    class CancelResponder(DesktopResponder):
+        def poll(self) -> None:
+            raise RunCancelled()
+
+        def cancel(
+            self, request_id: str, resolution: ApprovalResolution | None
+        ) -> None:
+            cancelled.append((request_id, resolution))
+            super().cancel(request_id, resolution)
+
+    responder = CancelResponder()
+    reader, writer = os.pipe()
+    terminal = TerminalResponder(reader, lambda message: None)
+    engine = harness.engine(
+        [action("run_shell", command="printf NEVER > should-not-exist.txt")]
+    )
+    engine.responders = (terminal, responder)
+    try:
+        state = engine.run(directory)
+        assert state.status == harness.ledger.get_run(engine.run_id).status == "aborted"
+        events = harness.ledger.list_events(engine.run_id)
+        requested = next(e for e in events if e.type == "approval_requested")
+        assert events[-1].type == "run_finished" and events[-1].status == "aborted"
+        assert sum(e.type == "run_finished" for e in events) == 1
+        assert not any(e.type in ("approval_answered", "run_paused") for e in events)
+        assert sum(e.type == "model_call" for e in events) == 1
+        assert cancelled == [(requested.request_id, None)]
+        assert responder.pending is None and os.get_blocking(reader)
+        assert not responder.answer(requested.request_id, True)
+        assert not (harness.root / "should-not-exist.txt").exists()
+        assert state.dialogue is None
+        assert all(member.status == "idle" for member in state.party)
+    finally:
+        os.close(reader)
+        os.close(writer)
 
 
 def test_boss_failure_pause_names_scenario_and_reason(harness: Harness) -> None:

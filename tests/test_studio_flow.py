@@ -6,6 +6,7 @@ import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from threading import Event as ThreadEvent
 from typing import Any
 
 import pytest
@@ -19,11 +20,13 @@ from specvania.config import initialize_config, load_config
 from specvania.ledger import Ledger
 from specvania.provider.client import Completion, ProviderError
 from specvania.provider.fake import ScriptedProvider
-from specvania.run.events import RedactionGuard
+from specvania.run.bus import EventBus
+from specvania.run.events import ApprovalRequested, RedactionGuard, RunFinished
 from specvania.run.gitops import GitOps
+from specvania.run.state import fold_events
 from specvania.sdd.planner import PlanError
 from specvania.ui import studio as studio_module
-from specvania.ui.server import ControlMessage
+from specvania.ui.server import ControlMessage, UIServer
 from specvania.ui.studio import Studio
 
 ORIGIN = "http://127.0.0.1:8765"
@@ -567,6 +570,8 @@ def test_shutdown_real_studio_worker_aborts_pending_run_and_reconnect_restores_a
             assert instance.stopped.wait(5)
     state = instance.snapshot().state
     assert state.status == "aborted" and instance.phase == "finished"
+    assert instance.snapshot().approval_request is None
+    assert instance.server.desktop_responder.pending is None
     assert not (project / "should-not-exist.txt").exists()
     config = load_config(project / ".specvania/config.toml")
     with Ledger.from_config(
@@ -576,6 +581,108 @@ def test_shutdown_real_studio_worker_aborts_pending_run_and_reconnect_restores_a
         events = ledger.list_events(state.run_id)
         assert events[-1].type == "run_finished" and events[-1].status == "aborted"
         assert ledger.get_run(state.run_id).status == "aborted"
+        assert sum(event.type == "run_finished" for event in events) == 1
+        assert sum(event.type == "run_paused" for event in events) == (
+            1 if waiting == "pause" else 0
+        )
+        assert not any(event.type == "approval_answered" for event in events)
+        assert not any(
+            event.type == "model_call" and event.status == 400 for event in events
+        )
+        if waiting == "approval":
+            assert state.dialogue is None
+
+
+@pytest.mark.parametrize("timing", ["before_call", "during_call"])
+def test_shutdown_during_provider_call_aborts_without_provider_failure(
+    project: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    studio_ledger_url: str,
+    timing: str,
+) -> None:
+    monkeypatch.setenv("SPECVANIA_DATABASE_URL", studio_ledger_url)
+    prepare(project)
+    entered = ThreadEvent()
+
+    def provider_call() -> Completion:
+        entered.set()
+        assert instance._cancelled.wait(5)
+        return action()
+
+    instance = make_studio(monkeypatch, [draft(), provider_call])
+    if timing == "before_call":
+        assert instance.server.bus is not None
+        publish = instance.server.bus.publish
+
+        def wait_for_cancel(event: Any) -> None:
+            publish(event)
+            if event.type == "attempt_started":
+                entered.set()
+                assert instance._cancelled.wait(5)
+
+        monkeypatch.setattr(instance.server.bus, "publish", wait_for_cancel)
+
+    with socket(instance) as ws:
+        ready(ws, instance, project)
+        send(ws, instance, "save_world", slug="build-work")
+        receive(ws, "studio_state", phase="world_ready")
+        send(ws, instance, "start_run", slug="build-work")
+        assert entered.wait(5)
+        send(ws, instance, "shutdown")
+        assert instance.stopped.wait(5)
+    state = instance.snapshot().state
+    assert state.status == "aborted" and instance.phase == "finished"
+    info = instance.info()
+    assert info is not None and info.error is None and info.pause_request is None
+    assert state.run_id is not None
+    config = load_config(project / ".specvania/config.toml")
+    with Ledger.from_config(
+        project, config.ledger, clock=instance.clock, guard=instance.guard
+    ) as ledger:
+        events = ledger.list_events(state.run_id)
+        assert events[-1].type == "run_finished" and events[-1].status == "aborted"
+        assert sum(event.type == "run_finished" for event in events) == 1
+        assert not any(event.type in ("run_paused", "model_call") for event in events)
+        assert ledger.get_run(state.run_id).status == "aborted"
+
+
+@pytest.mark.parametrize("projection", ["state", "server"])
+def test_aborted_unanswered_approval_is_not_pending_in_projection(
+    projection: str,
+) -> None:
+    clock = CooperativeClock()
+    events = (
+        ApprovalRequested(
+            ts=clock.now(),
+            run_id="cancelled",
+            seq=1,
+            request_id="pending",
+            command="printf NEVER",
+            cwd="/repo",
+        ),
+        RunFinished(ts=clock.now(), run_id="cancelled", seq=2, status="aborted"),
+    )
+    if projection == "state":
+        state = fold_events(events)
+        assert state.status == "aborted" and state.dialogue is None
+    else:
+        guard = RedactionGuard()
+        server = UIServer(
+            guard=guard,
+            clock=clock,
+            run_id="cancelled",
+            port=8765,
+            bus=EventBus(guard),
+            live_snapshot=lambda: events,
+        )
+        with TestClient(server.app, base_url=ORIGIN) as client:
+            with client.websocket_connect(
+                f"ws://127.0.0.1:8765/ws?view_token={server.view_token}",
+                headers={"Origin": ORIGIN},
+            ) as ws:
+                snapshot = ws.receive_json()
+                assert snapshot["state"]["status"] == "aborted"
+                assert snapshot["approval_request"] is None
 
 
 def test_transient_clarify_and_events_keep_summary_limits_and_no_model_output(

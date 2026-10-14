@@ -57,6 +57,10 @@ class EngineError(Exception):
     """A run cannot proceed; the player can fix its inputs."""
 
 
+class RunCancelled(Exception):
+    """The player stopped the run; finish as aborted without a pause."""
+
+
 class _StaminaStop(Exception):
     """Unwind the pending call without treating a player pause as a failure."""
 
@@ -470,33 +474,33 @@ class Engine:
         remaining = {room.id: room for room in world.rooms}
         cleared: set[str] = set()
         fought: set[str] = set()
-        while remaining:
-            ready = [r for r in remaining.values() if set(r.depends_on) <= cleared]
-            if not ready:
-                break  # Skipped sources keep their dependent rooms locked.
-            room = min(ready, key=lambda r: r.id)
-            try:
+        try:
+            while remaining:
+                ready = [r for r in remaining.values() if set(r.depends_on) <= cleared]
+                if not ready:
+                    break  # Skipped sources keep their dependent rooms locked.
+                room = min(ready, key=lambda r: r.id)
                 outcome = self._room(
                     room, spec_md[: self.config.limits.observation_kb * 1024]
                 )
-            except _StaminaStop:
-                return rebuild_run_state(self.ledger, self.run_id)
-            if outcome is None:
-                return rebuild_run_state(self.ledger, self.run_id)
-            del remaining[room.id]
-            if outcome == "cleared":
-                cleared.add(room.id)
-            for area in world.areas:
-                if area.id in fought or not area.boss:
-                    continue
-                area_rooms = {r.id for r in world.rooms if r.area_id == area.id}
-                if area_rooms and area_rooms <= cleared:
-                    fought.add(area.id)
-                    try:
+                if outcome is None:
+                    return rebuild_run_state(self.ledger, self.run_id)
+                del remaining[room.id]
+                if outcome == "cleared":
+                    cleared.add(room.id)
+                for area in world.areas:
+                    if area.id in fought or not area.boss:
+                        continue
+                    area_rooms = {r.id for r in world.rooms if r.area_id == area.id}
+                    if area_rooms and area_rooms <= cleared:
+                        fought.add(area.id)
                         passed = self._boss(area, world, room.id)
-                    except _StaminaStop:
-                        return rebuild_run_state(self.ledger, self.run_id)
-                    if not passed:
-                        return rebuild_run_state(self.ledger, self.run_id)
-        self._finish("finished")
+                        if not passed:
+                            return rebuild_run_state(self.ledger, self.run_id)
+        except RunCancelled:
+            self._finish("aborted")
+        except _StaminaStop:
+            pass
+        else:
+            self._finish("finished")
         return rebuild_run_state(self.ledger, self.run_id)

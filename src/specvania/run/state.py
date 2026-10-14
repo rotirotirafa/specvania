@@ -361,6 +361,8 @@ def fold_events(events: Iterable[Event]) -> RunState:
                 state = state.model_copy(
                     update={"status": event.status, "reason": None, "active_room": None}
                 )
+                if isinstance(state.dialogue, ApprovalRequested):
+                    state = state.model_copy(update={"dialogue": None})
         for role, status in _party_statuses(event).items():
             member = party.get(role, PartyMember(role=role, model=""))
             party[role] = member.model_copy(update={"status": status})

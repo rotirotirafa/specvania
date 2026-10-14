@@ -10,8 +10,8 @@ from starlette.testclient import TestClient, WebSocketDenialResponse
 from test_engine import Harness, write_world
 
 from specvania.clock import FakeClock
-from specvania.provider.client import Completion, ProviderError
-from specvania.run.engine import rebuild_run_state
+from specvania.provider.client import Completion
+from specvania.run.engine import RunCancelled, rebuild_run_state
 from specvania.run.events import RedactionGuard
 from specvania.ui.server import Shutdown, StudioPhase, TokenLogFormatter
 from specvania.ui.studio import Studio, StudioError
@@ -126,7 +126,7 @@ def test_shutdown_active_worker_finishes_through_engine_and_ledger(
     def provider_call() -> Completion:
         entered.set()
         assert cancelled.wait(5)
-        raise ProviderError(status=400)
+        raise RunCancelled()
 
     engine = harness.engine(
         [provider_call], decide=lambda pause: "abort" if cancelled.is_set() else None
@@ -168,6 +168,8 @@ def test_shutdown_active_worker_finishes_through_engine_and_ledger(
         assert not worker.is_alive()
         events = harness.ledger.list_events(engine.run_id)
         assert events[-1].type == "run_finished" and events[-1].status == "aborted"
+        assert sum(event.type == "run_finished" for event in events) == 1
+        assert not any(event.type in ("run_paused", "model_call") for event in events)
         assert harness.ledger.get_run(engine.run_id).status == "aborted"
         assert instance.phase == "finished"
         summary = (
@@ -242,8 +244,7 @@ if sys.argv[4] == "True":
     from specvania.clock import FakeClock
     from specvania.ledger import Ledger
     from specvania.provider.fake import ScriptedProvider
-    from specvania.provider.client import ProviderError
-    from specvania.run.engine import Engine, rebuild_run_state
+    from specvania.run.engine import Engine, RunCancelled, rebuild_run_state
     from specvania.run.events import RedactionGuard
     from test_engine import config
     root = Path(sys.argv[2])
@@ -258,7 +259,7 @@ if sys.argv[4] == "True":
         def blocked_call():
             entered.set()
             assert cancelled.wait(10)
-            raise ProviderError(status=400)
+            raise RunCancelled()
         engine = Engine(root=root, config=config(),
             provider=ScriptedProvider([blocked_call]), ledger=ledger,
             bus=instance.server.bus, clock=clock,
@@ -277,6 +278,8 @@ if sys.argv[4] == "True":
     assert not make_studio.worker.is_alive()
     events = ledger.list_events(make_studio.engine.run_id)
     assert events[-1].type == "run_finished" and events[-1].status == "aborted"
+    assert sum(event.type == "run_finished" for event in events) == 1
+    assert not any(event.type in ("run_paused", "model_call") for event in events)
     assert ledger.get_run(make_studio.engine.run_id).status == "aborted"
     ledger.close()
 
