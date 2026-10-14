@@ -246,7 +246,7 @@ def plan(
             name: sandbox.resolve(f".specvania/specs/{slug}/{name}")
             for name in ("spec.md", "tasks.md", "spec.draft.md", "tasks.draft.md")
         }
-        context = {"idea": idea, **_context(root, sandbox)}
+        context = {"idea": idea, "gates": list(config.gates), **_context(root, sandbox)}
         if bug is not None:
             context["bug"] = bug.model_dump()
         answers: list[dict[str, str]] = []

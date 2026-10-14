@@ -1,7 +1,7 @@
 """Bounded synchronous Warrior attempts using the T08 tools and T05 router."""
 
 import os
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from importlib.resources import files
 from pathlib import Path
 from typing import Literal
@@ -51,6 +51,7 @@ class AttemptContext(FrozenModel):
     repo_map: tuple[str, ...]
     room_files: tuple[ContextFile, ...]
     feedback: str
+    gates: tuple[str, ...]
 
 
 class AttemptResult(FrozenModel):
@@ -82,6 +83,7 @@ class Executor:
         clock: Clock,
         run_id: str,
         emit: Callable[[Event], None],
+        gates: Sequence[str] = (),
     ) -> None:
         self._router = router
         self._tools = tools
@@ -90,6 +92,7 @@ class Executor:
         self._clock = clock
         self._run_id = run_id
         self._emit = emit
+        self._gates = tuple(gates)
 
     def _repo_files(self) -> Iterator[str]:
         resolve = self._sandbox.walk_resolver()
@@ -164,6 +167,7 @@ class Executor:
                 for name in selected
             ),
             feedback=feedback,
+            gates=self._gates,
         )
 
     def _dispatch(self, action: Action) -> Observation:

@@ -262,6 +262,7 @@ class Engine:
                 clock=self.clock,
                 run_id=self.run_id,
                 emit=self.emit,
+                gates=self.config.gates,
             ).execute(room, spec_summary=spec_summary, feedback=feedback)
             if result.stop_reason == "router_error":
                 choice = self._pause(result.reason, room.id)

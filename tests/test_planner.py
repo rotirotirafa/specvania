@@ -276,6 +276,7 @@ def execute_plan(
     *,
     answer: Callable[[Question], str] = lambda question: "",
     no_clarify: bool = False,
+    gates: list[str] | None = None,
 ) -> tuple[PlanResult, ScriptedProvider, Ledger]:
     from specvania.config import Config
     from specvania.ledger import Ledger
@@ -292,7 +293,7 @@ def execute_plan(
         result = plan(
             root=tmp_path,
             idea="invoices",
-            config=Config(),
+            config=Config(gates=gates or []),
             provider=provider,
             ledger=ledger,
             clock=clock,
@@ -304,6 +305,25 @@ def execute_plan(
     except BaseException:
         ledger.close()
         raise
+
+
+@pytest.mark.parametrize("gates", [[], ["uv run pytest -q", "ruff check ."]])
+@pytest.mark.parametrize("call_index", [0, 1], ids=["clarify", "spec"])
+def test_mage_requests_include_configured_gates(
+    tmp_path: Path, gates: list[str], call_index: int
+) -> None:
+    _, provider, ledger = execute_plan(
+        tmp_path, [clarify_reply(), world_reply()], gates=gates
+    )
+    with ledger:
+        context = json.loads(provider.calls[call_index].messages[-1].content)
+        assert context["gates"] == gates
+
+
+def test_spec_prompt_mentions_gates(tmp_path: Path) -> None:
+    _, provider, ledger = execute_plan(tmp_path, [world_reply()], no_clarify=True)
+    with ledger:
+        assert "gates" in provider.calls[0].messages[0].content.lower()
 
 
 @pytest.mark.parametrize("count", [1, 5])

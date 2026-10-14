@@ -14,6 +14,12 @@ Every change to the spec's intent, logged before the commit that introduces it. 
 
 ## Entries
 
+### DEV-014 · 2026-10-14 · T07
+**What changed:** the Mage's Clarify/spec inputs and the Warrior's attempt context include `config.gates`; the spec and Warrior prompts require every room to leave the gates passing (tests live with the behavior they cover; the first room installs what the gates need).
+**Why:** the owner's T23 dogfood run — the map put tests only in T02 while `uv run pytest -q` ran after T01; pytest exit 5 (no tests collected) failed T01 on every attempt, and attempt 1 also failed because pytest was not installed.
+**Impact:** T07 planner and prompts, T09 executor/AttemptContext and Warrior prompt, T11 engine wiring. D8 unchanged (gates still run without approval; a Warrior-run gate command still needs approval). No event or config format change.
+**Approved by:** owner, 2026-10-14
+
 ### DEV-013 · 2026-10-13 · T24
 **What changed:** The desktop handshake timeout increases from 20 s to 60 s. Launch and Restart studio show a local, translated starting screen with elapsed seconds and a first-start hint after 10 s, replaced by the game on handshake or the error screen on failure/timeout.
 **Why:** On the owner's machine, the reviewer measured `$SHELL -lic exit` taking up to 9.5 s under load and the full `$SHELL -lic 'exec specvania studio'` path taking 12.9–18.8 s. A fresh install also compiles bytecode on first start; three review sessions hit the 20 s limit.

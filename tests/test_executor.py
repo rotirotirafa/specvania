@@ -1,5 +1,6 @@
 import json
 import subprocess
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -53,6 +54,7 @@ def setup_executor(
     *,
     max_steps: int = 25,
     allow: bool = True,
+    gates: Sequence[str] | None = None,
 ) -> tuple[Executor, ScriptedProvider, list[Event], FakeClock]:
     events: list[Event] = []
     clock = FakeClock()
@@ -96,11 +98,31 @@ def setup_executor(
             clock=clock,
             run_id="run",
             emit=events.append,
+            **({"gates": gates} if gates is not None else {}),
         ),
         provider,
         events,
         clock,
     )
+
+
+@pytest.mark.parametrize(
+    "gates",
+    [["uv run pytest -q", "ruff check ."], ("uv run pytest -q", "ruff check .")],
+    ids=["list", "tuple"],
+)
+def test_attempt_context_includes_gates(tmp_path: Path, gates: Sequence[str]) -> None:
+    executor, provider, _, _ = setup_executor(tmp_path, [reply("finish")], gates=gates)
+    assert executor.execute(room(), spec_summary="summary").status == "finished"
+    context = json.loads(provider.calls[0].messages[1].content)
+    assert context["gates"] == list(gates)
+
+
+def test_attempt_context_defaults_to_no_gates(tmp_path: Path) -> None:
+    executor, provider, _, _ = setup_executor(tmp_path, [reply("finish")])
+    assert executor.execute(room(), spec_summary="summary").status == "finished"
+    context = json.loads(provider.calls[0].messages[1].content)
+    assert context["gates"] == []
 
 
 def test_two_invalid_outputs_are_repaired_then_valid_action_finishes(

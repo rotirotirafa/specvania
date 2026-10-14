@@ -648,6 +648,17 @@ def test_failed_gate_tails_reach_paladin_and_next_warrior_context(
     assert not any(e.type == "approval_requested" for e in events)
 
 
+def test_warrior_request_includes_configured_gates(harness: Harness) -> None:
+    directory = write_world(harness.root, [("T01", "A1", ())])
+    settings = config(gates=["printf tests", "printf lint"])
+    engine = harness.engine(success("T01") + [boss()], settings=settings)
+    assert engine.run(directory).status == "finished"
+    provider = engine.provider
+    assert isinstance(provider, ScriptedProvider)
+    context = json.loads(provider.calls[0].messages[1].content)
+    assert context["gates"] == settings.gates
+
+
 @pytest.mark.parametrize("allow", [True, False])
 def test_model_shell_uses_approval_but_gates_do_not(
     harness: Harness, allow: bool
