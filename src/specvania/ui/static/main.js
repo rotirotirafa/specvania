@@ -61,6 +61,13 @@ function connectRun() {
   socketUrl.protocol = "ws:";
   socketUrl.searchParams.set("view_token", viewToken || "");
   let replayFromStart = false;
+  let replaying = false;
+  const appliedSequences = new Map();
+  const rememberSequence = value => {
+    if (value.run_id && Number.isInteger(value.seq)) {
+      appliedSequences.set(value.run_id, Math.max(appliedSequences.get(value.run_id) || 0, value.seq));
+    }
+  };
   const socket = connectSocket(socketUrl, {shouldReconnect: () => !replayFromStart});
   const screenHost = document.getElementById("screen-host");
   let screens;
@@ -89,6 +96,7 @@ function connectRun() {
   socket.addEventListener("message", ({ data }) => {
     const message = JSON.parse(data);
     if (message.kind === "state") replayFromStart = Boolean(message.replay && !message.phase);
+    if (message.kind === "state" || message.kind === "studio_state") replaying = Boolean(message.replay);
     current = message.kind === "state" || message.kind === "studio_state" || message.kind === "event" ? message : current;
     if (message.kind === "studio_state") {
       window.dispatchEvent(new CustomEvent("specvania:studio-state", {detail: message}));
@@ -97,10 +105,15 @@ function connectRun() {
         window.dispatchEvent(new CustomEvent("specvania:studio-state", { detail: message }));
       }
       if (message.state?.run_id || message.replay) {
-        window.dispatchEvent(new CustomEvent("specvania:state", { detail: message.state }));
+        const stale = !replaying && message.state.seq < (appliedSequences.get(message.state.run_id) || 0);
+        if (!stale) {
+          if (!replaying) rememberSequence(message.state);
+          window.dispatchEvent(new CustomEvent("specvania:state", { detail: message.state }));
+        }
       }
     } else if (message.kind === "event") {
       const event = message.event;
+      if (!replaying) rememberSequence(event);
       window.dispatchEvent(new CustomEvent("specvania:event", { detail: event }));
     }
     render();
