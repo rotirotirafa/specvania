@@ -578,7 +578,7 @@ test("chamber_click_dispatches_dom_room_id_and_M_toggles_same_castle_geometry", 
 test("canvas_fills_windows_and_resizes_with_integer_camera_zoom_in_both_views", async () => {
   const { mountMap } = await load("map/scene.js");
   const { layoutWorld, castleViewZoom } = await load("map/layout.js");
-  const sizes = [[960, 540], [1280, 720], [1920, 1080], [1000, 600]];
+  const sizes = [[960, 540], [1280, 720], [1920, 1080], [1000, 600], [1280, 1000], [1920, 800]];
   const demo = readFileSync(path.join(root, "src/specvania/examples/demo/events.jsonl"), "utf8")
     .trim().split("\n").map(JSON.parse).find(event => event.type === "world_loaded");
   for (const world of [repository, sample, demo]) {

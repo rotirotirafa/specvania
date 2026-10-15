@@ -11,9 +11,17 @@ npm --prefix apps/desktop start -- --url 'http://127.0.0.1:<port>/?view_token=<v
 ```
 
 Once T18 ships, `specvania replay demo` supplies a running map for this visual
-check. The shell requires an HTTP URL on `127.0.0.1`. It opens one frameless 16:9
-window, at least 960×540, with a pixel title bar you can drag. Use your operating
-system's close shortcut (for example Alt+F4 or Cmd+Q) to close the window.
+check. The shell requires an HTTP URL on `127.0.0.1`. It opens one freely resizable
+window, at least 960×540, with native minimize, maximize/full-screen and close
+controls. On macOS the traffic lights sit in the draggable pixel title bar;
+Windows and Linux use a native frame. Double-click the macOS title bar to zoom.
+
+The View menu offers Actual size, Zoom in, Zoom out and Full screen. Use
+Cmd/Ctrl + `0`, `=` or `-` to change page zoom. Window size, position,
+maximized/full-screen state and page zoom are remembered in
+`desktop-window.json` in Electron's user-data directory. A saved position on a
+disconnected display falls back to a centered 960×540 window. This file contains
+no tokens. Packaged builds omit reload and developer tools from the menu.
 
 The Python launcher selects `desktop.path` in config, then `SPECVANIA_DESKTOP`,
 then `specvania-desktop` on PATH, then `/Applications/specvania.app` on macOS.
@@ -27,7 +35,8 @@ T19 does not implement the plan, run or replay commands.
 The control token is passed separately with `--control-token` by the Python
 launcher, then privately through Electron's preload arguments. It is never put
 in a URL or logged. View-only launches can omit it. The preload exposes only
-`window.specvaniaDesktop.isDesktop`, `controlToken()` and `notify(title, body)`;
+`window.specvaniaDesktop.isDesktop`, `platform`, `controlToken()`,
+`notify(title, body)`, `pickFolder()`, `settings` and `studio`;
 it does not expose Node, Electron or arbitrary IPC. Navigation and redirects stay
 on the UI server origin; HTTP(S) `window.open` links go to the system browser.
 Approval controls and event-triggered notifications belong to T20.

@@ -2,9 +2,49 @@
 
 const path = require("node:path");
 const { spawn } = require("node:child_process");
-const { mkdirSync, createWriteStream } = require("node:fs");
+const { mkdirSync, createWriteStream, readFileSync, writeFileSync, renameSync } = require("node:fs");
 const { launchStudio, quitStudio, readSettings, startingPage, connectControl, readAppSettings, writeSettings } = require(path.join(__dirname, "studio.cjs"));
-const { app, BrowserWindow, ipcMain, Notification, shell, dialog } = require("electron");
+const { app, BrowserWindow, ipcMain, Notification, shell, dialog, screen, Menu } = require("electron");
+
+function readWindowState(file) {
+  const defaults = { bounds: { width: 960, height: 540, center: true }, maximized: false, fullScreen: false, zoomLevel: 0 };
+  try {
+    const value = JSON.parse(readFileSync(file, "utf8"));
+    const { x, y, width, height } = value.bounds;
+    if (![x, y, width, height].every(Number.isSafeInteger) || width < 960 || height < 540 ||
+        typeof value.maximized !== "boolean" || typeof value.fullScreen !== "boolean" ||
+        !Number.isFinite(value.zoomLevel) || Math.abs(value.zoomLevel) > 10) return defaults;
+    // At least a draggable part of the title bar must remain on a display.
+    const visible = screen.getAllDisplays().some(({ workArea: area }) =>
+      Math.min(x + width, area.x + area.width) - Math.max(x, area.x) >= 80 &&
+      y >= area.y && y + 32 <= area.y + area.height);
+    return { bounds: visible ? { x, y, width, height } : defaults.bounds,
+      maximized: value.maximized, fullScreen: value.fullScreen, zoomLevel: value.zoomLevel };
+  } catch { return defaults; }
+}
+
+function installMenu() {
+  const mac = process.platform === "darwin";
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    { ...(mac ? { role: "appMenu" } : { label: app.name }), submenu: [
+      { role: "about" }, { type: "separator" },
+      ...(mac ? [{ role: "hide" }, { role: "hideOthers" }, { role: "unhide" }, { type: "separator" }] : []),
+      { role: "quit" },
+    ] },
+    { role: "editMenu", submenu: [
+      { role: "undo" }, { role: "redo" }, { type: "separator" },
+      { role: "cut" }, { role: "copy" }, { role: "paste" }, { role: "selectAll" },
+    ] },
+    { role: "viewMenu", submenu: [
+      { role: "resetZoom", accelerator: "CmdOrCtrl+0" },
+      { role: "zoomIn", accelerator: "CmdOrCtrl+=" },
+      { role: "zoomOut", accelerator: "CmdOrCtrl+-" },
+      { type: "separator" }, { role: "togglefullscreen" },
+      ...(!app.isPackaged ? [{ type: "separator" }, { role: "reload" }, { role: "toggleDevTools" }] : []),
+    ] },
+    { role: "windowMenu", submenu: [{ role: "minimize" }, { role: "zoom" }, { role: "close" }] },
+  ]));
+}
 
 function argument(name, required = false) {
   const index = process.argv.indexOf(name);
@@ -40,13 +80,19 @@ async function openWindow() {
   if (launchUrl && (!target || target.protocol !== "http:" || target.hostname !== "127.0.0.1")) {
     throw new Error("Desktop needs the loopback UI URL.");
   }
+  const userData = app.getPath("userData");
+  const stateFile = path.join(userData, "desktop-window.json");
+  const saved = readWindowState(stateFile);
   const window = new BrowserWindow({
-    width: 960,
-    height: 540,
+    ...saved.bounds,
     minWidth: 960,
     minHeight: 540,
-    useContentSize: true,
-    frame: false,
+    frame: true,
+    ...(process.platform === "darwin" ? { titleBarStyle: "hiddenInset" } : {}),
+    resizable: true,
+    minimizable: true,
+    maximizable: true,
+    fullscreenable: true,
     title: "specvania",
     webPreferences: {
       contextIsolation: true,
@@ -55,7 +101,33 @@ async function openWindow() {
       preload: path.join(__dirname, "preload.js"),
     },
   });
-  window.setAspectRatio(16 / 9);
+  let zoomLevel = saved.zoomLevel, loaded = false;
+  window.webContents.on("did-start-navigation", (_event, _url, _inPlace, mainFrame) => {
+    if (mainFrame && loaded) zoomLevel = window.webContents.getZoomLevel();
+  });
+  window.webContents.on("did-finish-load", () => {
+    window.webContents.setZoomLevel(zoomLevel);
+    loaded = true;
+  });
+  const saveWindowState = () => {
+    try {
+      // getNormalBounds is stable while maximized/full screen. Persist only
+      // numeric geometry and flags, never launch arguments, URLs or tokens.
+      const { x, y, width, height } = window.getNormalBounds();
+      const state = { bounds: { x, y, width, height }, maximized: window.isMaximized(),
+        fullScreen: window.isFullScreen(), zoomLevel: window.webContents.getZoomLevel() };
+      mkdirSync(userData, { recursive: true });
+      writeFileSync(stateFile + ".tmp", JSON.stringify(state), { mode: 0o600 });
+      renameSync(stateFile + ".tmp", stateFile);
+    } catch { /* A closed window or unwritable preferences must not stop play. */ }
+  };
+  for (const event of ["resize", "move", "maximize", "unmaximize", "enter-full-screen", "leave-full-screen", "close"]) {
+    window.on(event, saveWindowState);
+  }
+  app.on("before-quit", saveWindowState);
+  if (saved.maximized) window.maximize();
+  if (saved.fullScreen) window.setFullScreen(true);
+  installMenu();
   const sameOrigin = (value) => {
     if (startupUrl && value === startupUrl) return true;
     const url = safeUrl(value, controlToken);

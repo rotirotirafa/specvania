@@ -202,11 +202,11 @@ for(const [language,long,short] of [["en","37.8","0.7"],["pt-BR","37,8","0,7"]])
 }
 function preload() {
   let api;const calls=[];
-  vm.runInNewContext(fs.readFileSync(path.join(desktop,"preload.js"),"utf8"),{require:()=>({contextBridge:{exposeInMainWorld:(_,value)=>{api=value;}},ipcRenderer:{sendSync:()=>"control",send:(...a)=>calls.push(a),invoke:async(...a)=>{calls.push(a);return a;}}})});
+  vm.runInNewContext(fs.readFileSync(path.join(desktop,"preload.js"),"utf8"),{process:{platform:"darwin"},require:()=>({contextBridge:{exposeInMainWorld:(_,value)=>{api=value;}},ipcRenderer:{sendSync:()=>"control",send:(...a)=>calls.push(a),invoke:async(...a)=>{calls.push(a);return a;}}})});
   return {api,calls};
 }
 test("preload_exact_capabilities_use_narrow_ipc",async()=>{
-  const {api,calls}=preload();assert.deepEqual(Object.keys(api).sort(),["controlToken","isDesktop","notify","pickFolder","settings","studio"]);
+  const {api,calls}=preload();assert.deepEqual(Object.keys(api).sort(),["controlToken","isDesktop","notify","pickFolder","platform","settings","studio"]);
   await api.pickFolder();await api.settings.get();await api.settings.set({tokenBudget:10});await api.studio.get();await api.studio.restart();
   assert.deepEqual(calls.map(c=>c[0]),["specvania:pick-folder","specvania:settings-get","specvania:settings-set","specvania:studio","specvania:studio-restart"]);
 });
@@ -214,9 +214,12 @@ async function main(directory) {
   const app=new EventEmitter();app.getPath=()=>directory;app.whenReady=()=>Promise.resolve();app.quit=()=>{};app.exit=()=>assert.fail("main failed");
   const ipcMain=new EventEmitter();const handlers=new Map();ipcMain.handle=(key,fn)=>handlers.set(key,fn);
   let window;const dialogs=[];
-  class BrowserWindow {constructor(){window=this;this.webContents=new EventEmitter();this.webContents.setWindowOpenHandler=()=>{};}setAspectRatio(){}loadURL(url){this.url=url;return Promise.resolve();}}
+  class BrowserWindow extends EventEmitter {
+    constructor(options){super();window=this;this.options=options;this.webContents=new EventEmitter();this.webContents.setWindowOpenHandler=()=>{};this.webContents.getZoomLevel=()=>0;this.webContents.setZoomLevel=()=>{};}
+    loadURL(url){this.url=url;this.webContents.emit("did-finish-load");return Promise.resolve();}
+  }
   vm.runInNewContext(fs.readFileSync(path.join(desktop,"main.js"),"utf8"),{__dirname:desktop,URL,process:{argv:["electron",".","--url","http://127.0.0.1:8765/","--control-token","control"]},console,
-    require:name=>name==="electron"?{app,BrowserWindow,ipcMain,Notification:{},shell:{},dialog:{showOpenDialog:async(...args)=>{dialogs.push(args);return {canceled:false,filePaths:["/chosen"]};}}}:require(name)});
+    require:name=>name==="electron"?{app,BrowserWindow,ipcMain,Notification:{},shell:{},Menu:{buildFromTemplate:v=>v,setApplicationMenu(){}},screen:{getAllDisplays:()=>[{workArea:{x:0,y:0,width:1920,height:1080}}]},dialog:{showOpenDialog:async(...args)=>{dialogs.push(args);return {canceled:false,filePaths:["/chosen"]};}}}:require(name)});
   await new Promise(resolve=>setImmediate(resolve));
   return {handlers,dialogs,trusted:{sender:window.webContents,senderFrame:{url:window.url}},foreign:{sender:window.webContents,senderFrame:{url:"https://evil.invalid"}}};
 }

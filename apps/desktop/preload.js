@@ -6,6 +6,7 @@ function exposeDesktop() {
   const token = ipcRenderer.sendSync("specvania:control-token") || "";
   contextBridge.exposeInMainWorld("specvaniaDesktop", {
     isDesktop: true,
+    platform: process.platform,
     controlToken: () => token,
     pickFolder: () => ipcRenderer.invoke("specvania:pick-folder"),
     settings: {

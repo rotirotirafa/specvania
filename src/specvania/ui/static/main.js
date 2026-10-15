@@ -35,7 +35,8 @@ bindDocument(document);
 
 if (window.specvaniaDesktop) {
   const font = document.createElement("style");
-  font.textContent = `@font-face { font-family: SpecvaniaPixel; src: url("./vendor/fonts/PressStart2P-Regular.ttf"); }`;
+  font.textContent = `@font-face { font-family: SpecvaniaPixel; src: url("./vendor/fonts/PressStart2P-Regular.ttf"); }
+    #desktop-title-bar :is(button, a, input, select, textarea, [role=button], [contenteditable=true]) { -webkit-app-region: no-drag; }`;
   document.head.append(font);
   const titleBar = document.createElement("header");
   titleBar.id = "desktop-title-bar";
@@ -46,6 +47,9 @@ if (window.specvaniaDesktop) {
     fontFamily: "SpecvaniaPixel, monospace",
     fontSize: "8px",
     padding: "8px",
+    paddingLeft: window.specvaniaDesktop.platform === "darwin" ? "80px" : "8px",
+    boxSizing: "border-box",
+    height: "32px",
     color: UI_COLORS.text,
     backgroundColor: UI_COLORS.surface,
     borderBottom: `2px solid ${UI_COLORS.border}`,

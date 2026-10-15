@@ -133,11 +133,11 @@ test("notification_main_process_checks_actual_window_focus_and_notification_supp
   const ipcMain = new EventEmitter();
   const app = new EventEmitter();
   app.whenReady = () => Promise.resolve();
+  app.getPath = () => path.join(require("node:os").tmpdir(), "sv-notification-no-state");
   app.exit = () => assert.fail("Main failed");
   app.quit = () => {};
-  class BrowserWindow {
-    constructor() { window = this; this.focused = false; this.webContents = new EventEmitter(); this.webContents.setWindowOpenHandler = () => {}; }
-    setAspectRatio() {}
+  class BrowserWindow extends EventEmitter {
+    constructor() { super(); window = this; this.focused = false; this.webContents = new EventEmitter(); this.webContents.setWindowOpenHandler = () => {}; }
     isFocused() { return this.focused; }
     loadURL() { return Promise.resolve(); }
   }
@@ -147,7 +147,7 @@ test("notification_main_process_checks_actual_window_focus_and_notification_supp
     show() { notices.push(this.message); }
   }
   vm.runInNewContext(readFileSync(path.join(root, "apps/desktop/main.js"), "utf8"), {
-    require: name => name === "electron" ? { app, BrowserWindow, ipcMain, Notification, shell: {} } : require(name),
+    require: name => name === "electron" ? { app, BrowserWindow, ipcMain, Notification, shell: {}, Menu: {buildFromTemplate: value => value, setApplicationMenu() {}} } : require(name),
     process: { argv: ["electron", ".", "--url", "http://127.0.0.1:8765/?view_token=view", "--control-token", token] },
     __dirname: path.join(root, "apps/desktop"), URL, console,
   });

@@ -14,6 +14,12 @@ Every change to the spec's intent, logged before the commit that introduces it. 
 
 ## Entries
 
+### DEV-018 · 2026-10-15 · T19
+**What changed:** T19's frameless 16:9 window becomes a standard, freely resizable desktop window with native controls: macOS uses `titleBarStyle: "hiddenInset"` over the pixel title bar, with space for the traffic lights; Windows and Linux use a native frame. The aspect lock is removed, the minimum stays 960×540, and size, position, maximized/full-screen state and page zoom are validated and saved in `userData/desktop-window.json`, with a centered default for an unreachable saved position. An explicit application/Edit/View/Window menu supplies native editing, zoom and window roles; packaged builds have no reload or developer-tools menu items.
+**Why:** The owner's T23 dogfood report found no minimize or maximize/full-screen buttons and no configurable window size. On 2026-10-15 the owner explicitly chose a standard macOS window.
+**Impact:** T19 window setup and tests; T33 pixel title bar padding/drag region and preload allowlist (one added `platform` string); T38 packaged menu behavior. Desktop regression tests cover per-platform controls, free resize at 1280×1000 and 1920×800, state/zoom persistence, invalid/off-screen state and menu roles. No token is stored in window state; no task checklist is changed.
+**Approved by:** owner, 2026-10-15
+
 ### DEV-017 · 2026-10-14 · T20
 **What changed:** when denying a model-proposed command in the desktop window the player may add an optional reason (≤200 characters); it is stored in `approval_answered.reason` and the Warrior's observation becomes "denied by user: <reason>". Terminal answers are unchanged.
 **Why:** the owner's T23 dogfood run — the player denied a syntactically corrupted script and had no way to tell the Warrior why.

@@ -7,7 +7,8 @@ const path = require("node:path");
 
 test("pixel_title_bar_appears_only_in_desktop_and_does_not_read_control_token", async () => {
   const main = pathToFileURL(path.resolve(__dirname, "../../src/specvania/ui/static/main.js"));
-  for (const isDesktop of [false, true]) {
+  for (const platform of [null, "darwin", "win32", "linux"]) {
+    const isDesktop = platform !== null;
     const elements = [];
     const connection = {};
     const runState = {};
@@ -15,7 +16,7 @@ test("pixel_title_bar_appears_only_in_desktop_and_does_not_read_control_token", 
     global.window = {
       location: { href: "http://127.0.0.1:8765/?view_token=watch", search: "?view_token=watch" },
       dispatchEvent() {},
-      ...(isDesktop ? { specvaniaDesktop: { isDesktop: true, controlToken() { assert.fail("title bar requested control token"); } } } : {}),
+      ...(isDesktop ? { specvaniaDesktop: { isDesktop: true, platform, controlToken() { assert.fail("title bar requested control token"); } } } : {}),
     };
     global.document = {
       getElementById(id) { return id === "connection" ? connection : id === "run-state" ? runState : null; },
@@ -28,7 +29,7 @@ test("pixel_title_bar_appears_only_in_desktop_and_does_not_read_control_token", 
       addEventListener(name, listener) { listeners[name] = listener; }
     };
     try {
-      await import(`${main.href}?desktop=${isDesktop}`);
+      await import(`${main.href}?desktop=${platform}`);
       const bars = elements.filter((element) => element.id === "desktop-title-bar");
       assert.equal(bars.length, isDesktop ? 1 : 0);
       if (isDesktop) {
@@ -37,6 +38,9 @@ test("pixel_title_bar_appears_only_in_desktop_and_does_not_read_control_token", 
         assert.equal(bar.style.webkitAppRegion, "drag");
         assert.match(bar.style.fontFamily, /pixel|Press/i);
         assert.ok(bar.style.borderBottom);
+        assert.equal(bar.style.paddingLeft, platform === "darwin" ? "80px" : "8px");
+        assert.equal(bar.style.height, "32px");
+        assert.match(elements.find(element => element.tag === "style").textContent, /#desktop-title-bar.*no-drag/s);
       }
       listeners.open();
       assert.equal(connection.textContent, "Watching the run");

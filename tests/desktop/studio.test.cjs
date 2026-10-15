@@ -142,16 +142,16 @@ for (const failure of ["exit", "timeout", "missing_cli", "command_not_found"]) t
   const ipcMain = new EventEmitter();
   const handlers = new Map(); ipcMain.handle = (name, fn) => handlers.set(name, fn);
   let window;
-  class BrowserWindow {
-    constructor(options) { this.options = options; this.webContents = new EventEmitter(); this.webContents.setWindowOpenHandler = () => {}; window = this; }
-    setAspectRatio() {} isFocused() { return true; } loadURL(url) { pages.push(url); return Promise.resolve(); }
+  class BrowserWindow extends EventEmitter {
+    constructor(options) { super(); this.options = options; this.webContents = new EventEmitter(); this.webContents.setWindowOpenHandler = () => {}; this.webContents.getZoomLevel = () => 0; this.webContents.setZoomLevel = () => {}; window = this; }
+    isFocused() { return true; } loadURL(url) { pages.push(url); this.webContents.emit("did-finish-load"); return Promise.resolve(); }
   }
   try {
     fs.writeFileSync(path.join(directory, "settings.json"), JSON.stringify({ specvaniaPath: "/a path/spec'vania" }));
     assert.equal(studio.readSettings(directory), "/a path/spec'vania");
     vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, "../../apps/desktop/main.js"), "utf8"), {
       require(name) {
-        if (name === "electron") return { app, BrowserWindow, ipcMain, Notification: {}, shell: {} };
+        if (name === "electron") return { app, BrowserWindow, ipcMain, Notification: {}, shell: {}, Menu: {buildFromTemplate: value => value, setApplicationMenu() {}}, screen: {getAllDisplays: () => [{workArea: {x: 0, y: 0, width: 1920, height: 1080}}]} };
         if (name === "node:child_process") return { spawn: (...args) => {
           assert.match(decodeURIComponent(pages.at(-1)), /Starting the studio…/); // Loaded before spawn.
           spawns.push(args); return spawns.length === 1 ? child : replacement;

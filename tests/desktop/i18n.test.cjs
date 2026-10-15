@@ -78,7 +78,8 @@ for (const value of `error-heading error-content error-actions region aria-label
 for (const value of `dirty dialogue-content dialogue-actions dialogue-speaker mage-dialogue aria-modal block aria-selected textarea auto world working idea start_plan clarify listbox save_world planning Enter ArrowDown ArrowUp door_double_left door_double_right`.split(/\s+/)) technical.add(value);
 
 const exact = new Set([
-  '"Press Start 2P", monospace', "SpecvaniaPixel, monospace", "@font-face { font-family: SpecvaniaPixel; src: url(\"./vendor/fonts/PressStart2P-Regular.ttf\"); }",
+  '"Press Start 2P", monospace', "SpecvaniaPixel, monospace", `@font-face { font-family: SpecvaniaPixel; src: url("./vendor/fonts/PressStart2P-Regular.ttf"); }
+    #desktop-title-bar :is(button, a, input, select, textarea, [role=button], [contenteditable=true]) { -webkit-app-region: no-drag; }`,
   "repeat(3, minmax(0, 1fr))", "32px minmax(0, 1fr)", "(prefers-reduced-motion: reduce)", "${}:idle:0", "${}:boss", "\\n", "${}:${}:${}",
   "${}px", "${}%", "${} ${}", "${}\\n${}", "${}:", "${} ", "2px solid ${}", "4px solid ${}", "4px 4px ${}",
   "--${}", "Missing translation: ${}/${}", "role.${}", "status.${}", "room.${}", "event.${}", "responder.${}",
@@ -138,6 +139,8 @@ diagnostics["screens/pause.js"] = ["stamina exhausted", "model chain exhausted",
 const replayTechnical = new Set(`specvaniaDesktop replay-bar replay-dialogue false replay_speed replay_pause close_replay skip retry abort pause`.split(/\s+/));
 for (const value of ["-", " ", "pause.${}"]) replayTechnical.add(value);
 technical.add("open_replay"); technical.add("replaying");
+// Desktop platform identifier and title bar CSS value; never visible prose.
+technical.add("darwin"); technical.add("border-box");
 function approved(value, file) {
   return !value || Object.hasOwn(en, value) || Object.hasOwn(en, `event.${value}`) || technical.has(value) || file === "hud/room-panel.js" && panelTechnical.has(value) || /^(screens\/(pause|boss|end)\.js)$/.test(file) && expeditionTechnical.has(value) || file === "screens/replay.js" && replayTechnical.has(value) || exact.has(value) || diagnostics[file]?.includes(value)
     || /^specvania:[a-z-]+$/.test(value) // internal DOM event names
