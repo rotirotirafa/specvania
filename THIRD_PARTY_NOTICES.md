@@ -5,7 +5,7 @@ Phaser runtime and pixel font below are vendored, unmodified and loaded locally.
 Monaco is trimmed as described below.
 Source URLs describe provenance; the web app does not request them.
 The desktop first-run screen also ships the pack and font with their licenses;
-it works before the separately installed Python CLI can start.
+it works even when the bundled Python runtime cannot start.
 
 ## Kenney Tiny Dungeon
 
@@ -111,3 +111,75 @@ Dungeon sheet above using only Node built-ins; no additional art is included.
   English NLS remains embedded in the core. The codicon font is extracted
   unchanged from the CSS to a same-origin file. The plain diff editor worker
   is unchanged and started by a same-origin wrapper with its ready handshake.
+
+## Bundled CPython
+
+- Name: CPython **3.13.16**
+- License: **PSF License (PSF-2.0)**, including CPython's incorporated notices.
+- Source and license: https://github.com/python/cpython/tree/v3.13.16
+  (`LICENSE` in that source tree).
+- The unmodified install-only Python distribution, its standard library and
+  license files ship under `runtime/` in the desktop app's resources.
+
+## python-build-standalone
+
+- Name: python-build-standalone, release **20261013**, `install_only_stripped`.
+- Build scripts license: **MPL-2.0**; CPython itself keeps the PSF License above.
+- Source and license: https://github.com/astral-sh/python-build-standalone/tree/20261013
+- Release: https://github.com/astral-sh/python-build-standalone/releases/tag/20261013
+- The three archive names and SHA-256 checksums are pinned together in
+  `apps/desktop/runtime.json`. The build verifies them before extraction.
+- The distribution's incorporated library notices and licenses remain with
+  the bundled runtime; build scripts are not shipped as application code.
+
+## Bundled Python packages
+
+The bundled Python packages retain their own licenses, including license files
+in their installed `.dist-info` directories. The runtime installs the frozen
+`uv.lock` dependency set without the Postgres extra or development dependencies.
+The following list includes transitive dependencies for the supported macOS
+and Linux targets; platform markers determine the packages installed per target.
+Versions are recorded in `uv.lock`.
+
+| Package | License |
+|---|---|
+| alembic | MIT |
+| annotated-doc | MIT |
+| annotated-types | MIT |
+| anyio | MIT |
+| click | BSD-3-Clause |
+| fastapi | MIT |
+| h11 | MIT |
+| httpcore2 | BSD-3-Clause |
+| httptools | MIT |
+| httpx2 | BSD-3-Clause |
+| idna | BSD-3-Clause |
+| jiter | MIT |
+| mako | MIT |
+| markdown-it-py | MIT |
+| markupsafe | BSD-3-Clause |
+| mdurl | MIT |
+| openai | Apache-2.0 |
+| opentelemetry-api | Apache-2.0 |
+| pydantic | MIT |
+| pydantic-core | MIT |
+| pygments | BSD-2-Clause |
+| python-dotenv | BSD-3-Clause |
+| pyyaml | MIT |
+| rich | MIT |
+| shellingham | ISC |
+| sniffio | MIT OR Apache-2.0 |
+| sqlalchemy | MIT |
+| starlette | BSD-3-Clause |
+| tomli-w | MIT |
+| truststore | MIT |
+| typer | MIT |
+| typing-extensions | PSF-2.0 |
+| typing-inspection | MIT |
+| uvicorn | BSD-3-Clause |
+| uvloop | MIT |
+| watchfiles | MIT |
+| websockets | BSD-3-Clause |
+
+Python's bootstrap installer pip retains its MIT license and its vendored
+component notices. No installed package's license or notice is stripped.

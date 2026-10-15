@@ -6,10 +6,12 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "check": "node --check main.js && node --check preload.js && node --check studio.cjs && node --test ../../tests/desktop/*.test.cjs",
+    "check": "node --check main.js && node --check preload.js && node --check studio.cjs && node --check scripts/bundle-runtime.cjs && node --check scripts/verify-runtime.cjs && node --test ../../tests/desktop/*.test.cjs",
     "make-icon": "node scripts/make-icon.mjs",
     "dist:mac": "npm run make-icon && electron-builder --mac --publish never",
-    "dist:linux": "npm run make-icon && electron-builder --linux --publish never"
+    "dist:linux": "npm run make-icon && electron-builder --linux --publish never",
+    "bundle-runtime": "node scripts/bundle-runtime.cjs",
+    "runtime:requirements": "mkdir -p build && cd ../.. && uv export --frozen --no-dev --no-emit-project --no-hashes --output-file apps/desktop/build/runtime-requirements.txt"
   },
   "devDependencies": {
     "electron": "44.7.0",

@@ -69,6 +69,9 @@ const technical = new Set(`en pt-BR specvania.language specvania.settings text/j
   data-i18n data-i18n-aria [data-i18n] [data-i18n-aria] .webp .png
   art`.split(/\s+/));
 technical.add("waiting for player");
+// T49 runtime selection identifiers and translated key template, never prose.
+for (const value of ["path", "bundled", "custom"]) technical.add(value);
+
 // T33 DOM/input identifiers, screen names and control protocol values only.
 for (const value of `error.start starting screen-host missingKey inert aria-hidden screen-panel title-castle title-menu title-footer footer absolute true Tab settings init_project probe_party project_open world_ready ok timeout number select option checkbox text title specvania string project open_project probe_result start_run Escape keydown`.split(/\s+/)) technical.add(value);
 // T38 error layout classes and the scroll region's accessible association.
@@ -82,7 +85,7 @@ const exact = new Set([
     #desktop-title-bar :is(button, a, input, select, textarea, [role=button], [contenteditable=true]) { -webkit-app-region: no-drag; }`,
   "repeat(3, minmax(0, 1fr))", "32px minmax(0, 1fr)", "(prefers-reduced-motion: reduce)", "${}:idle:0", "${}:boss", "\\n", "${}:${}:${}",
   "${}px", "${}%", "${} ${}", "${}\\n${}", "${}:", "${} ", "2px solid ${}", "4px solid ${}", "4px 4px ${}",
-  "--${}", "Missing translation: ${}/${}", "role.${}", "status.${}", "room.${}", "event.${}", "responder.${}",
+  "runtime.${}", "--${}", "Missing translation: ${}/${}", "role.${}", "status.${}", "room.${}", "event.${}", "responder.${}",
   ".", "heart:idle:0", "monster:${}", "boss:${}", "♥", "♡", "■", "□", "pre-wrap",
 ]);
 // Technical CSS only: reviewed T33 screen styles, without text content.
@@ -194,6 +197,8 @@ test("static_JS_and_HTML_have_no_untranslated_visible_literals", () => {
   assert.ok(scanJS('node.textContent = "retry";', "screens/replay.js").length);
   // T42's new technical ids remain invalid when used directly as UI prose.
   for (const value of ["M", "retry", "narrator", "view-command"]) assert.ok(scanJS(`node.textContent = "${value}";`, "play/keys.js").length);
+  // Runtime selection identifiers also remain forbidden as direct UI labels.
+  for (const kind of ["path", "bundled", "custom"]) assert.ok(scanJS(`node.textContent = "${kind}";`, "screens/settings.js").length);
   // Prove the scan rejects prose, single words and technical keys in text sinks.
   for (const source of ['const hint = "World map · M";', 'node.textContent = "running";', 'label(document, "h2", "Mage");', 'text("p", `Oops ${id}`);']) assert.ok(scanJS(source,"main.js").length, source);
 });

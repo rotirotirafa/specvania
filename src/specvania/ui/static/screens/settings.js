@@ -30,11 +30,27 @@ export function settingsScreen(ui) {
     save({ tokenBudget });
   });
   budget.min = "1"; budget.max = String(Number.MAX_SAFE_INTEGER); budget.step = "1";
-  field("settings.path", "input", "text", ui.settings.specvaniaPath, node => save({specvaniaPath: node.value}));
+  const specvaniaPath = field("settings.path", "input", "text", ui.settings.specvaniaPath, node => save({specvaniaPath: node.value}));
   ui.text("p", "settings.nextStart");
+  ui.button("runtime.useDefault", () => save({specvaniaPath: "specvania"}));
+  const runtimeLabel = ui.element("p");
+  const runtimePath = ui.element("p");
+  let activeRuntime = {kind: "path"};
+  let destroyed = false;
+  const renderRuntime = () => {
+    const kind = ["bundled", "custom", "path"].includes(activeRuntime.kind) ? activeRuntime.kind : "path";
+    runtimeLabel.textContent = ui.t(`runtime.${kind}`);
+    runtimePath.textContent = kind === "custom" ? activeRuntime.executable || "" : "";
+  };
+  renderRuntime();
+  Promise.resolve(ui.browser.specvaniaDesktop?.studio?.get?.()).then(status => {
+    if (destroyed) return;
+    activeRuntime = status?.runtime || activeRuntime; renderRuntime();
+  }).catch(() => {});
+
   const motion = field("settings.motion", "input", "checkbox", "", node => save({reducedMotion: node.checked}));
   motion.checked = ui.settings.reducedMotion;
   ui.back();
   language.focus();
-  return { render() { language.value = ui.settings.language; renderStatus(); } };
+  return { render() { language.value = ui.settings.language; specvaniaPath.value = ui.settings.specvaniaPath; renderStatus(); renderRuntime(); }, destroy() {destroyed = true;} };
 }

@@ -1,22 +1,64 @@
 {
   "appId": "specvania",
   "productName": "specvania",
-  "directories": {"output": "dist", "buildResources": "build"},
-  "files": ["main.js", "preload.js", "studio.cjs", "build/icon.png", {
-    "from": "../../src/specvania/ui/static",
-    "to": "static",
-    "filter": ["i18n/**", "pixel/palette.js", "pixel/cast.js", "screens/**", "vendor/fonts/**", "vendor/kenney-tiny-dungeon/**"]
-  }],
+  "directories": {
+    "output": "dist",
+    "buildResources": "build"
+  },
+  "files": [
+    "main.js",
+    "preload.js",
+    "studio.cjs",
+    "build/icon.png",
+    {
+      "from": "../../src/specvania/ui/static",
+      "to": "static",
+      "filter": [
+        "i18n/**",
+        "pixel/palette.js",
+        "pixel/cast.js",
+        "screens/**",
+        "vendor/fonts/**",
+        "vendor/kenney-tiny-dungeon/**"
+      ]
+    }
+  ],
   "artifactName": "specvania-${version}-${arch}.${ext}",
   "mac": {
-    "target": [{"target": "dmg", "arch": ["arm64", "x64"]}],
+    "target": [
+      "dmg"
+    ],
     "identity": null,
-    "icon": "build/icon.png"
+    "icon": "build/icon.png",
+    "extraResources": [
+      {
+        "from": "build/runtime/darwin-${arch}",
+        "to": "runtime",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ]
   },
   "linux": {
-    "target": [{"target": "AppImage", "arch": ["x64"]}],
+    "target": [
+      "AppImage"
+    ],
     "icon": "build/icon.png",
     "executableName": "specvania-desktop",
-    "category": "Development"
-  }
+    "category": "Development",
+    "extraResources": [
+      {
+        "from": "build/runtime/linux-${arch}",
+        "to": "runtime",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ]
+  },
+  "dmg": {
+    "format": "UDZO"
+  },
+  "afterPack": "scripts/verify-runtime.cjs"
 }

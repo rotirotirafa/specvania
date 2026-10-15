@@ -23,6 +23,9 @@ htmlcov/
 # Desktop app
 apps/desktop/node_modules/
 apps/desktop/dist/
+apps/desktop/build/runtime/
+apps/desktop/build/runtime-requirements.txt
+apps/desktop/.runtime-cache/
 
 # Secrets
 .env

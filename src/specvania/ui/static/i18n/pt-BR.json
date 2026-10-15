@@ -343,5 +343,13 @@
   "play.respawn": "Respawn em {room} · tentativa {attempt}: {feedback}",
   "play.toolRefused": "Ferramenta {tool} recusada: {reason}",
   "play.cooldown": "Recarga · {seconds} s: {reason}",
-  "play.fallback": "Trocando o modelo para {model}: {reason}"
+  "play.fallback": "Trocando o modelo para {model}: {reason}",
+  "runtime.bundled": "Runtime em uso: Python e specvania embutidos.",
+  "runtime.custom": "Runtime em uso: caminho personalizado.",
+  "runtime.path": "Runtime em uso: specvania no PATH.",
+  "runtime.useDefault": "Usar o runtime padrão",
+  "runtime.failed": "O runtime embutido não pôde iniciar. Reinstale o app ou escolha outro executável do specvania em Configurações.",
+  "runtime.missing": "O runtime embutido está ausente e o specvania no PATH não pôde iniciar. Reinstale o app ou escolha um executável do specvania em Configurações.",
+  "runtime.customFailed": "O executável personalizado do specvania não pôde iniciar. Confira o caminho em Configurações ou use o runtime padrão.",
+  "runtime.customHelp": "Em Configurações, escolha um executável personalizado do specvania. Reinicie o estúdio após alterar o caminho."
 }

@@ -69,10 +69,13 @@ def test_readmes_install_commands_release_status_and_links(name: str) -> None:
         assert command in install
     for term in (
         "PyPI",
-        "0.3.0",
         "https://github.com/rotirotirafa/specvania/releases",
     ):
         assert term in install
+    assert install.index(
+        "https://github.com/rotirotirafa/specvania/releases"
+    ) < install.index("uv tool install")
+    assert "runtime" in install
     desktop = section(readme, "Optional desktop app", name)
     for term in ("arm64", "x64", "/Applications", "AppImage"):
         assert term in desktop

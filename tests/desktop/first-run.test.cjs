@@ -110,7 +110,7 @@ for (const language of ["en", "pt-BR"]) {
       for (const button of flat(panel).filter(n => n.tagName === "button")) assert.equal(button.parent, actions);
       assert.deepEqual(actions.children.map(n => n.textContent), ["error.restart", "title.demo", "title.settings"].map(key => dictionary[key]));
       assert.equal(h.button(dictionary["title.demo"]).disabled, true);
-      assert.ok(content(body).includes(dictionary["error.cliDemo"]));
+      assert.ok(content(body).includes(dictionary["runtime.customHelp"]));
       const rule = selector => {
         const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         const match = content(h.doc.head).match(new RegExp(escaped + "\\s*\\{([^}]+)\\}"));
@@ -154,15 +154,15 @@ for (const language of ["en", "pt-BR"]) {
       assert.equal(panel.children.length, 3, "Restart errors stay inside the scroll area");
     } finally {screens.destroy();}
   });
-  test(`first_run_screen_explains_install_key_restart_and_demo_prerequisite_${language}`, async () => {
+  test(`first_run_screen_explains_missing_runtime_key_restart_and_custom_path_${language}`, async () => {
     const h = renderer(language);
     const dictionary = JSON.parse(fs.readFileSync(path.join(staticRoot, `i18n/${language}.json`)));
     executePage(errorPage("error.startCliMissing", "/safe/studio.log"), h); await tick();
-    for (const key of ["error.startCliMissing", "error.cliInstall", "error.cliClone", "error.cliKey", "error.cliDemo"]) {
+    for (const key of ["runtime.missing", "runtime.customHelp", "error.cliKey"]) {
       assert.ok(content(h.host).includes(dictionary[key]), key);
     }
-    for (const term of ["uv tool install --compile-bytecode specvania", "uv tool install --compile-bytecode .", "PyPI", "NVIDIA_API_KEY", "~/.zshrc"]) assert.ok(content(h.host).includes(term), term);
-    assert.match(dictionary["error.cliDemo"], language === "en" ? /No API key/ : /não precisa de chave de API/);
+    assert.ok(!content(h.host).includes("uv tool install"));
+    for (const term of ["NVIDIA_API_KEY", "~/.zshrc"]) assert.ok(content(h.host).includes(term), term);
     assert.equal(h.button(dictionary["title.demo"]).disabled, true);
     const restart = h.button(dictionary["error.restart"]);
     assert.equal(restart.disabled, false);
@@ -233,11 +233,49 @@ test("packaged_first_run_page_uses_bundled_assets_without_source_checkout", asyn
       try {
         await failure.ready;
         assert.equal(h.host.dataset.screen, "error");
-        assert.ok(content(h.host).includes(dictionary["error.startCliMissing"]));
+        assert.ok(content(h.host).includes(dictionary["runtime.missing"]));
         assert.ok(h.button(dictionary["error.restart"]));
         assert.equal(h.button(dictionary["title.demo"]).disabled, true);
-        assert.match(content(h.host), /uv tool install --compile-bytecode/);
+        assert.ok(!content(h.host).includes("uv tool install"));
       } finally {failure.destroy();}
     }
   } finally {fs.rmSync(directory, {recursive: true, force: true});}
 });
+
+for (const language of ["en", "pt-BR"]) {
+  for (const [kind, key] of [["bundled", "runtime.failed"], ["custom", "runtime.customFailed"], ["path", "runtime.missing"]]) {
+  test(`${kind}_failure_explains_runtime_and_offers_custom_path_without_install_${language}`, async () => {
+    const h = renderer(language);
+    const dictionary = JSON.parse(fs.readFileSync(path.join(staticRoot, `i18n/${language}.json`)));
+    const screens = executePage(errorPage("error.startExited", "/safe/studio.log", {kind}), h);
+    try {
+      await screens.ready;
+      assert.ok(content(h.host).includes(dictionary[key]));
+      assert.ok(content(h.host).includes(dictionary["runtime.customHelp"]));
+      assert.ok(!content(h.host).includes("uv tool install"));
+      h.button(dictionary["title.settings"]).click();
+      assert.equal(h.host.dataset.screen, "settings");
+    } finally {screens.destroy();}
+  });
+  }
+
+  for (const kind of ["bundled", "custom", "path"]) {
+    test(`settings_identifies_active_${kind}_runtime_${language}`, async () => {
+      const h = renderer(language);
+      h.browser.specvaniaDesktop.settings.get = async () => ({language, specvaniaPath: "/previous/custom"});
+      h.browser.specvaniaDesktop.studio.get = async () => ({kind: "ready", runtime: {kind, executable: kind === "custom" ? "/custom/specvania" : "specvania"}});
+      const dictionary = JSON.parse(fs.readFileSync(path.join(staticRoot, `i18n/${language}.json`)));
+      const screens = executePage(errorPage("error.startExited", "/safe/studio.log", {kind}), h);
+      try {
+        await screens.ready;
+        h.button(dictionary["title.settings"]).click(); await tick();
+        assert.ok(content(h.host).includes(dictionary[`runtime.${kind}`]));
+        if (kind === "custom") assert.ok(content(h.host).includes("/custom/specvania"));
+        const reset = h.button(dictionary["runtime.useDefault"]);
+        assert.ok(reset); reset.click(); await tick();
+        assert.ok(content(h.host).includes(dictionary["settings.saved"]));
+        assert.equal(flat(h.host).find(node => node.type === "text").value, "specvania");
+      } finally {screens.destroy();}
+    });
+  }
+}

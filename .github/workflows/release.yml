@@ -113,22 +113,25 @@
         "matrix": {
           "include": [
             {
-              "os": "macos-latest",
+              "os": "macos-15",
               "platform": "mac",
               "arch": "arm64",
-              "extension": "dmg"
+              "extension": "dmg",
+              "target": "darwin-arm64"
             },
             {
-              "os": "macos-latest",
+              "os": "macos-15-intel",
               "platform": "mac",
               "arch": "x64",
-              "extension": "dmg"
+              "extension": "dmg",
+              "target": "darwin-x64"
             },
             {
               "os": "ubuntu-latest",
               "platform": "linux",
               "arch": "x64",
-              "extension": "AppImage"
+              "extension": "AppImage",
+              "target": "linux-x64"
             }
           ]
         }
@@ -159,6 +162,27 @@
           }
         },
         {
+          "name": "astral-sh/setup-uv v6.8.0",
+          "uses": "astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e",
+          "with": {
+            "python-version": "3.13"
+          }
+        },
+        {
+          "name": "Build runtime wheel",
+          "working-directory": "./",
+          "run": "uv build --wheel"
+        },
+        {
+          "name": "Export locked runtime dependencies",
+          "working-directory": "./",
+          "run": "mkdir -p apps/desktop/build\nuv export --frozen --no-dev --no-emit-project --no-hashes --output-file apps/desktop/build/runtime-requirements.txt"
+        },
+        {
+          "name": "Bundle pinned runtime",
+          "run": "npm run bundle-runtime -- --target ${{ matrix.target }} --wheel ../../dist/*.whl --requirements build/runtime-requirements.txt"
+        },
+        {
           "name": "Install pinned desktop dependencies",
           "run": "npm ci"
         },
@@ -169,6 +193,11 @@
         {
           "name": "Build unsigned installer without publishing",
           "run": "./node_modules/.bin/electron-builder --${{ matrix.platform }} --${{ matrix.arch }} --publish never"
+        },
+        {
+          "name": "Check compressed dmg size",
+          "if": "matrix.platform == 'mac'",
+          "run": "node - <<'NODE'\nconst fs = require('node:fs');\nconst files = fs.readdirSync('dist').filter(file => file.endsWith('.dmg'));\nif (!files.length) throw new Error('No dmg artifact was built.');\nfor (const file of files) {\n  const bytes = fs.statSync('dist/' + file).size;\n  if (bytes >= 250000000) throw new Error(file + ' must stay under 250 MB (got ' + bytes + ' bytes).');\n  console.log(file + ': ' + bytes + ' bytes, under 250 MB');\n}\nNODE"
         },
         {
           "name": "actions/upload-artifact v4.6.2",

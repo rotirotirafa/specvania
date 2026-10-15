@@ -7,13 +7,13 @@ export function errorScreen(ui, error = {}) {
   content.setAttribute("role", "region"); content.setAttribute("aria-labelledby", heading.id);
   const text = (key, params) => ui.text("p", key, params, content);
   if (error.kind === "missingKey") text("error.keyHelp");
-  else if (error.reasonKey) text(error.reasonKey);
+  else if (error.reasonKey && error.reasonKey !== "error.startCliMissing") text(error.reasonKey);
   else if (error.reason) text("error.reason", {reason: error.reason});
-  if (error.reasonKey === "error.startCliMissing") {
-    text("error.cliInstall");
-    text("error.cliClone");
+  if (gone && error.kind !== "connection") {
+    const kind = error.runtime?.kind || "path";
+    text(kind === "bundled" ? "runtime.failed" : kind === "custom" ? "runtime.customFailed" : "runtime.missing");
+    text("runtime.customHelp");
     text("error.cliKey");
-    text("error.cliDemo");
   }
   if (error.logPath) text("error.log", {path: error.logPath});
   const actions = ui.element("footer"); actions.className = "error-actions";

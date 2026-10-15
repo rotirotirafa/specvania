@@ -194,8 +194,7 @@ for (const failure of ["exit", "timeout", "missing_cli", "command_not_found"]) t
       const errorFrame = {sender: window.webContents, senderFrame: {url: pages[1]}};
       assert.equal(handlers.get("specvania:studio")(errorFrame).reasonKey, "error.startCliMissing");
       const firstRun = decodeURIComponent(pages[1]);
-      assert.match(firstRun, /uv tool install --compile-bytecode specvania/);
-      assert.match(firstRun, /uv tool install --compile-bytecode \./);
+      assert.equal(handlers.get("specvania:studio")(errorFrame).runtime.kind, "custom");
       assert.doesNotMatch(firstRun, /\/unrelated\/profile|\/private\/other/);
       h.timer.advance(HANDSHAKE_TIMEOUT_MS);
       assert.equal(pages.length, 2); // Exit cancelled the deadline.

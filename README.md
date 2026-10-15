@@ -23,12 +23,33 @@ is synthetic; a recording of a real run will replace it.
 
 ## Install
 
-Install the Python CLI first (Python 3.12+, Git and [uv](https://docs.astral.sh/uv/)),
-then the desktop app. Python is not bundled in the app. The commands below work
-from a clone today; commands using the PyPI name and downloadable release
-artifacts apply **once released**.
+Download the desktop app from [GitHub Releases](https://github.com/rotirotirafa/specvania/releases)
+once released: choose the macOS dmg for Apple Silicon (arm64) or Intel (x64),
+or the Linux AppImage. The app includes Python and specvania; no Python, uv or
+CLI installation is needed to reach the title screen or watch the offline demo.
+Git is needed for projects and expeditions.
 
-From the repository clone:
+On macOS, drag `specvania.app` into `/Applications`, then **right-click → Open**
+the first time and confirm: builds are unsigned and not notarized. See
+**Optional desktop app** below if macOS still blocks opening it. On Linux,
+make the AppImage executable and open it.
+
+For actual expeditions, export your provider key in the profile read by your
+login shell, for example `~/.zshrc`, then reopen the app or choose
+**Restart studio** on its error screen:
+
+```sh
+export NVIDIA_API_KEY='<your key>'
+```
+
+API-key entry in the app is coming in a later update. Watch demo needs no key.
+Settings shows the runtime in use; a custom specvania path overrides the bundled
+runtime. **Use the default runtime** clears that override for the next studio
+start. If the runtime is missing or cannot start, the error screen offers
+Settings and Restart studio.
+
+For terminal users, install the CLI with Python 3.12+ and
+[uv](https://docs.astral.sh/uv/). From a repository clone today:
 
 ```sh
 uv tool install --compile-bytecode .
@@ -41,23 +62,7 @@ uv tool install --compile-bytecode specvania
 uvx specvania --version
 ```
 
-`uvx specvania` runs the CLI without a permanent install; the app needs the
-persistent `uv tool install` installation on the login shell's PATH (or its
-executable path in Settings). For actual expeditions, export your provider key
-in the profile read by that shell, for example `~/.zshrc`:
-
-```sh
-export NVIDIA_API_KEY='<your key>'
-```
-
-Then choose **Restart studio** in the error screen, or reopen the app.
-The first-run screen offers installation help when the CLI cannot run. Watch
-demo remains visible there and becomes enabled after the CLI starts; it needs
-**no API key**. A missing-key error still lets you watch the demo.
-
-Get the desktop app from [GitHub Releases](https://github.com/rotirotirafa/specvania/releases)
-when v0.3.0 is published. See **Optional desktop app** below for unsigned-build
-and macOS opening instructions.
+`uvx specvania` runs the CLI without a permanent install.
 
 ## Play
 
@@ -78,8 +83,8 @@ and macOS opening instructions.
 
 **Watch demo** on the title screen plays the bundled recording offline, without
 an API key, project or provider connection, at 1×, 2× or 4× with pause. It shows
-recorded Clarify answers and approvals. It requires the installed CLI, just as
-the rest of the game does. The current recording is synthetic.
+recorded Clarify answers and approvals. The desktop app uses its bundled
+runtime; no separate CLI installation is needed. The current recording is synthetic.
 The UI and its vendored art, font, Phaser and Monaco load locally; live
 planning and coding contact your configured provider.
 
@@ -191,8 +196,30 @@ open the dmg matching your Mac (arm64 for Apple Silicon, x64 for Intel) and drag
 in Finder and choose **Open**, then confirm. If macOS still blocks it, open
 **System Settings → Privacy & Security → Open Anyway** after the blocked launch.
 On Linux, make the downloaded AppImage executable and open it.
-Building the shell from source needs Node/npm; using Python with a browser does
-not.
+Building the app from source needs Node/npm and uv. Build the wheel and export
+locked dependencies before bundling the runtime for the same target as the
+installer (run on that target's architecture):
+
+```sh
+npm --prefix apps/desktop ci
+uv build --wheel
+npm --prefix apps/desktop run runtime:requirements
+npm --prefix apps/desktop run bundle-runtime -- --target darwin-arm64 --wheel "$PWD"/dist/*.whl --requirements "$PWD"/apps/desktop/build/runtime-requirements.txt
+npm --prefix apps/desktop run dist:mac -- --arm64
+```
+
+Use `darwin-x64` with `dist:mac -- --x64`, or `linux-x64` with
+`dist:linux -- --x64`. Archive pins are in `apps/desktop/runtime.json`.
+`bundle-runtime` accepts `--archive /path/to/the/pinned.tar.gz` to avoid the
+archive download; the same SHA-256 check applies. For a fully offline build,
+provide cached dependency wheels with `PIP_NO_INDEX=1` and
+`PIP_FIND_LINKS=/path/to/wheels` (including the frozen requirements).
+Runtime archives cache outside the checkout in `~/.cache/specvania/runtimes`;
+outputs stay in ignored `apps/desktop/build/runtime/<target>/`. Dependencies
+are installed only at build time, without the Postgres extra. Python bytecode
+is precompiled, and the app starts the runtime with `-I -B -m specvania studio`
+so it ignores the user's Python environment and writes no bytecode into the app.
+Using the Python package with a browser needs neither Node nor the desktop app.
 
 The launcher finds `desktop.path` in config, then `SPECVANIA_DESKTOP`, then
 `specvania-desktop` (or a Linux AppImage) on PATH, then

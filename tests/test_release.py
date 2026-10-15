@@ -254,35 +254,54 @@ def test_desktop_builds_each_platform_without_publishing() -> None:
         "matrix": {
             "include": [
                 {
-                    "os": "macos-latest",
+                    "os": "macos-15",
                     "platform": "mac",
                     "arch": "arm64",
                     "extension": "dmg",
+                    "target": "darwin-arm64",
                 },
                 {
-                    "os": "macos-latest",
+                    "os": "macos-15-intel",
                     "platform": "mac",
                     "arch": "x64",
                     "extension": "dmg",
+                    "target": "darwin-x64",
                 },
                 {
                     "os": "ubuntu-latest",
                     "platform": "linux",
                     "arch": "x64",
                     "extension": "AppImage",
+                    "target": "linux-x64",
                 },
             ]
         },
     }
     assert build["defaults"] == {"run": {"working-directory": "apps/desktop"}}
     assert build["env"] == {"CSC_IDENTITY_AUTO_DISCOVERY": "false"}
-    assert [step["run"] for step in build["steps"] if "run" in step] == [
+    commands = [step["run"] for step in build["steps"] if "run" in step]
+    assert len(commands) == 7
+    assert commands[0:6] == [
+        "uv build --wheel",
+        "mkdir -p apps/desktop/build\n"
+        "uv export --frozen --no-dev --no-emit-project --no-hashes "
+        "--output-file apps/desktop/build/runtime-requirements.txt",
+        "npm run bundle-runtime -- --target ${{ matrix.target }} "
+        "--wheel ../../dist/*.whl --requirements build/runtime-requirements.txt",
         "npm ci",
         "npm run make-icon",
         "./node_modules/.bin/electron-builder --${{ matrix.platform }} "
         "--${{ matrix.arch }} --publish never",
     ]
-    assert all("if" not in step for step in build["steps"])
+    assert all(
+        "if" not in step
+        for step in build["steps"]
+        if step["name"] != "Check compressed dmg size"
+    )
+    assert (
+        named_step(build, "Check compressed dmg size")["if"]
+        == "matrix.platform == 'mac'"
+    )
     (node,) = action_steps(build, "actions/setup-node")
     assert node["with"]["node-version"] == "22"
     (upload,) = action_steps(build, "actions/upload-artifact")
@@ -432,3 +451,65 @@ def test_release_fails_if_any_artifact_is_missing(tmp_path: Path, missing: int) 
     command = named_step(workflow()["jobs"]["release"], "Generate SHA256SUMS")["run"]
     result = run_command(command, tmp_path)
     assert result.returncode != 0
+
+
+@pytest.mark.parametrize("name", ["release", "ci"])
+def test_desktop_runtime_built_from_frozen_export_for_every_target(name: str) -> None:
+    job = workflow(name)["jobs"]["build-desktop"]
+    steps = job["steps"]
+    rows = job["strategy"]["matrix"]["include"]
+    assert {row["target"] for row in rows} == {
+        "darwin-arm64",
+        "darwin-x64",
+        "linux-x64",
+    }
+    pins = json.loads((ROOT / "apps/desktop/runtime.json").read_text())
+    assert set(pins["targets"]) == {row["target"] for row in rows}
+    wheel = named_step(job, "Build runtime wheel")
+    export = named_step(job, "Export locked runtime dependencies")
+    bundle = named_step(job, "Bundle pinned runtime")
+    installer = named_step(job, "Build unsigned installer without publishing")
+    assert wheel["working-directory"] == "./"
+    assert wheel["run"] == "uv build --wheel"
+    assert export["working-directory"] == "./"
+    assert export["run"] == (
+        "mkdir -p apps/desktop/build\n"
+        "uv export --frozen --no-dev --no-emit-project --no-hashes "
+        "--output-file apps/desktop/build/runtime-requirements.txt"
+    )
+    assert bundle["run"] == (
+        "npm run bundle-runtime -- --target ${{ matrix.target }} "
+        "--wheel ../../dist/*.whl --requirements build/runtime-requirements.txt"
+    )
+    assert steps.index(wheel) < steps.index(bundle) < steps.index(installer)
+    assert steps.index(export) < steps.index(bundle)
+    size = named_step(job, "Check compressed dmg size")
+    (upload,) = action_steps(job, "actions/upload-artifact")
+    assert steps.index(installer) < steps.index(size) < steps.index(upload)
+    assert action_steps(job, "astral-sh/setup-uv")
+    for row in rows:
+        assert row["target"].endswith(row["arch"])
+        assert row["target"].startswith(
+            "darwin-" if row["platform"] == "mac" else "linux-"
+        )
+
+
+@pytest.mark.parametrize("name", ["release", "ci"])
+def test_dmg_size_gate_rejects_250_mb_and_requires_artifact(
+    name: str, tmp_path: Path
+) -> None:
+    command = named_step(
+        workflow(name)["jobs"]["build-desktop"], "Check compressed dmg size"
+    )["run"]
+    artifacts = tmp_path / "dist"
+    artifacts.mkdir()
+    result = run_command(command, tmp_path)
+    assert result.returncode != 0
+    dmg = artifacts / "specvania-0.3.0-arm64.dmg"
+    dmg.write_bytes(b"small offline fixture")
+    assert run_command(command, tmp_path).returncode == 0
+    with dmg.open("r+b") as stream:
+        stream.truncate(250_000_000)
+    result = run_command(command, tmp_path)
+    assert result.returncode != 0
+    assert "250 MB" in result.stderr

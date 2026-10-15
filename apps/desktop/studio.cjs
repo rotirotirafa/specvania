@@ -4,9 +4,17 @@ const { readFileSync, mkdirSync, writeFileSync, renameSync, existsSync } = requi
 const path = require("node:path");
 const HANDSHAKE_TIMEOUT_MS = 60000;
 
-function shellLaunch({ executable = "specvania", env = process.env, platform = process.platform }) {
-  const quoted = "'" + executable.replaceAll("'", "'\\''") + "'";
-  return { command: env.SHELL || (platform === "darwin" ? "/bin/zsh" : "/bin/bash"), args: ["-lic", `exec ${quoted} studio`] };
+function resolveStudio({ executable = "specvania", resourcesPath = process.resourcesPath, exists = existsSync } = {}) {
+  if (executable && executable !== "specvania") return {kind: "custom", executable, args: ["studio"]};
+  const python = resourcesPath && path.join(resourcesPath, "runtime/bin/python3");
+  if (python && exists(python)) return {kind: "bundled", executable: python, args: ["-I", "-B", "-m", "specvania", "studio"]};
+  return {kind: "path", executable: "specvania", args: ["studio"]};
+}
+function shellLaunch({ env = process.env, platform = process.platform, ...options }) {
+  const runtime = resolveStudio(options);
+  const quote = value => "'" + value.replaceAll("'", "'\\''") + "'";
+  // Fixed module flags need no quoting; paths are always one shell argument.
+  return { command: env.SHELL || (platform === "darwin" ? "/bin/zsh" : "/bin/bash"), args: ["-lic", `exec ${quote(runtime.executable)} ${runtime.args.join(" ")}`] };
 }
 function validateSettings(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid settings.");
@@ -32,7 +40,7 @@ function writeSettings(userData, patch, language = "en") {
   return next;
 }
 function readSettings(userData) { return readAppSettings(userData).specvaniaPath; }
-function errorPage(reasonKey, logPath) { return localPage({reasonKey, logPath}); }
+function errorPage(reasonKey, logPath, runtime = {kind: "path"}) { return localPage({reasonKey, logPath, runtime}); }
 function startingPage() { return localPage({kind: "starting"}); }
 /** Local startup UI uses the same dictionaries/screens even when Python cannot start.
  * T38 packages the required static files inside the desktop app.
@@ -56,14 +64,15 @@ ${code}
 mountScreens({host: document.getElementById("screen-host"), browser: window, startup: ${json(startup)}});
 </script></body></html>`;
 }
-function launchStudio({ spawn, env = process.env, platform = process.platform, executable = "specvania", timer = globalThis, logPath, log, open, error }) {
-  const launch = shellLaunch({ executable, env, platform });
+function launchStudio({ spawn, env = process.env, platform = process.platform, executable = "specvania", resourcesPath = process.resourcesPath, exists = existsSync, timer = globalThis, logPath, log, open, error }) {
+  const runtime = resolveStudio({executable, resourcesPath, exists});
+  const launch = shellLaunch({ executable, resourcesPath, exists, env, platform });
   const lifecycle = { child: null, handshake: null, exited: false, quitting: false };
   let pending = "", receivedBytes = 0, settled = false, timeout;
   const fail = (reason) => {
     if (settled) return;
     settled = true; timer.clearTimeout(timeout);
-    error(errorPage(reason, logPath), {kind: "failed", reasonKey: reason, logPath});
+    error(errorPage(reason, logPath, runtime), {kind: "failed", reasonKey: reason, logPath, runtime});
     if (!lifecycle.exited) lifecycle.child?.kill();
   };
   try {
@@ -86,7 +95,7 @@ function launchStudio({ spawn, env = process.env, platform = process.platform, e
   child.on("exit", code => {
     lifecycle.exited = true;
     if (lifecycle.quitting) return;
-    if (lifecycle.handshake) error(errorPage("error.stopped", logPath), {kind: "failed", reasonKey: "error.stopped", logPath});
+    if (lifecycle.handshake) error(errorPage("error.stopped", logPath, runtime), {kind: "failed", reasonKey: "error.stopped", logPath, runtime});
     else fail(code === 127 || code === 126 || commandMissing ? "error.startCliMissing" : "error.startExited");
   });
   child.stdout.on("data", (data) => {
@@ -171,4 +180,4 @@ function connectControl(value, origin, request = require("node:http").request) {
   upgrade.end();
   return client;
 }
-module.exports = { HANDSHAKE_TIMEOUT_MS, shellLaunch, launchStudio, quitStudio, readSettings, errorPage, startingPage, connectControl, readAppSettings, writeSettings };
+module.exports = { resolveStudio, HANDSHAKE_TIMEOUT_MS, shellLaunch, launchStudio, quitStudio, readSettings, errorPage, startingPage, connectControl, readAppSettings, writeSettings };

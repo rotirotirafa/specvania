@@ -343,5 +343,13 @@
   "play.respawn": "Respawn in {room} · attempt {attempt}: {feedback}",
   "play.toolRefused": "Tool {tool} refused: {reason}",
   "play.cooldown": "Cooldown · {seconds} s: {reason}",
-  "play.fallback": "Switching model to {model}: {reason}"
+  "play.fallback": "Switching model to {model}: {reason}",
+  "runtime.bundled": "Runtime in use: bundled Python and specvania.",
+  "runtime.custom": "Runtime in use: custom path.",
+  "runtime.path": "Runtime in use: specvania on PATH.",
+  "runtime.useDefault": "Use the default runtime",
+  "runtime.failed": "The bundled runtime could not start. Reinstall the app or choose another specvania executable in Settings.",
+  "runtime.missing": "The bundled runtime is missing, and specvania on PATH could not start. Reinstall the app or choose a specvania executable in Settings.",
+  "runtime.customFailed": "The custom specvania executable could not start. Check its path in Settings or use the default runtime.",
+  "runtime.customHelp": "Settings lets you choose a custom specvania executable. Restart studio after changing it."
 }

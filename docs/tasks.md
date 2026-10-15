@@ -750,10 +750,10 @@ files: apps/desktop/scripts/bundle-runtime.cjs, apps/desktop/electron-builder.ym
 D34. A build script downloads the pinned python-build-standalone CPython 3.13 for the target (macOS arm64, macOS x64, Linux x64), checks its SHA-256, installs the freshly built specvania wheel with its locked dependencies into it (no Postgres extra), precompiles bytecode and places it under the app's resources; electron-builder ships it. The app resolves `<resources>/runtime/bin/specvania` first and a Settings path only when set; it still spawns through the login shell. CI builds and the release workflow run the script; the runtime cache never enters git. The first-run screen asks for nothing to install when the runtime is present. The README's install section leads with the app.
 
 Checklist:
-- [ ] The script refuses a runtime whose SHA-256 does not match, and the installed `specvania --version` inside the bundle equals the app version (test)
-- [ ] The app starts the bundled studio by default and a Settings path overrides it; neither path puts a token or key in argv (test)
+- [x] The script refuses a runtime whose SHA-256 does not match, and the installed `specvania --version` inside the bundle equals the app version (test)
+- [x] The app starts the bundled studio by default and a Settings path overrides it; neither path puts a token or key in argv (test)
 - [ ] The release and CI workflows build every desktop artifact with the runtime, and the dmg stays under 250 MB (workflow test; CI run owner-checked)
-- [ ] `THIRD_PARTY_NOTICES.md` lists CPython (PSF) and python-build-standalone with their licenses
+- [x] `THIRD_PARTY_NOTICES.md` lists CPython (PSF) and python-build-standalone with their licenses
 - [ ] A local dmg opens the title screen on a macOS user account with no Python, uv or specvania on `PATH` (G6, owner check)
 
 ### T50 · API key in the app

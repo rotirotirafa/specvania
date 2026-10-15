@@ -64,8 +64,11 @@ you trust, you can alternatively remove its quarantine attribute:
 xattr -dr com.apple.quarantine "/Applications/specvania.app"
 ```
 
-The Python launcher finds this location automatically. The app loads a URL
-provided by the Python launcher; it needs the local UI server running.
+The Python launcher finds this location automatically. Opening the app directly
+starts its bundled Python studio through your login shell and opens the title
+screen. No separate Python, uv or specvania installation is needed. Settings can
+select a custom specvania executable; development without a bundled runtime
+falls back to specvania on PATH.
 
 On Linux, download the x64 AppImage and make it executable (substitute its
 actual version):
@@ -87,33 +90,55 @@ extract with `./specvania-0.1.0-x64.AppImage --appimage-extract` and point
 
 ## Build and release
 
-After installing the pinned dependencies, run in `apps/desktop/`:
+Build one target at a time on its native platform and architecture. From the
+repository root, install the pinned desktop dependencies and build the wheel:
 
 ```sh
-npm run make-icon
-npm run dist:mac
-npm run dist:linux
+npm --prefix apps/desktop ci
+uv build --wheel
+cd apps/desktop
+npm run runtime:requirements
+npm run bundle-runtime -- --target darwin-arm64 --wheel ../../dist/*.whl --requirements build/runtime-requirements.txt --archive /path/to/pinned-arm64.tar.gz
+npm run dist:mac -- --arm64
 ```
 
-Build macOS dmg installers on macOS (arm64 and x64), and the x64 Linux AppImage
-on Linux. For one Mac architecture, append `-- --arm64` or `-- --x64` to
-`npm run dist:mac`. Both build scripts regenerate the icon and disable publishing.
-`electron-builder.yml` uses `identity: null` for macOS; release CI also disables
-automatic signing identity discovery. Signing and notarization are outside v0.2.
+`runtime:requirements` exports `uv.lock` without development dependencies or the
+Postgres extra. `bundle-runtime` installs the freshly built wheel and those
+locked dependencies, precompiles bytecode and verifies the app version. Keep
+exactly one freshly built wheel in `dist/` for the wildcard above.
 
-`scripts/make-icon.mjs` imports `SPRITES.mage.idle[0]` and `PALETTE` from the pixel
-kit and renders a 1024×1024 RGBA PNG using integer nearest-neighbour scaling
-(16×16 at 64×). Only Node built-ins encode it, including zlib compression and
-CRC32. Generated `build/icon.png` is gitignored by the repository's `build/`
-rule; no raster source is committed. The builder converts the PNG into the
-platform icon. The app includes only `main.js`, `preload.js`, the generated icon,
-and the package metadata and Electron runtime (including its license notices)
-that electron-builder supplies. The Python web app is served separately.
+`--archive` accepts a local copy of the matching pinned archive from
+`runtime.json`, with the same mandatory SHA-256 verification. Omit it to download
+the archive into `~/.cache/specvania/runtimes`. A local archive avoids only that
+download; for offline dependency installation also supply cached wheels with
+`PIP_NO_INDEX=1 PIP_FIND_LINKS=/path/to/wheels`. Preparing Node dependencies and
+Electron's build caches is a separate build-time step. Nothing is downloaded
+when the installed app starts.
+
+For Intel macOS, change the runtime target to `darwin-x64`, provide its matching
+archive and use `npm run dist:mac -- --x64`. For Linux x64, use `linux-x64`, its
+archive and `npm run dist:linux -- --x64`. Runtime output stays in gitignored
+`build/runtime/<target>/`. The CLI architecture flag selects only that installer;
+the configuration does not expand it to other architectures.
+
+Both installer scripts regenerate the icon and disable publishing. The builder's
+`afterPack` hook rejects a missing or non-executable packaged Python, or a runtime
+that cannot print the matching specvania version. It checks the copied runtime
+inside the app, so a missing extraResources source cannot silently produce an
+installer without Python. The macOS dmg uses compressed UDZO format; workflows
+reject dmg files at or above 250 MB. `identity: null` and disabled signing identity
+discovery keep builds unsigned; signing and notarization remain outside scope.
+
+`scripts/make-icon.mjs` generates `build/icon.png` from the vendored Kenney Mage
+tile using Node built-ins. The icon and runtime output are gitignored. The app
+ships the Electron shell, local startup screens, Python runtime and installed
+specvania wheel with its dependencies and vendored assets. At launch the app
+runs `runtime/bin/python3 -I -B -m specvania studio` through the login shell,
+without relying on pip's build-machine console-script shebangs.
 
 Output stays in gitignored `apps/desktop/dist/`:
-`specvania-<version>-arm64.dmg`, `specvania-<version>-x64.dmg`, and
-`specvania-<version>-x64.AppImage`. The GitHub workflow runs only when the owner
-pushes a `desktop-v*` tag, builds each artifact in a separate matrix job, then
-attaches all three to one GitHub Release. The tag names the release; artifact
-versions come from `package.json`. CI must be verified after the owner pushes
-the tag; offline checks do not prove installer builds or native-window behavior.
+`specvania-<version>-arm64.dmg`, `specvania-<version>-x64.dmg`, or
+`specvania-<version>-x64.AppImage`, depending on the selected target. Release
+workflow tags are `vX.Y.Z`; CI pull requests build the same artifacts without
+publishing. Each matrix job builds one runtime and one installer. Actual hosted
+builds and native-window behavior still require the reviewer/owner checks.

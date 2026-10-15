@@ -111,12 +111,12 @@ test("builder_packages_only_shell_and_generated_icon_for_unsigned_dmg_and_appima
     from: "../../src/specvania/ui/static", to: "static",
     filter: ["i18n/**", "pixel/palette.js", "pixel/cast.js", "screens/**", "vendor/fonts/**", "vendor/kenney-tiny-dungeon/**"],
   }]);
-  assert.deepEqual(config.mac.target, [{ target: "dmg", arch: ["arm64", "x64"] }]);
+  assert.deepEqual(config.mac.target, ["dmg"]);
   assert.equal(config.mac.identity, null);
   assert.equal(config.mac.icon, "build/icon.png");
   assert.equal(config.linux.icon, "build/icon.png");
   assert.equal(config.linux.executableName, "specvania-desktop");
-  assert.deepEqual(config.linux.target, [{ target: "AppImage", arch: ["x64"] }]);
+  assert.deepEqual(config.linux.target, ["AppImage"]);
   assert.equal(config.artifactName, "specvania-${version}-${arch}.${ext}");
   const pkg = json(path.join(desktop, "package.json"));
   assert.deepEqual(pkg.devDependencies, { electron: "44.7.0", "electron-builder": "26.15.3" });
@@ -175,14 +175,16 @@ test("release_workflow_builds_each_platform_then_uploads_all_release_artifacts",
   assert.equal(build.needs, "check");
   assert.equal(build["runs-on"], "${{ matrix.os }}");
   assert.deepEqual(build.strategy.matrix.include, [
-    { os: "macos-latest", platform: "mac", arch: "arm64", extension: "dmg" },
-    { os: "macos-latest", platform: "mac", arch: "x64", extension: "dmg" },
-    { os: "ubuntu-latest", platform: "linux", arch: "x64", extension: "AppImage" },
+    { os: "macos-15", platform: "mac", arch: "arm64", extension: "dmg", target: "darwin-arm64" },
+    { os: "macos-15-intel", platform: "mac", arch: "x64", extension: "dmg", target: "darwin-x64" },
+    { os: "ubuntu-latest", platform: "linux", arch: "x64", extension: "AppImage", target: "linux-x64" },
   ]);
   assert.equal(build.env.CSC_IDENTITY_AUTO_DISCOVERY, "false");
   assert.equal(build.defaults.run["working-directory"], "apps/desktop");
   const commands = build.steps.filter((step) => step.run).map((step) => step.run);
-  assert.deepEqual(commands, ["npm ci", "npm run make-icon", "./node_modules/.bin/electron-builder --${{ matrix.platform }} --${{ matrix.arch }} --publish never"]);
+  assert.equal(commands.length, 7);
+  assert.deepEqual(commands.slice(0, 6), ["uv build --wheel", "mkdir -p apps/desktop/build\nuv export --frozen --no-dev --no-emit-project --no-hashes --output-file apps/desktop/build/runtime-requirements.txt", "npm run bundle-runtime -- --target ${{ matrix.target }} --wheel ../../dist/*.whl --requirements build/runtime-requirements.txt", "npm ci", "npm run make-icon", "./node_modules/.bin/electron-builder --${{ matrix.platform }} --${{ matrix.arch }} --publish never"]);
+  assert.equal(build.steps.find(step => step.name === "Check compressed dmg size").if, "matrix.platform == 'mac'");
   const upload = build.steps.find((step) => step.uses?.startsWith("actions/upload-artifact@"));
   assert.equal(upload.with.path, "apps/desktop/dist/specvania-*-${{ matrix.arch }}.${{ matrix.extension }}");
   assert.equal(upload.with["if-no-files-found"], "error");
@@ -216,4 +218,21 @@ test("third_party_notices_reference_electron_license_and_bundled_notices", () =>
   for (const phrase of ["Electron", "44.7.0", "MIT", "https://github.com/electron/electron/blob/v44.7.0/LICENSE", "LICENSES.chromium.html", "electron-builder", "26.15.3"]) {
     assert.ok(notices.includes(phrase), phrase);
   }
+});
+
+test("builder_ships_target_runtime_outside_asar_and_compresses_dmg", () => {
+  const config = json(path.join(desktop, "electron-builder.yml"));
+  assert.deepEqual(config.mac.extraResources, [{from: "build/runtime/darwin-${arch}", to: "runtime", filter: ["**/*"]}]);
+  assert.deepEqual(config.linux.extraResources, [{from: "build/runtime/linux-${arch}", to: "runtime", filter: ["**/*"]}]);
+  assert.equal(config.dmg.format, "UDZO");
+  const pkg = json(path.join(desktop, "package.json"));
+  assert.equal(pkg.scripts["bundle-runtime"], "node scripts/bundle-runtime.cjs");
+  assert.match(readFileSync(path.join(root, ".gitignore"), "utf8"), /^apps\/desktop\/build\/runtime\/$/m);
+});
+
+test("notices_identify_bundled_python_build_scripts_and_package_licenses", () => {
+  const notices = readFileSync(path.join(root, "THIRD_PARTY_NOTICES.md")), text = notices.toString();
+  assert.match(text, /CPython[\s\S]*PSF License/);
+  assert.match(text, /python-build-standalone[\s\S]*MPL-2\.0/);
+  assert.match(text, /bundled Python packages retain their own licenses/i);
 });

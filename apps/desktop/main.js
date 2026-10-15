@@ -3,7 +3,7 @@
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { mkdirSync, createWriteStream, readFileSync, writeFileSync, renameSync } = require("node:fs");
-const { launchStudio, quitStudio, readSettings, startingPage, connectControl, readAppSettings, writeSettings } = require(path.join(__dirname, "studio.cjs"));
+const { resolveStudio, launchStudio, quitStudio, readSettings, startingPage, connectControl, readAppSettings, writeSettings } = require(path.join(__dirname, "studio.cjs"));
 const { app, BrowserWindow, ipcMain, Notification, shell, dialog, screen, Menu } = require("electron");
 
 function readWindowState(file) {
@@ -195,7 +195,8 @@ async function openWindow() {
     mkdirSync(logs, { recursive: true });
     const logPath = path.join(logs, "studio.log");
     startStudio = () => {
-      studioStatus = {kind: "starting"};
+      const runtime = resolveStudio({executable: readSettings(userData), resourcesPath: process.resourcesPath});
+      studioStatus = {kind: "starting", runtime};
       controlToken = "";
       target = null;
       startupUrl = "data:text/html;charset=utf-8," + encodeURIComponent(startingPage());
@@ -203,10 +204,10 @@ async function openWindow() {
       const log = createWriteStream(logPath, { flags: "a", mode: 0o600 });
       log.on("error", () => {});
       lifecycle = launchStudio({
-        spawn, executable: readSettings(userData), logPath,
+        spawn, executable: readSettings(userData), resourcesPath: process.resourcesPath, logPath,
         log: (data) => log.write(data),
         open: (url, token) => {
-          studioStatus = {kind: "ready"};
+          studioStatus = {kind: "ready", runtime};
           startupUrl = "";
           controlToken = token;
           target = safeUrl(url, token);

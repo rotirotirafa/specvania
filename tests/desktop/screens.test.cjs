@@ -308,7 +308,7 @@ test("each_screen_focus_cycle_excludes_underlying_game_and_hud_and_restores_them
     h.button("Open project").click();await h.tick();
     h.message({kind:"studio_state",phase:"project_open",project:{path:"/repo",initialized:true},worlds:[],open_bugs:0});
     focusCycle(h,["Choose folder","New expedition","Check the party","Settings","Back"]);
-    h.button("Settings").click();focusCycle(h,["select","number","text","checkbox","Back"]);
+    h.button("Settings").click();focusCycle(h,["select","number","text","Use the default runtime","checkbox","Back"]);
     h.screens.showError({kind:"missingKey"});focusCycle(h,["Watch demo","Settings","Back","div"]);
     h.screens.showError({reasonKey:"error.stopped"});focusCycle(h,["Restart studio","Settings","div"]);
     h.screens.close();assert.equal(h.host.hidden,true);
