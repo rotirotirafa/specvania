@@ -12,9 +12,9 @@ const world = worldFromRooms(payload.rooms, payload.areas, payload.doors);
 if (process.argv[2] === "layout") {
   for (const overview of [false, true]) {
     const layout = layoutWorld(world, overview);
-    assert.equal(layout.rooms.length, 47);
-    assert.equal(layout.areas.length, 12);
-    assert.deepEqual([layout.width, layout.height], [832, 624]);
+    assert.equal(layout.rooms.length, 50);
+    assert.equal(layout.areas.length, 14);
+    assert.deepEqual([layout.width, layout.height], [928, 720]);
     if (overview) assert.equal(castleViewZoom(960, 540, layout, true), 1);
     assert.deepEqual(layout, layoutWorld(worldFromRooms([...payload.rooms].reverse(),
       [...payload.areas].reverse(), payload.doors), overview));
@@ -108,7 +108,7 @@ if (process.argv[2] === "projection") {
   assert.equal(JSON.stringify(world), original);
   // The mid-run projection retains redundant area metadata and dependencies.
   assert.deepEqual(worldFromRooms(current.rooms).areas, world.areas);
-  // T23 follows T38 in tasks.md (A10), but reconnects rebuild doors by room id.
+  // T23 follows T50 in tasks.md (A14), but reconnects rebuild doors by room id.
   // Compare every edge, including duplicates, independently of that order.
   const doorOrder = (a, b) => a.dst.localeCompare(b.dst) || a.src.localeCompare(b.src);
   assert.deepEqual(worldFromRooms(current.rooms).doors.sort(doorOrder), [...world.doors].sort(doorOrder));

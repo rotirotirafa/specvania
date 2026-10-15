@@ -6,7 +6,7 @@ This repository is built with Spec-Driven Development. Before doing anything, re
 2. `.agent/validation-gates.md` — what must be green before a room is cleared
 3. `docs/domain.md` — vocabulary
 4. `docs/conventions.md` — stack, layout, rules
-5. `docs/spec.md` — the spec (decisions D1–D32 are binding)
+5. `docs/spec.md` — the spec (decisions D1–D35 are binding)
 6. `docs/tasks.md` — the rooms, in door order
 7. `.agent/deviations.md` — accepted changes to the spec
 

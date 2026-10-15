@@ -5,13 +5,13 @@
 
 | | |
 |---|---|
-| Status | Approved by the owner (2026-10-13), including the v0.3.1 amendment; v0.4 amendment approved on 2026-10-15 |
+| Status | Approved by the owner (2026-10-13), including the v0.3.1 amendment; v0.4 amendment approved on 2026-10-15, with the streaming addition (C28, D33, S28, T48), the launch order and the standalone app (C27 revised, C29, D34, D35, S29, A13, A14) |
 | Owner | @rotirotirafa |
 | Date | 2026-10-15 |
 | Read with | [`docs/domain.md`](domain.md) · [`docs/conventions.md`](conventions.md) · [`docs/tasks.md`](tasks.md) · [`.agent/execution-protocol.md`](../.agent/execution-protocol.md) |
 
 **Changelog**
-- v0.4 (2026-10-14) — Playability, after the v0.3 launch. The owner's dogfood run showed the game is not intuitive: "I don't know what to do at the current step" (C22). A JRPG-style dialogue box at the bottom of the castle says who is acting and what they did, and becomes "your turn" when the player must answer; approvals, Clarify questions and pauses move into it, with keys (C23, D28). The party thinks out loud with playful verbs next to the real wait, without spending tokens (C24, D29). A step chip shows where the player is in the six-step journey, and `?` explains the current step (C25, D30, D31). Music from CC0 files and sound effects synthesized in code (C26, D32). New area A12 (S25–S27, T42–T47), after the launch (C27). Providers beyond an OpenAI-compatible endpoint move to v0.5.
+- v0.4 (2026-10-14) — Playability, after the v0.3 launch. The owner's dogfood run showed the game is not intuitive: "I don't know what to do at the current step" (C22). A JRPG-style dialogue box at the bottom of the castle says who is acting and what they did, and becomes "your turn" when the player must answer; approvals, Clarify questions and pauses move into it, with keys (C23, D28). The party thinks out loud with playful verbs next to the real wait, without spending tokens (C24, D29). A step chip shows where the player is in the six-step journey, and `?` explains the current step (C25, D30, D31). Music from CC0 files and sound effects synthesized in code (C26, D32). The models' words stream into the dialogue box as they are written (C28, D33). New area A12 (S25–S28, T42–T48). Revised the same day (C27): the launch waits for A12 and for a standalone app — the desktop builds carry their own specvania and the API key can be pasted in the app (C29, D34, D35, S29, A13 T49–T50); the real run and the launch kit move to a last area A14 (T23, T41), and the launch release is 0.4.0. A simple animated "thinking" indicator ships first (DEV-019). Providers beyond an OpenAI-compatible endpoint move to v0.5.
 - v0.3.1 (2026-10-13) — Launch: the CLI ships on PyPI and the desktop app on GitHub Releases, from a tag the owner pushes (C19, D26); a new last area A11 prepares the public repository (community files, sponsor), the release automation and the launch kit with the recorded demo and LinkedIn drafts (C20, D27, S24, T39–T41). The dogfood run (T23) happens in a fresh repository the owner creates. Providers beyond an OpenAI-compatible endpoint (Claude, Codex, OpenClaw, Hermes…) are v0.4 (C21).
 - v0.3 (2026-10-13) — The desktop game becomes the main surface: a long-lived `specvania studio` server started by the Electron app runs plan and run without a terminal (C12–C18). The map becomes a castle cross-section drawn with the Kenney Tiny Dungeon pack (CC0), replacing the code-drawn sprites (D10). Read-only code and diff per room in an embedded Monaco editor. Stamina becomes a per-run token budget. The game, the agents' prose and the README in English and Brazilian Portuguese. Party probe before an expedition. T23 moves to the new last area so the dogfood run happens in the game. Purpose: a demo and portfolio piece.
 - v0.2 (2026-10-12) — Added the ledger (runs, features, spec versions, bugs) with SQLite by default and Postgres as a pluggable adapter; bugs become monsters on the map; Electron desktop window next to the browser; shell approvals also from the desktop window. Redis considered and left out (D14).
@@ -49,7 +49,6 @@ specvania combines it all: **SDD-native workflow + a team of open models + a pro
 
 - Editing code inside the app, an integrated terminal, VS Code or other IDE extensions; Docker sandbox for command execution; parallel task execution.
 - Several projects, runs or windows at once in the game; switching projects during a run.
-- Bundling Python inside the desktop app (the game needs `specvania` installed for the user; see O5).
 - Redis or any message broker (D14).
 - A hosted server, user accounts or authentication beyond local tokens (D16).
 - Pushing branches or opening PRs (specvania commits locally, never pushes).
@@ -92,7 +91,9 @@ specvania combines it all: **SDD-native workflow + a team of open models + a pro
 | C24 | Thoughts (v0.4) | Like Claude Code's waiting words (churning, confabulating, scheming): a playful verb that changes by itself next to the real wait, in the dialogue box's last line; chosen over balloons on the map. No model writes them |
 | C25 | Help (v0.4) | `?` explains the current step — what happens, when it is your turn, the keys that work now, what comes next — with every key one Tab away; chosen over a plain controls list and an Esc game menu |
 | C26 | Sound (v0.4) | Music from CC0 files, sound effects synthesized in code; on by default, with music and effects volumes and mute in Settings |
-| C27 | Order (v0.4) | Playability ships after the v0.3 launch, as v0.4; providers move to v0.5 |
+| C27 | Order (v0.4) | First answer: playability after the v0.3 launch. Revised the same day, to launch something complete: A12 and a standalone app (C29) come before the launch, which becomes 0.4.0; providers move to v0.5 |
+| C29 | Standalone app (v0.4) | People who come from the launch post install the app and play: the desktop builds carry their own specvania (O5 promoted), and the API key can be pasted in the app — stored in the system keychain — or come from the shell as before; signing and notarization stay out |
+| C28 | Streaming (v0.4) | During the dogfood run: "things only appear when they are done — no '…', nothing on screen shows it is running, not even the AI streaming". A simple animated thinking indicator ships before the launch (DEV-019); the models' text streaming into the game is part of v0.4 |
 
 ## 5. How SDD maps to the game
 
@@ -126,7 +127,7 @@ Title ── New project / Open project ── pick a git folder (init offered) 
   │                                               → Start expedition → approvals, pauses, bosses → end screen
   ├─ Watch demo (bundled real run, 1×/2×/4×, offline)
   ├─ Language: EN | PT-BR
-  └─ Settings: language, token budget, path to specvania, reduced motion, music and effects volume, mute
+  └─ Settings: language, token budget, API key (system keychain), path to specvania, reduced motion, music and effects volume, mute
 Click any chamber → panel with Mission (checklist), Code, Diff (read-only Monaco) and Review.
 ```
 
@@ -260,13 +261,14 @@ Studio mode (v0.3), started from the Dock:
          GET /api/rooms/<id>/code ──► files + diff per room (read-only, Sandbox + redaction)
 ```
 
-Playability (v0.4) lives in the web app and is derived from what the studio already sends — no new event, no new control message, so live play, Watch demo and old ledgers behave the same:
+Playability (v0.4) lives in the web app and is derived from what the studio already sends — no new event, no new control message, so live play, Watch demo and old ledgers behave the same. The one addition is streaming (D33): an ephemeral WebSocket message that is never stored:
 
 ```
  studio_state + events ─┬─► play/step.js ────► step chip (1–6, current room)
                         ├─► play/narrator.js ─► dialogue box: speaker, line, your turn, keys ◄── play/thinking.js (verbs, timer)
                         ├─► play/keys.js ─────► existing control messages: approval_answer · clarify_answer · pause_decision
                         └─► audio/cues.js ────► audio/engine.js ──► music (vendored CC0 OGG) + effects (audio/sfx.js, Web Audio)
+ router (streamed completion) ──► studio ──► WebSocket `model_stream` (ephemeral, redacted, never in the ledger) ──► dialogue box
 ```
 
 ## 9. Decisions
@@ -291,7 +293,7 @@ Playability (v0.4) lives in the web app and is derived from what the studio alre
 | D16 | UI server binds to `127.0.0.1` and issues two random tokens per process: a **view token** (required to load the page and open the WebSocket) and a **control token** (required to answer approvals), passed only to the desktop app at launch. The WebSocket checks the `Origin` header. A browser tab gets the view token only | Any web page can try to reach localhost; approving shell commands must require a secret only the desktop app holds |
 | D17 | **Bugs** come from `bug add`, from a room that runs out of lives and is skipped, and from a failed boss scenario. Lifecycle: `open` → `fixed` (closed automatically when a run planned with `--from-bug` clears) or `wontfix`. Open bugs render as monsters in their room and in the Bestiary | Failures become tracked work instead of lost log lines |
 | D18 | **Studio.** `specvania studio` is a long-lived UI server with one session: one project and at most one active plan or run. The game drives it with control messages on the existing WebSocket, each requiring the control token (D16). The engine is unchanged: the studio plugs the planner's `answer`, the engine's `decide` and an `ApprovalBroker` responder into the WebSocket, and runs plan and run in a worker thread | One engine for CLI and game; the game is another responder, not a second implementation |
-| D19 | **Launch from the Dock.** The Electron app starts the studio through the user's login shell (`$SHELL -lic 'exec <specvania> studio'`), so `PATH` and the API key arrive as in the terminal; the key never passes through Electron. The studio prints one JSON handshake line (port, view token, control token) on stdout; tokens never go to argv, files or logs. The path to `specvania` can be set in Settings. Quitting the app sends `shutdown`: an active run finishes as aborted | macOS apps opened from the Dock do not inherit the shell environment; argv is visible to other users through `ps` |
+| D19 | **Launch from the Dock.** The Electron app starts the studio through the user's login shell (`$SHELL -lic 'exec <specvania> studio'`), so `PATH` and the API key arrive as in the terminal; until v0.4 the key never passed through Electron (since v0.4 it may come from the app, D35). The studio prints one JSON handshake line (port, view token, control token) on stdout; tokens never go to argv, files or logs. The path to `specvania` can be set in Settings. Quitting the app sends `shutdown`: an active run finishes as aborted | macOS apps opened from the Dock do not inherit the shell environment; argv is visible to other users through `ps` |
 | D20 | **Code view.** A read-only Monaco editor (pinned min build, MIT, trimmed to the needed languages, vendored) shows each room's files and diff from `GET /api/rooms/<id>/code` (view token). Files pass the Sandbox rules (D12) and the redaction guard, with size caps. No editing, no language services | "An IDE as a game" needs real code reading; read-only keeps the agents as the only writers |
 | D21 | **Stamina is a token budget.** `limits.token_budget` (default 1,000,000 input + output tokens per run) travels as optional `run_started.token_budget`. Before each model call of a run the engine compares tokens spent with the budget; when it is reached the run pauses with "stamina exhausted", and the player rests (retry: +25% of the original budget, `stamina_restored` event) or aborts. Plan runs show tokens but have no cap. Cooldowns render as rest and no longer change stamina (replaces the DEV-009 estimate) | Tokens are what a run actually spends; the free tier exposes no balance, so the budget is the player's |
 | D22 | **Two languages.** Every UI string comes from `i18n/en.json` or `i18n/pt-BR.json` (same keys); PT-BR terms follow `docs/domain.md`. Prompts ask for human-facing text — Clarify questions and options, spec prose, room titles and checklists, the Warrior's `thought`, the Paladin's feedback — in the chosen language; code, identifiers, file paths and world-format keywords stay in English, so lint is unchanged. The game defaults to the OS language; the CLI uses `[ui] language` | C17; one engine, two audiences |
@@ -305,6 +307,9 @@ Playability (v0.4) lives in the web app and is derived from what the studio alre
 | D30 | **Journey steps.** Six steps derived in the web app from the studio phase and the screen on display: 1 Project (title, project screen, party check), 2 Idea, 3 Clarify (the Mage's questions and the spec being written), 4 Map (castle revealed, saving the map), 5 Expedition (the run, with its approvals, pauses and bosses), 6 End. The step chip shows `n/6 <step>` and, in the expedition, the current room. Watch demo shows the step of the moment it replays | C22; the player always knows where they are in the whole cycle |
 | D31 | **Step help and keys.** `?` or F1 opens the card of the current step: what happens, when it is your turn, the keys that work now and what comes next; Tab in the card lists every key by step; Esc closes it. The first time a viewer reaches a step, the box adds "First time here? Press ? to learn this step" (remembered in browser storage; without storage the hint simply shows again). Keys: A approve, N deny (optional reason), V view the full command; 1–n or ↑↓ Enter pick a Clarify option or a pause choice; M whole castle; arrows move the camera; Esc closes or goes back; Watch demo keeps 1 / 2 / 4 and Space. Keys are the same in both languages. No key fires while a text field has focus, and keys that answer the studio do nothing without the control token (D16) | C25; every player action has a key, explained where it is used |
 | D32 | **Sound.** Music: vendored OGG loops, CC0 only, each listed with its source URL and license in `THIRD_PARTY_NOTICES.md` and in a manifest a test checks, all under 4 MB: a calm theme (steps 1–4), an exploration loop (expedition), a boss loop and two end jingles (every room cleared, or not); tracks crossfade when the step changes. Effects: synthesized in code with Web Audio in an 8-bit style, no files: hover, confirm, back, help; your turn; room entered, gate passed, bug opened, bug closed, room cleared, room failed or skipped, boss appears, boss defeated, stamina exhausted, stamina restored; one short blip per new line in the box. Settings gain music volume (default 40 %), effects volume (default 70 %) and mute, saved with the other settings; the mute chip toggles it. Watch demo plays sound. The same effect never repeats within 120 ms. Without audio output the game stays silent and never fails. The desktop app allows autoplay; in a browser, sound starts at the first click or key. The CSP allows media only from the app itself | C26; files make the music sound like a game, synthesized effects need no assets or licenses |
+| D33 | **Streaming.** Provider requests ask for a streamed completion with usage in the last chunk (`provider.stream`, default true). A model whose streamed request fails before its first chunk with a client error is retried once without streaming and stays non-streamed for the rest of the process. While a response streams, the router hands the accumulated text to a sink at most every 100 ms; the studio sends it to every viewer as an ephemeral `model_stream` WebSocket message (role, model, room id, text so far), after the redaction guard has checked the accumulated text. `model_stream` is never an event: it is not written to the ledger, exports or `summary.md`, so replays, Watch demo and the ledger are unchanged. The dialogue box shows only the human part being written — the `thought` of the Warrior's JSON action, the Paladin's feedback, the Mage's question — never JSON syntax; when the model streams its reasoning before the answer, the box shows the latest reasoning line, dimmed, until the answer starts. The matching event's final line replaces the streamed text. Tokens, latency and coins still come from `model_call`, and the stamina check still runs before each request. The CLI output does not change | C28; during a multi-minute wait the player watches the party's words appear, as in a chat; keeping the stream out of the event log keeps the ledger lean and replays deterministic |
+| D34 | **Bundled runtime.** Each desktop build carries a relocatable CPython 3.13 from python-build-standalone (pinned release and SHA-256, downloaded in CI, never at runtime) with the specvania wheel of the same version and its dependencies installed into it at build time, bytecode precompiled; the runtime never writes bytecode at run time. The app starts `<resources>/runtime/bin/specvania studio` unless Settings name another path, still through the login shell (D19) so `git` and the user's gate commands keep the user's `PATH`. The first-run screen (T38) no longer asks for `uv tool install`; it only appears when the bundled runtime is missing or fails. The CLI on PyPI stays for terminal use. Python (PSF) and the bundled packages are listed in `THIRD_PARTY_NOTICES.md` | C29, O5; someone who installs the dmg reaches the title screen with nothing else installed |
+| D35 | **API key in the app.** The project screen and Settings offer "Paste API key". The desktop app encrypts it with Electron `safeStorage` (Keychain on macOS, the Secret Service on Linux) and stores only the ciphertext in its userData; when encryption is unavailable it refuses with a clear message and the shell key keeps working. When the app starts the studio, it decrypts the key and passes it only in the studio's environment as `SPECVANIA_API_KEY` — never in argv, plain-text files, logs, the renderer, the WebSocket, the ledger or exports. The provider uses `SPECVANIA_API_KEY` when it is set and otherwise the variable named by `provider.api_key_env` (D2), and the redaction guard covers both. The renderer can set, replace or remove the key and learns only whether one is stored. Changing the key restarts the studio | C29; people who are not terminal users should not have to edit `~/.zshrc` |
 
 ## 10. Acceptance — business scenarios (BDD)
 
@@ -564,6 +569,31 @@ Given the computer has no audio output
 Then the game plays silently without errors
 ```
 
+### S28 · Watch the party write
+```gherkin
+Given the Warrior's model streams its answer
+When the first words arrive
+Then the dialogue box shows the Warrior's thought as it is written, without JSON syntax
+And when the model streams its reasoning first, the box shows its latest line, dimmed, until the answer starts
+When the action arrives
+Then its final line replaces the streamed text
+And nothing streamed is written to the ledger, the exported events or the summary
+Given an endpoint that does not stream
+Then the box shows the thinking line until the action arrives, as before
+```
+
+### S29 · Install and play without a terminal
+```gherkin
+Given a Mac with no Python, no uv, no specvania and no API key in the shell
+When I install the desktop app from the release and open it from the Dock
+Then the title screen appears without any terminal step
+When I open a project and paste my NVIDIA API key
+Then Check the party uses it and the key is stored encrypted in the system keychain
+And the key never appears in argv, logs, the page, the WebSocket, the ledger or the exported events
+When I quit and reopen the app
+Then the key is still set, and I can replace or remove it in Settings
+```
+
 ## 11. Acceptance — technical checklist
 
 - [ ] `ruff check`, `ruff format --check`, `pyright` and `pytest` pass in CI on Linux and macOS, Python 3.12 and 3.13.
@@ -583,12 +613,15 @@ Then the game plays silently without errors
 - [ ] The game's CSP allows media only from the app itself and still has no remote sources and no `'unsafe-eval'` (covered by a test).
 - [ ] Each role has at least 12 thinking verbs in each language (covered by the i18n test).
 - [ ] No keyboard shortcut fires while a text field has focus, and no key answers the studio without the control token (covered by a test).
+- [ ] Streamed text passes the redaction guard before it leaves the studio and never reaches the ledger, exports or `summary.md` (covered by a test).
+- [ ] The desktop builds contain the pinned runtime, verified by its SHA-256, and start the studio from it without any network access (covered by a test).
+- [ ] An API key pasted in the app is stored only encrypted through `safeStorage`, reaches the studio only through its environment, and never appears in argv, plain-text files, logs, the renderer, the WebSocket, the ledger or exports (covered by a test).
 
 ## 12. Definition of done
 
 **v0.3.** All scenarios S1–S24 pass, the technical checklist is green, the desktop app builds for macOS (arm64, x64) and Linux (AppImage) in CI, and the full cycle of S22 works from the Dock. The package ships a real recorded run (`real-run`, plan and run) produced by specvania through the game on a fresh repository the owner creates (the sample project is the fallback), playable as Watch demo next to the synthetic `demo`. The README exists in English and Brazilian Portuguese, and its GIF comes from the real run. The release workflow, the community files and the launch kit are ready; publishing to PyPI, creating the release and posting are the owner's steps.
 
-**v0.4.** Scenarios S25–S27 pass and the technical checklist stays green. The owner plays one expedition with sound on, from the idea to the end screen, without asking what to do next, and confirms the A12 boss (G8). Watch demo shows the dialogue box, the step chip, the thinking line and the sound.
+**v0.4.** Scenarios S25–S29 pass and the technical checklist stays green. The launch release is 0.4.0, and its dmg opens the title screen on a Mac with nothing else installed (S29). The owner plays one expedition with sound on, from the idea to the end screen, without asking what to do next, and confirms the A12 boss (G8). Watch demo shows the dialogue box, the step chip, the thinking line and the sound; live play also shows the party's words streaming.
 
 ## 13. Open points (decide during execution, log in `.agent/deviations.md`)
 
@@ -596,7 +629,7 @@ Then the game plays silently without errors
 - O2. Whether the Paladin should also review the spec itself before a run (beyond lint).
 - O3. Map layout algorithm details if worlds grow beyond ~30 rooms.
 - O4. How the desktop app is distributed beyond GitHub Releases (Homebrew cask, etc.).
-- O5. Bundling a Python runtime with the desktop app so it works without `uv tool install specvania`.
+- O5. Bundling a Python runtime with the desktop app so it works without `uv tool install specvania` — decided in v0.4: D34.
 - O6. Moving the `run --ui` desktop launch to the D19 handshake too, so the control token leaves argv on that path as well.
 - O7. Which CC0 tracks to vendor (D32): Claude picks candidates and checks each license before T47; the owner hears them in G8.
 - O8. Re-recording the README GIF and the launch video with the v0.4 interface and sound.

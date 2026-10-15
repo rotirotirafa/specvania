@@ -79,6 +79,7 @@ One vocabulary for code, events, UI text, docs and posts. When a term exists her
 | Your turn | Sua vez | The dialogue box when the player must answer an approval, a Clarify question or a pause | narrator `turn` |
 | Thinking line | Linha de pensamento | The box's last line while a role waits: a playful verb, the elapsed time and the model (D29) | `play/thinking.js` |
 | Step help | Ajuda da etapa | The `?` card that explains the current step (D31) | `hud/help.js` |
+| Bundled runtime | Runtime embutido | The Python and specvania shipped inside the desktop app (D34) | `<resources>/runtime` |
 | Cue | Efeito sonoro | A named sound effect played for an event or a UI action (D32) | `audio/cues.js` |
 
 ## Limits and metrics

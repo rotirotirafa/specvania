@@ -8,7 +8,7 @@ How any coding agent (Codex, Claude Code, Devin, or specvania itself later) exec
 2. This file
 3. `docs/domain.md` — vocabulary; use these words in code and messages
 4. `docs/conventions.md` — stack, layout, rules
-5. `docs/spec.md` — what and why; decisions D1–D32 are binding
+5. `docs/spec.md` — what and why; decisions D1–D35 are binding
 6. `docs/tasks.md` — the rooms
 7. `.agent/deviations.md` — what already changed and why
 
@@ -25,7 +25,7 @@ How any coding agent (Codex, Claude Code, Devin, or specvania itself later) exec
 ## 3. Stop rules — stop and ask the owner when
 
 - S-1. The spec is ambiguous in a way that changes behavior a user would notice.
-- S-2. A decision D1–D32 seems wrong or blocks the room.
+- S-2. A decision D1–D35 seems wrong or blocks the room.
 - S-3. You need a dependency that is not in the allowed list in `docs/conventions.md`.
 - S-4. The same gate fails twice after real fixes.
 - S-5. A checklist item cannot be met as written (e.g. it depends on a later room).

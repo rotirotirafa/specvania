@@ -76,8 +76,8 @@ test("bug_id_hash_has_fixed_cross_process_choices_and_nonconstant_distribution",
 
 test("bosses_cycle_by_numeric_area_and_are_cast_entries", async () => {
   const { bossForArea, CAST } = await cast();
-  const choices = Array.from({length: 12}, (_, i) => bossForArea(`A${i + 1}`));
-  assert.deepEqual(choices, ["cyclops", "red_crab", "hooded_figure", "cyclops", "red_crab", "hooded_figure", "cyclops", "red_crab", "hooded_figure", "cyclops", "red_crab", "hooded_figure"]);
+  const choices = Array.from({length: 14}, (_, i) => bossForArea(`A${i + 1}`));
+  assert.deepEqual(choices, ["cyclops", "red_crab", "hooded_figure", "cyclops", "red_crab", "hooded_figure", "cyclops", "red_crab", "hooded_figure", "cyclops", "red_crab", "hooded_figure", "cyclops", "red_crab"]);
   assert.deepEqual([...new Set(choices.map(name => CAST[name]))].sort(), [109, 110, 111]);
   for (const invalid of ["", "A0", "area1", "A1x"]) assert.throws(() => bossForArea(invalid), /area/i);
 });
@@ -125,7 +125,7 @@ test("spritesheet_preload_and_all_legacy_keys_keep_nearest_kenney_art", async ()
   registerTextures(fake.scene); assert.equal(fake.textures.size, count);
   assert.equal(fake.textures.get("kenney-tiny-dungeon").filter, 0);
   for (const name of ["mage", "warrior", "paladin", "boss", "monster", "door"]) assert.ok(!(name in SPRITES));
-  for (const name of ["heart", "coin", "stamina_pip", ...Array.from({length: 12}, (_, i) => `room_a${i + 1}`)]) assert.ok(name in SPRITES);
+  for (const name of ["heart", "coin", "stamina_pip", ...Array.from({length: 14}, (_, i) => `room_a${i + 1}`)]) assert.ok(name in SPRITES);
 });
 
 test("icon_script_imports_only_node_builtins_and_the_cast_data", () => {

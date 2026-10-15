@@ -25,7 +25,7 @@ const states = ["locked", "open", "active", "cleared", "failed", "skipped"];
 const freeze = value => { if (value && typeof value === "object") { Object.values(value).forEach(freeze); Object.freeze(value); } return value; };
 function overlap(a, b) { return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height; }
 
-for (const [name, world, count, areas] of [["repository", repository, 47, 12], ["sample", sample, 3, 3]]) {
+for (const [name, world, count, areas] of [["repository", repository, 50, 14], ["sample", sample, 3, 3]]) {
   test(`${name}_layout_is_deterministic_integer_and_without_overlaps`, async () => {
     const { castleLayout } = await load("map/castle.js");
     const { layoutWorld, worldFromRooms } = await load("map/layout.js");
@@ -60,11 +60,11 @@ for (const [name, world, count, areas] of [["repository", repository, 47, 12], [
     assert.deepEqual({ ...adapted, overview: true }, layoutWorld(worldFromRooms(world.rooms, world.areas, world.doors), true));
     assert.deepEqual(adapted.rooms.map(room => [room.id, room.x, room.y]), layout.chambers.map(room => [room.id, room.x * 16, room.y * 16]));
     if (name === "repository") {
-      assert.deepEqual([adapted.width, adapted.height], [832, 624]);
+      assert.deepEqual([adapted.width, adapted.height], [928, 720]);
       const {castleViewZoom} = await load("map/layout.js");
       assert.equal(castleViewZoom(960, 540, adapted, true), 1);
-      assert.deepEqual(adapted.areas.map(area => [area.id, area.y, area.height]).filter(([id]) => id === "A1" || id === "A12"),
-        [["A1", 32, 48], ["A12", 560, 48]]);
+      assert.deepEqual(adapted.areas.map(area => [area.id, area.y, area.height]).filter(([id]) => id === "A1" || id === "A14"),
+        [["A1", 32, 48], ["A14", 656, 48]]);
     } else assert.ok(adapted.width <= 960 && adapted.height <= 540, "Whole castle must fit at zoom 1");
   });
 
@@ -463,10 +463,10 @@ test("scene_draws_cast_cross_section_bosses_state_accents_party_and_stable_monst
   h.emit("specvania:event", {type: "bug_closed", bug_id: "bug-1", status: "fixed"});
   assert.ok(!keys().includes(`${monsterForBug("bug-1")}:idle:0`));
   mounted.destroy();
-  // The repository scene must draw all eleven inter-floor stairs and all bosses.
+  // The repository scene must draw all thirteen inter-floor stairs and all bosses.
   const all = harness(); const map = mountMap(all.Phaser, all.host, all.browser);
   all.emit("specvania:event", {type: "world_loaded", ...repository}); all.create();
-  assert.equal(all.live().filter(item => item.key === "stairs:idle:0").length, 33);
+  assert.equal(all.live().filter(item => item.key === "stairs:idle:0").length, 39);
   for (const area of repository.areas) {
     const boss = layoutWorld(repository).bosses.find(boss => boss.area === area.id);
     assert.ok(all.live().some(item => item.key === `${bossForArea(area.id)}:idle:0` && item.x === boss.x + 40 && item.y === boss.y + 24));
@@ -608,25 +608,31 @@ test("canvas_fills_windows_and_resizes_with_integer_camera_zoom_in_both_views", 
             h.keys.get("keydown-M")({repeat: false});
             h.keys.get("keydown-M")({repeat: false});
             assert.equal(zoom, 1);
-            assert.deepEqual([h.camera.scrollX, h.camera.scrollY], [w === 960 ? 66 : 46, 0]);
+            assert.deepEqual([h.camera.scrollX, h.camera.scrollY], [w === 960 ? 114 : 94, 0]);
             const first = layout.areas[0];
             assert.equal(first.id, "A1");
             assert.deepEqual([screenY(first.y), screenY(first.y + first.height)], [32, 80]);
             assert.ok(screenX(first.chambers[0].x * 16) >= 0);
             h.dom("host", "wheel", {deltaX: 128 - h.camera.scrollX, deltaY: 10000, deltaMode: 0});
             assert.deepEqual([h.camera.scrollX, h.camera.scrollY],
-              [Math.min(128, layout.width - (w - overlayWidth)), w === 960 ? 84 : 24],
+              [Math.min(128, layout.width - (w - overlayWidth)), w === 960 ? 180 : 120],
               "Horizontal scroll = min(128, castle width - (window width - measured HUD width))");
             const last = layout.areas.at(-1);
-            assert.equal(last.id, "A12");
-            assert.deepEqual(last.chambers.map(room => room.id), ["T42", "T43", "T44", "T45", "T46", "T47"]);
+            assert.equal(last.id, "A14");
+            assert.deepEqual(last.chambers.map(room => room.id), ["T23", "T41"]);
             assert.deepEqual([screenY(last.y), screenY(last.y + last.height)], w === 960 ? [476, 524] : [536, 584]);
-            for (const room of [...layout.rooms.filter(room => room.area === "A12"), last.boss]) {
+            for (const room of layout.rooms.filter(room => room.area === "A14")) {
               assert.ok(screenX(room.x) >= 0 && screenX(room.x + room.width) <= w - overlayWidth, `${room.id} is fully left of the HUD`);
               assert.ok(screenY(room.y) >= 32 && screenY(room.y + room.height) <= height, `${room.id} is fully visible vertically`);
             }
             assert.equal(h.camera.clampX(h.camera.scrollX), h.camera.scrollX);
             assert.equal(h.camera.clampY(h.camera.scrollY), h.camera.scrollY);
+            h.dom("host", "wheel", {deltaX: 10000, deltaY: 0, deltaMode: 0});
+            assert.deepEqual([h.camera.scrollX, h.camera.scrollY],
+              [layout.width - (w - overlayWidth), w === 960 ? 180 : 120]);
+            const boss = last.boss;
+            assert.ok(screenX(boss.x) >= 0 && screenX(boss.x + boss.width) <= w - overlayWidth, `${boss.id} is fully left of the HUD`);
+            assert.ok(screenY(boss.y) >= 32 && screenY(boss.y + boss.height) <= height, `${boss.id} is fully visible vertically`);
             continue;
           }
           assert.ok(Math.abs((screenX(0) + screenX(layout.width)) / 2 - (w - overlayWidth) / 2) <= 1, "Castle centered horizontally in visible region");

@@ -144,34 +144,46 @@ def test_invalid_utf8_raises_typed_error(tmp_path: Path) -> None:
 
 def test_repository_world_has_exact_entities_despite_format_examples() -> None:
     world = parse_world(Path(__file__).parents[1] / "docs")
-    assert [s.id for s in world.scenarios] == [f"S{i}" for i in range(1, 28)]
-    assert [a.id for a in world.areas] == [f"A{i}" for i in range(1, 13)]
-    assert world.areas[-1].boss == ("S25", "S26", "S27")
+    assert [s.id for s in world.scenarios] == [f"S{i}" for i in range(1, 30)]
+    assert [a.id for a in world.areas] == [f"A{i}" for i in range(1, 15)]
+    assert [(a.id, a.title, a.boss) for a in world.areas[-5:]] == [
+        ("A10", "Demo", ()),
+        ("A11", "Launch preparation", ()),
+        ("A12", "Playability", ("S25", "S26", "S27", "S28")),
+        ("A13", "Standalone app", ("S29",)),
+        ("A14", "Launch", ("S23", "S24")),
+    ]
     assert [r.id for r in world.rooms] == [
         *(f"T{i:02}" for i in range(1, 23)),
         *(f"T{i:02}" for i in range(24, 39)),
-        "T23",
         "T39",
         "T40",
-        "T41",
         "T42",
         "T43",
         "T44",
         "T45",
         "T46",
         "T47",
+        "T48",
+        "T49",
+        "T50",
+        "T23",
+        "T41",
     ]
-    assert [(r.area_id, r.depends_on) for r in world.rooms[-10:]] == [
-        ("A10", ("T38",)),
+    assert [(r.area_id, r.depends_on) for r in world.rooms[-13:]] == [
         ("A11", ("T38",)),
         ("A11", ("T38",)),
-        ("A11", ("T23", "T39", "T40")),
-        ("A12", ("T41",)),
+        ("A12", ("T38",)),
         ("A12", ("T42",)),
         ("A12", ("T43",)),
         ("A12", ("T43",)),
         ("A12", ("T43",)),
         ("A12", ("T46",)),
+        ("A12", ("T44",)),
+        ("A13", ("T40",)),
+        ("A13", ("T49",)),
+        ("A14", ("T45", "T47", "T48", "T50")),
+        ("A14", ("T23", "T39", "T40")),
     ]
     assert [(d.src, d.dst) for d in world.doors] == [
         ("T01", "T02"),
@@ -245,16 +257,22 @@ def test_repository_world_has_exact_entities_despite_format_examples() -> None:
         ("T36", "T37"),
         ("T35", "T38"),
         ("T37", "T38"),
-        ("T38", "T23"),
         ("T38", "T39"),
         ("T38", "T40"),
-        ("T23", "T41"),
-        ("T39", "T41"),
-        ("T40", "T41"),
-        ("T41", "T42"),
+        ("T38", "T42"),
         ("T42", "T43"),
         ("T43", "T44"),
         ("T43", "T45"),
         ("T43", "T46"),
         ("T46", "T47"),
+        ("T44", "T48"),
+        ("T40", "T49"),
+        ("T49", "T50"),
+        ("T45", "T23"),
+        ("T47", "T23"),
+        ("T48", "T23"),
+        ("T50", "T23"),
+        ("T23", "T41"),
+        ("T39", "T41"),
+        ("T40", "T41"),
     ]

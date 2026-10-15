@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "src/specvania/ui/static"
 PARTY = ("mage", "warrior", "paladin")
 SPRITE_NAMES = (
-    *(f"room_a{number}" for number in range(1, 13)),
+    *(f"room_a{number}" for number in range(1, 15)),
     "heart",
     "coin",
     "stamina_pip",
@@ -138,8 +138,8 @@ def test_room_tiles_use_their_area_color(sprites: Sprites) -> None:
     areas = cast(
         dict[str, str], definition("palette.js", "AREA_COLORS", "Object.freeze")
     )
-    assert set(areas) == {f"A{number}" for number in range(1, 13)}
-    assert len(set(areas.values())) == 12
+    assert set(areas) == {f"A{number}" for number in range(1, 15)}
+    assert len(set(areas.values())) == 14
     for area, color in areas.items():
         for frame in sprites[f"room_{area.lower()}"]["idle"]:
             assert color in "".join(frame)

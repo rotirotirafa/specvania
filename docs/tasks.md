@@ -25,19 +25,20 @@ A7 Studio        T24 ─┬─ T25 ─┬─ T27
 A8 Castle        T29 ── T30 ── T31 ........................ boss: S20
 A9 Screens       T32 ─┬─ T33 ── T34 ── T36 ── T37
                       └─ T35 .............................. boss: S21 S22
-A10 Demo         T38 ── T23 ............................... boss: S23
-A11 Launch       T39 ─┬─ T41
-                 T40 ─┘ ................................... boss: S24
-A12 Playability  T42 ── T43 ─┬─ T44
+A10 Demo         T38 ...................................... boss: none
+A11 Launch prep  T39, T40 (doors from T38) ................ boss: none
+A12 Playability  T42 ── T43 ─┬─ T44 ── T48
                              ├─ T45
-                             └─ T46 ── T47 ............... boss: S25 S26 S27
+                             └─ T46 ── T47 ............... boss: S25 S26 S27 S28
+A13 Standalone   T49 ── T50 ............................... boss: S29
+A14 Launch       T23 ── T41 ............................... boss: S23 S24
 ```
 
 v0.3 note: T23 moved from A6 to A10 so the dogfood run happens in the game; its sample project (`examples/sample-todo-api/`) is already in place.
 
 v0.3.1 note: A11 prepares the launch (D26, D27); publishing and posting stay with the owner. T23 now runs on a fresh repository the owner creates, with the sample project as the fallback.
 
-v0.4 note: A12 makes the game playable (D28–D32) and starts after the launch (T42 depends on T41). Everything is derived in the web app from the studio's existing state and events; the Python side does not change except for packaging the music.
+v0.4 note: A12 makes the game playable (D28–D33), A13 makes the desktop app standalone (D34, D35), and the launch waits for both: the real run (T23) and the launch kit (T41) move to the last area A14, and their bosses S23 and S24 move with them. Everything is derived in the web app from the studio's existing state and events; the Python side changes only to package the music and to stream model text (T48, an ephemeral message, never an event).
 
 ---
 
@@ -594,7 +595,7 @@ Checklist:
 ---
 
 ## A10 · Demo
-boss: S23
+boss: none
 
 ### T38 · Package and document v0.3
 depends_on: T35, T37
@@ -609,23 +610,10 @@ Checklist:
 - [ ] The installed dmg opens the title screen and Watch demo works without an API key (owner check)
 - [x] `THIRD_PARTY_NOTICES.md` lists Kenney Tiny Dungeon, Monaco, Phaser, Press Start 2P and Electron with their licenses
 
-### T23 · Dogfood run in the game and real demo
-depends_on: T38
-covers: S11, S23
-files: examples/sample-todo-api/, src/specvania/examples/real-run/, .agent/deviations.md, README.md, README.pt-BR.md
-
-The owner creates a fresh repository with a small idea of their own (the sample project in `examples/sample-todo-api/` is the fallback). With a real NVIDIA API key, the owner plays one feature end to end in the desktop game, from an empty project to the end screen: Check the party, idea, Clarify, Save map, expedition, approvals, boss, end screen. Export the plan and run streams as `real-run`, bundled as the in-app Watch demo; make the README GIF from it; use the summary to settle O1 (default models per role).
-
-Checklist:
-- [ ] One full plan → run cycle completes in the desktop game on the owner's fresh repository (or the sample project), or the failure is documented
-- [ ] `real-run` (plan and run streams) and `summary.md` are committed and replay correctly in the game
-- [ ] O1 is decided and logged in `.agent/deviations.md` with the numbers from the summary
-- [ ] The README GIF comes from the real run, not the synthetic one
-
 ---
 
-## A11 · Launch
-boss: S24
+## A11 · Launch preparation
+boss: none
 
 ### T39 · Community files and sponsor
 depends_on: T38
@@ -655,26 +643,13 @@ Checklist:
 
 The pull-request checkbox records workflow-test evidence only; the hosted CI run remains the owner's check.
 
-### T41 · Demo and launch kit
-depends_on: T23, T39, T40
-covers: S24
-files: docs/launch/checklist.md, docs/launch/linkedin.en.md, docs/launch/linkedin.pt-BR.md, docs/launch/demo-script.md, docs/media/, README.md, README.pt-BR.md, tests/test_launch_kit.py
-
-From T23's recorded real run: a README GIF and a short MP4 recorded from Watch demo at 2× (under 8 MB and 25 MB), screenshots of the title, castle, room panel and end screen in both languages, a demo script for a two-minute walkthrough (G9), LinkedIn post drafts in English and Brazilian Portuguese (what it is, the castle idea, open models on NVIDIA NIM, link, credits; no claim without evidence from the summary), and an ordered launch checklist for the owner: make the repository public, enable Sponsors and private vulnerability reporting, set up the PyPI trusted publisher, push the tag, check the release, post.
-
-Checklist:
-- [ ] The GIF, MP4 and screenshots come from the real run and stay within the size limits (test)
-- [ ] Both LinkedIn drafts exist, have the same structure, stay under 3,000 characters and link the repository (test)
-- [ ] Every number in the drafts and the demo script matches the real run's `summary.md` (test)
-- [ ] The launch checklist lists each owner step in order, with where to click or what to run
-
 ---
 
 ## A12 · Playability
-boss: S25, S26, S27
+boss: S25, S26, S27, S28
 
 ### T42 · Steps, narrator and keys
-depends_on: T41
+depends_on: T38
 covers: S25
 files: src/specvania/ui/static/play/step.js, src/specvania/ui/static/play/narrator.js, src/specvania/ui/static/play/keys.js, src/specvania/ui/static/i18n/en.json, src/specvania/ui/static/i18n/pt-BR.json, tests/desktop/play.test.cjs
 
@@ -748,3 +723,80 @@ Checklist:
 - [ ] Every track in the manifest is CC0, exists, is listed in `THIRD_PARTY_NOTICES.md` with its source URL, and all music stays under 4 MB (test)
 - [ ] Steps 1–4, the expedition, the boss fight and both endings play their track, crossfading on change (test)
 - [ ] The wheel contains the music, and the game plays it with the network disabled (test)
+
+### T48 · Streaming
+depends_on: T44
+covers: S28
+files: src/specvania/provider/client.py, src/specvania/provider/router.py, src/specvania/config.py, src/specvania/ui/studio.py, src/specvania/ui/server.py, src/specvania/ui/static/play/narrator.js, src/specvania/ui/static/hud/dialogue-box.js, src/specvania/ui/static/i18n/en.json, src/specvania/ui/static/i18n/pt-BR.json, tests/test_provider_client.py, tests/test_router.py, tests/test_config.py, tests/test_ui_server.py, tests/test_studio.py, tests/desktop/
+
+D33. The provider client streams with usage in the last chunk and still returns one `Completion`; a non-streaming fallback per model covers endpoints that refuse it. The router passes accumulated text (answer and, when present, reasoning) to an optional sink, throttled to 100 ms. The studio relays it as `model_stream` to viewers after the redaction guard; the run engine and the ledger see nothing new. In the web app, a tolerant extractor reads the partial `thought`/`feedback`/question string out of the partial JSON; the box shows it under the speaker, the dimmed reasoning line before the answer, and the thinking line (T44) below.
+
+Checklist:
+- [ ] A streamed completion returns the same `Completion` (text, tokens, latency) as a non-streamed one, and a model that refuses streaming falls back once and stays non-streamed (test with a fake SDK)
+- [ ] The sink receives accumulated text at most every 100 ms; `model_stream` reaches viewers redacted, and nothing streamed appears in the ledger, exports or `summary.md` (test)
+- [ ] The box shows the partial thought without JSON syntax, the dimmed reasoning line before the answer, and the final line once the event arrives; without streaming it shows the thinking line as before (test)
+- [ ] A live expedition with a fake streaming provider shows words appearing in the box (G6 screenshots)
+
+---
+
+## A13 · Standalone app
+boss: S29
+
+### T49 · Bundled runtime
+depends_on: T40
+covers: S29
+files: apps/desktop/scripts/bundle-runtime.cjs, apps/desktop/electron-builder.yml, apps/desktop/package.json, apps/desktop/studio.cjs, apps/desktop/main.js, src/specvania/ui/static/screens/, .github/workflows/release.yml, .github/workflows/ci.yml, THIRD_PARTY_NOTICES.md, README.md, README.pt-BR.md, tests/desktop/, tests/test_release.py
+
+D34. A build script downloads the pinned python-build-standalone CPython 3.13 for the target (macOS arm64, macOS x64, Linux x64), checks its SHA-256, installs the freshly built specvania wheel with its locked dependencies into it (no Postgres extra), precompiles bytecode and places it under the app's resources; electron-builder ships it. The app resolves `<resources>/runtime/bin/specvania` first and a Settings path only when set; it still spawns through the login shell. CI builds and the release workflow run the script; the runtime cache never enters git. The first-run screen asks for nothing to install when the runtime is present. The README's install section leads with the app.
+
+Checklist:
+- [ ] The script refuses a runtime whose SHA-256 does not match, and the installed `specvania --version` inside the bundle equals the app version (test)
+- [ ] The app starts the bundled studio by default and a Settings path overrides it; neither path puts a token or key in argv (test)
+- [ ] The release and CI workflows build every desktop artifact with the runtime, and the dmg stays under 250 MB (workflow test; CI run owner-checked)
+- [ ] `THIRD_PARTY_NOTICES.md` lists CPython (PSF) and python-build-standalone with their licenses
+- [ ] A local dmg opens the title screen on a macOS user account with no Python, uv or specvania on `PATH` (G6, owner check)
+
+### T50 · API key in the app
+depends_on: T49
+covers: S29
+files: apps/desktop/main.js, apps/desktop/preload.js, apps/desktop/studio.cjs, src/specvania/config.py, src/specvania/provider/client.py, src/specvania/run/events.py, src/specvania/cli.py, src/specvania/ui/static/screens/project.js, src/specvania/ui/static/screens/settings.js, src/specvania/ui/static/i18n/en.json, src/specvania/ui/static/i18n/pt-BR.json, tests/desktop/, tests/test_config.py, tests/test_provider_client.py, tests/test_doctor.py
+
+D35. Main process: `safeStorage` encryption, ciphertext in userData, refusal when encryption is unavailable, decryption only when spawning the studio, `SPECVANIA_API_KEY` in the child environment only, studio restart on change. Preload: set, remove and "is a key stored" — never the key itself. Python: the provider and `doctor` prefer `SPECVANIA_API_KEY` over `provider.api_key_env` and report which source is used, and the redaction guard covers both values. UI: a "Paste API key" field on the project screen when no key is found and in Settings, with remove and replace.
+
+Checklist:
+- [ ] The key is stored only as `safeStorage` ciphertext and refused when encryption is unavailable; the renderer only learns whether a key is stored (test with a fake safeStorage)
+- [ ] The studio receives the key only through `SPECVANIA_API_KEY` in its environment; argv, logs, settings files and the page never contain it (test)
+- [ ] The provider and `doctor` prefer `SPECVANIA_API_KEY`, fall back to `provider.api_key_env`, and the redaction guard masks either value in events, exports and summaries (test)
+- [ ] Pasting, replacing and removing the key in the project screen and Settings works in both languages and restarts the studio (G6 screenshots)
+
+---
+
+## A14 · Launch
+boss: S23, S24
+
+### T23 · Dogfood run in the game and real demo
+depends_on: T45, T47, T48, T50
+covers: S11, S23
+files: examples/sample-todo-api/, src/specvania/examples/real-run/, .agent/deviations.md, README.md, README.pt-BR.md
+
+The owner creates a fresh repository with a small idea of their own (the sample project in `examples/sample-todo-api/` is the fallback). With a real NVIDIA API key pasted in the app (D35), the owner plays one feature end to end in the desktop game installed from a local build with the bundled runtime (D34), with the v0.4 interface and sound on, from an empty project to the end screen: Check the party, idea, Clarify, Save map, expedition, approvals, boss, end screen. Export the plan and run streams as `real-run`, bundled as the in-app Watch demo; make the README GIF from it; use the summary to settle O1 (default models per role).
+
+Checklist:
+- [ ] One full plan → run cycle completes in the desktop game on the owner's fresh repository (or the sample project), or the failure is documented
+- [ ] `real-run` (plan and run streams) and `summary.md` are committed and replay correctly in the game
+- [ ] O1 is decided and logged in `.agent/deviations.md` with the numbers from the summary
+- [ ] The README GIF comes from the real run, not the synthetic one
+
+### T41 · Demo and launch kit
+depends_on: T23, T39, T40
+covers: S24
+files: pyproject.toml, apps/desktop/package.json, CHANGELOG.md, docs/launch/checklist.md, docs/launch/linkedin.en.md, docs/launch/linkedin.pt-BR.md, docs/launch/demo-script.md, docs/media/, README.md, README.pt-BR.md, tests/test_launch_kit.py
+
+From T23's recorded real run: a README GIF and a short MP4 recorded from Watch demo at 2× (under 8 MB and 25 MB), screenshots of the title, castle, room panel and end screen in both languages, a demo script for a two-minute walkthrough (G9), LinkedIn post drafts in English and Brazilian Portuguese (what it is, the castle idea, open models on NVIDIA NIM, link, credits; no claim without evidence from the summary), the version bump to 0.4.0 (`pyproject.toml`, `apps/desktop/package.json`, the dated `CHANGELOG.md` section), and an ordered launch checklist for the owner: make the repository public, enable Sponsors and private vulnerability reporting, set up the PyPI trusted publisher, push the tag, check the release, post.
+
+Checklist:
+- [ ] The GIF, MP4 and screenshots come from the real run and stay within the size limits (test)
+- [ ] Both LinkedIn drafts exist, have the same structure, stay under 3,000 characters and link the repository (test)
+- [ ] Every number in the drafts and the demo script matches the real run's `summary.md` (test)
+- [ ] The launch checklist lists each owner step in order, with where to click or what to run
+- [ ] `pyproject.toml`, `apps/desktop/package.json` and `CHANGELOG.md` say 0.4.0, and the release tests pass for tag v0.4.0 (test)

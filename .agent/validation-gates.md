@@ -9,11 +9,11 @@ Automated gates run after every room. The human gate runs at the end of every ar
 | G3 | `uv run pyright` | every room | 0 errors |
 | G4 | `uv run pytest -q` | every room | all tests pass, socket guard active |
 | G5 | Checklist evidence | every room | every ticked item points to a test, command output or screenshot in the report |
-| G6 | Visual check | rooms T15–T21, T23, T24, T29–T38, T41 and T43–T47 | screenshot or short GIF of the relevant screen attached to the report (`sprites.html` for T15 and T29; `uv run specvania replay demo` once T18 exists; the desktop window for T19–T21, T24, T29–T38 and T43–T47; for T46 and T47 the cue log of a Watch demo run, since a screenshot has no sound) |
+| G6 | Visual check | rooms T15–T21, T23, T24, T29–T38, T41, T43–T50 | screenshot or short GIF of the relevant screen attached to the report (`sprites.html` for T15 and T29; `uv run specvania replay demo` once T18 exists; the desktop window for T19–T21, T24, T29–T38 and T43–T50; for T46 and T47 the cue log of a Watch demo run, since a screenshot has no sound) |
 | G7 | `uv run specvania lint docs/` | every room from T06 on | prints OK |
 | G8 | Owner review against the area's boss scenarios | end of each area | owner confirms each boss scenario in the area with the evidence; findings become new rooms or deviations |
 | G9 | `docker compose up -d postgres` then `SPECVANIA_TEST_DATABASE_URL=postgresql+psycopg://specvania:specvania@localhost:5432/specvania uv run pytest -q` | rooms that touch `ledger/`, the engine or `history` (T04, T07, T11, T12, T13, T22, T24, T25, T27) | all tests pass, including the Postgres variants |
-| G10 | `npm --prefix apps/desktop run check` | rooms T19–T21 and T24–T47 | the `check` script (syntax check of main and preload, the Node tests in `tests/desktop/`) passes |
+| G10 | `npm --prefix apps/desktop run check` | rooms T19–T21 and T24–T50 | the `check` script (syntax check of main and preload, the Node tests in `tests/desktop/`) passes |
 
 ## Rules
 
