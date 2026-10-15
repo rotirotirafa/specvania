@@ -12,9 +12,9 @@ const world = worldFromRooms(payload.rooms, payload.areas, payload.doors);
 if (process.argv[2] === "layout") {
   for (const overview of [false, true]) {
     const layout = layoutWorld(world, overview);
-    assert.equal(layout.rooms.length, 41);
-    assert.equal(layout.areas.length, 11);
-    assert.deepEqual([layout.width, layout.height], [832, 576]);
+    assert.equal(layout.rooms.length, 47);
+    assert.equal(layout.areas.length, 12);
+    assert.deepEqual([layout.width, layout.height], [832, 624]);
     if (overview) assert.equal(castleViewZoom(960, 540, layout, true), 1);
     assert.deepEqual(layout, layoutWorld(worldFromRooms([...payload.rooms].reverse(),
       [...payload.areas].reverse(), payload.doors), overview));

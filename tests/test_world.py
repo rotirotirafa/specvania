@@ -144,8 +144,9 @@ def test_invalid_utf8_raises_typed_error(tmp_path: Path) -> None:
 
 def test_repository_world_has_exact_entities_despite_format_examples() -> None:
     world = parse_world(Path(__file__).parents[1] / "docs")
-    assert [s.id for s in world.scenarios] == [f"S{i}" for i in range(1, 25)]
-    assert [a.id for a in world.areas] == [f"A{i}" for i in range(1, 12)]
+    assert [s.id for s in world.scenarios] == [f"S{i}" for i in range(1, 28)]
+    assert [a.id for a in world.areas] == [f"A{i}" for i in range(1, 13)]
+    assert world.areas[-1].boss == ("S25", "S26", "S27")
     assert [r.id for r in world.rooms] == [
         *(f"T{i:02}" for i in range(1, 23)),
         *(f"T{i:02}" for i in range(24, 39)),
@@ -153,12 +154,24 @@ def test_repository_world_has_exact_entities_despite_format_examples() -> None:
         "T39",
         "T40",
         "T41",
+        "T42",
+        "T43",
+        "T44",
+        "T45",
+        "T46",
+        "T47",
     ]
-    assert [(r.area_id, r.depends_on) for r in world.rooms[-4:]] == [
+    assert [(r.area_id, r.depends_on) for r in world.rooms[-10:]] == [
         ("A10", ("T38",)),
         ("A11", ("T38",)),
         ("A11", ("T38",)),
         ("A11", ("T23", "T39", "T40")),
+        ("A12", ("T41",)),
+        ("A12", ("T42",)),
+        ("A12", ("T43",)),
+        ("A12", ("T43",)),
+        ("A12", ("T43",)),
+        ("A12", ("T46",)),
     ]
     assert [(d.src, d.dst) for d in world.doors] == [
         ("T01", "T02"),
@@ -238,4 +251,10 @@ def test_repository_world_has_exact_entities_despite_format_examples() -> None:
         ("T23", "T41"),
         ("T39", "T41"),
         ("T40", "T41"),
+        ("T41", "T42"),
+        ("T42", "T43"),
+        ("T43", "T44"),
+        ("T43", "T45"),
+        ("T43", "T46"),
+        ("T46", "T47"),
     ]

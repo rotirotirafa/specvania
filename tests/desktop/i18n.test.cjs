@@ -65,7 +65,7 @@ const technical = new Set(`en pt-BR specvania.language specvania.settings text/j
   wall_top_left wall_top_right wall_top_middle wall_left wall_right back_wall floor_grate floor_stones
   floor_plain banner wall_grate door_closed door_open_middle chest_open chest_closed stairs sword_long shield_round cyclops
   fixed fonts truetype inherit normal nowrap hidden ellipsis grid flex none no-drag drag solid pointer no-repeat pixelated
-  rgba null zzz K S B W Y O G R N input output diffuse
+  rgba null zzz K S B W Y O G R N H input output diffuse
   data-i18n data-i18n-aria [data-i18n] [data-i18n-aria] .webp .png
   art`.split(/\s+/));
 technical.add("waiting for player");
@@ -146,7 +146,7 @@ function approved(value, file) {
     || /^[#][\da-fA-F]{6}$/.test(value) // palette data
     || /^[a-z]+_[a-z_]+$/.test(value) && (Object.hasOwn(en, `event.${value}`) || value === "kenney_tiny_dungeon")
     || file === "pixel/palette.js" && /^A\d+$/.test(value)
-    || file === "pixel/sprites.js" && (/^room_a\d+$/.test(value) || /^[KSBWYOGRN.VCPL]{16}$/.test(value)); // pixel rows/symbols
+    || file === "pixel/sprites.js" && (/^room_a\d+$/.test(value) || /^[KSBWYOGRN.VCPLH]{16}$/.test(value)); // pixel rows/symbols
 }
 function scanJS(source, file) {
   return literals(source).filter(({value, start}) => {

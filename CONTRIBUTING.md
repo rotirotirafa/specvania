@@ -5,7 +5,7 @@ Start with [AGENTS.md](AGENTS.md) and read, in its listed order, the
 [execution protocol](.agent/execution-protocol.md),
 [validation gates](.agent/validation-gates.md), [domain vocabulary](docs/domain.md),
 [conventions](docs/conventions.md), [spec](docs/spec.md), [rooms](docs/tasks.md)
-and [accepted deviations](.agent/deviations.md). Decisions D1–D27 are binding.
+and [accepted deviations](.agent/deviations.md). Decisions D1–D32 are binding.
 
 ## Local setup
 

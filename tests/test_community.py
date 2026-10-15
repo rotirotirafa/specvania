@@ -370,7 +370,7 @@ def test_contributing_explains_setup_room_workflow_safety_and_sponsorship() -> N
         "uv sync --locked --extra postgres",
         "SPECVANIA_TEST_DATABASE_URL=",
         "optional",
-        "D1–D27",
+        "D1–D32",
         "one authorized room",
         "one commit per room",
         "next free DEV number",

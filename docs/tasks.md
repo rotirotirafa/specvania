@@ -1,4 +1,4 @@
-# specvania — Tasks v0.3.1
+# specvania — Tasks v0.4
 
 World for [`docs/spec.md`](spec.md). Execute with [`.agent/execution-protocol.md`](../.agent/execution-protocol.md): one room at a time, in door order, gates after every room.
 
@@ -28,11 +28,16 @@ A9 Screens       T32 ─┬─ T33 ── T34 ── T36 ── T37
 A10 Demo         T38 ── T23 ............................... boss: S23
 A11 Launch       T39 ─┬─ T41
                  T40 ─┘ ................................... boss: S24
+A12 Playability  T42 ── T43 ─┬─ T44
+                             ├─ T45
+                             └─ T46 ── T47 ............... boss: S25 S26 S27
 ```
 
 v0.3 note: T23 moved from A6 to A10 so the dogfood run happens in the game; its sample project (`examples/sample-todo-api/`) is already in place.
 
 v0.3.1 note: A11 prepares the launch (D26, D27); publishing and posting stay with the owner. T23 now runs on a fresh repository the owner creates, with the sample project as the fallback.
+
+v0.4 note: A12 makes the game playable (D28–D32) and starts after the launch (T42 depends on T41). Everything is derived in the web app from the studio's existing state and events; the Python side does not change except for packaging the music.
 
 ---
 
@@ -662,3 +667,84 @@ Checklist:
 - [ ] Both LinkedIn drafts exist, have the same structure, stay under 3,000 characters and link the repository (test)
 - [ ] Every number in the drafts and the demo script matches the real run's `summary.md` (test)
 - [ ] The launch checklist lists each owner step in order, with where to click or what to run
+
+---
+
+## A12 · Playability
+boss: S25, S26, S27
+
+### T42 · Steps, narrator and keys
+depends_on: T41
+covers: S25
+files: src/specvania/ui/static/play/step.js, src/specvania/ui/static/play/narrator.js, src/specvania/ui/static/play/keys.js, src/specvania/ui/static/i18n/en.json, src/specvania/ui/static/i18n/pt-BR.json, tests/desktop/play.test.cjs
+
+Pure modules, no screen yet (D28, D30, D31). `step.js` maps the studio phase and the screen on display to steps 1–6, plus the current room during the expedition. `narrator.js` folds `studio_state` and events into the dialogue box's content: speaker, latest line (Warrior thought and action, Paladin feedback, gate result, bug opened or closed, boss scenario, approval result), whether it is the player's turn (approval, Clarify question, run pause) with its choices, and the keys valid now; one function serves live play and Watch demo, and a replay never has a turn. `keys.js` maps a key to a control message that already exists (`approval_answer`, `clarify_answer`, `pause_decision`) or to a UI action (help, whole castle, close), ignores keys while a text field has focus and sends nothing to the studio without the control token.
+
+Checklist:
+- [ ] Each studio phase and screen maps to its step, and a replay shows the step of the replayed moment (test)
+- [ ] Every event type that has a line gets its speaker and line in both languages; approvals, Clarify questions and pauses become a turn with their choices, never during a replay (test)
+- [ ] A, N, V, 1–n, ↑↓ Enter, M, ?, F1 and Esc map as in D31; no key fires while a text field has focus or answers the studio without the control token (test)
+
+### T43 · Dialogue box and chips
+depends_on: T42
+covers: S25
+files: src/specvania/ui/static/hud/dialogue-box.js, src/specvania/ui/static/hud/chips.js, src/specvania/ui/static/hud/dialogue.js, src/specvania/ui/static/hud/approval.js, src/specvania/ui/static/hud/party.js, src/specvania/ui/static/hud/bestiary.js, src/specvania/ui/static/screens/pause.js, src/specvania/ui/static/screens/idea.js, src/specvania/ui/static/map/scene.js, src/specvania/ui/static/main.js, src/specvania/ui/static/i18n/en.json, src/specvania/ui/static/i18n/pt-BR.json, tests/desktop/
+
+The castle layout of D28, drawn from T42's projections: the map fills the window, the dialogue box sits at the bottom, the step and party chips at the top left, mute and `?` placeholders at the top right (wired in T45 and T46). The approval modal and the pause screen go away: approvals and pauses are answered inside the box, by key or click; a deny reason is typed in the box under T20's rules. The Clarify screen uses the same box component. The party chip opens the party panel and the Bestiary as a drawer. The camera keeps the party and the current chamber clear of the box. The project and idea screens show the step chip.
+
+Checklist:
+- [ ] Approvals, Clarify questions and pauses are answered from the box by key and by click, and the old approval modal and pause screen are gone (test)
+- [ ] The party chip opens and closes the party panel and the Bestiary; a chamber click still opens the room panel (test)
+- [ ] At 1280×800 and in the whole-castle view, the box and the chips never cover the party or the current chamber, in both languages (G6 screenshots)
+- [ ] Watch demo shows the same box, watch-only, with the recorded answers (G6 screenshot)
+
+### T44 · Thinking line
+depends_on: T43
+covers: S26
+files: src/specvania/ui/static/play/thinking.js, src/specvania/ui/static/hud/dialogue-box.js, src/specvania/ui/static/hud/party.js, src/specvania/ui/static/i18n/en.json, src/specvania/ui/static/i18n/pt-BR.json, tests/desktop/
+
+D29. The thinking role and the start of its wait come from the party state (`model_requested` onwards; the Paladin while gates and reviews run). Verbs live in the i18n files as per-role lists, at least 12 per role and language, in the tone of Claude Code's waiting words with a fantasy twist (the Mage conjures, the Warrior forges, the Paladin weighs). Randomness and time are injected, so tests are deterministic.
+
+Checklist:
+- [ ] The line appears for the thinking role with the seconds since the request and the model (or `gates`), and goes away when the wait ends (test with a fake clock)
+- [ ] Each role has at least 12 verbs per language; a verb never repeats the previous one and changes every 4 s; with reduced motion it stays and the ✻ does not pulse (test)
+- [ ] The thinking line sends no message, records no event and spends no tokens (test)
+- [ ] The line fits the box in both languages with the longest verb and model id (G6 screenshot)
+
+### T45 · Step help
+depends_on: T43
+covers: S25
+files: src/specvania/ui/static/hud/help.js, src/specvania/ui/static/hud/chips.js, src/specvania/ui/static/hud/dialogue-box.js, src/specvania/ui/static/play/keys.js, src/specvania/ui/static/i18n/en.json, src/specvania/ui/static/i18n/pt-BR.json, tests/desktop/
+
+D31. One card per step with four parts — what happens, when it is your turn, the keys that work now, what comes next — opened by `?`, F1 or the `?` chip; Tab inside the card lists every key by step; Esc closes it and returns focus. The first-visit hint is added to the box once per step and viewer, using browser storage behind try/catch.
+
+Checklist:
+- [ ] `?`, F1 and the chip open the card of the current step with its four parts in both languages; Tab lists every key by step; Esc closes it (test)
+- [ ] The first visit to each step adds the hint once; without browser storage the game still works and shows the hint again (test)
+- [ ] The card fits a 1280×800 window in both languages and is readable by a screen reader (role and label) (G6 screenshot, test)
+
+### T46 · Sound engine and effects
+depends_on: T43
+covers: S27
+files: src/specvania/ui/static/audio/engine.js, src/specvania/ui/static/audio/sfx.js, src/specvania/ui/static/audio/cues.js, src/specvania/ui/static/hud/chips.js, src/specvania/ui/static/screens/settings.js, src/specvania/ui/static/main.js, src/specvania/ui/server.py, apps/desktop/main.js, apps/desktop/studio.cjs, src/specvania/ui/static/i18n/en.json, src/specvania/ui/static/i18n/pt-BR.json, tests/desktop/, tests/test_ui_server.py
+
+D32, effects and controls. One audio engine with separate music and effects volumes over a single `AudioContext`, created lazily and absent without audio support. Effects are short synthesized presets in the 8-bit style (sfxr-like parameters), one per cue. `cues.js` maps events and UI actions to cues and drops a cue repeated within 120 ms. Settings gain music volume, effects volume and mute, validated and saved with the other desktop settings (`studio.cjs`); the mute chip toggles mute. Electron allows autoplay. The CSP already limits media to the app itself through `default-src 'self'`; a test pins that.
+
+Checklist:
+- [ ] Every event and UI action listed in D32 maps to its cue, and the same cue never plays twice within 120 ms (test with a fake clock)
+- [ ] Music volume, effects volume and mute apply at once and survive a restart (test)
+- [ ] Without an `AudioContext` the game runs silently and raises nothing (test)
+- [ ] The CSP allows media only from the app itself and still has no remote source and no `'unsafe-eval'` (test)
+- [ ] A Watch demo run logs the expected cues in order (G6 log)
+
+### T47 · Music
+depends_on: T46
+covers: S27
+files: src/specvania/ui/static/vendor/music/, src/specvania/ui/static/audio/music.js, src/specvania/ui/static/audio/engine.js, THIRD_PARTY_NOTICES.md, pyproject.toml, tests/test_music.py, tests/desktop/
+
+D32, music. Before the room, Claude picks the CC0 tracks (O7), checks each license at its source and vendors them with a manifest (file, title, author, source URL, license, size). `music.js` picks the track from the step (T42) and the boss fight, loops it, crossfades in 1 s on change and plays the matching jingle on the end screen. The wheel ships the music.
+
+Checklist:
+- [ ] Every track in the manifest is CC0, exists, is listed in `THIRD_PARTY_NOTICES.md` with its source URL, and all music stays under 4 MB (test)
+- [ ] Steps 1–4, the expedition, the boss fight and both endings play their track, crossfading on change (test)
+- [ ] The wheel contains the music, and the game plays it with the network disabled (test)

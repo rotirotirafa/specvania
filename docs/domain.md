@@ -69,6 +69,18 @@ One vocabulary for code, events, UI text, docs and posts. When a term exists her
 | Castle | Castelo | How a world is drawn: one floor per area, one chamber per room | `map/castle.js` |
 | Handshake | Handshake | The one JSON line the studio prints on stdout with its port and tokens (D19) | studio stdout |
 
+## Play (v0.4)
+
+| Term | PT-BR | Meaning | In code |
+|---|---|---|---|
+| Step | Etapa | One of the six steps of the journey: Project, Idea, Clarify, Map, Expedition, End (D30); never an area or a room | `play/step.js` |
+| Expedition | Expedição | A run as the game shows it: the party clearing the castle (step 5) | studio phase `running` |
+| Dialogue box | Caixa de diálogo | The box at the bottom of the castle: who is acting, their latest line, the thinking line (D28) | `hud/dialogue-box.js` |
+| Your turn | Sua vez | The dialogue box when the player must answer an approval, a Clarify question or a pause | narrator `turn` |
+| Thinking line | Linha de pensamento | The box's last line while a role waits: a playful verb, the elapsed time and the model (D29) | `play/thinking.js` |
+| Step help | Ajuda da etapa | The `?` card that explains the current step (D31) | `hud/help.js` |
+| Cue | Efeito sonoro | A named sound effect played for an event or a UI action (D32) | `audio/cues.js` |
+
 ## Limits and metrics
 
 | Term | PT-BR | Meaning | In code |
@@ -93,7 +105,7 @@ One vocabulary for code, events, UI text, docs and posts. When a term exists her
 | Don't use | Use | Why |
 |---|---|---|
 | task (in code) | room | "task" collides with asyncio tasks and the task-list file name; `tasks.md` keeps its name |
-| level, stage, quest | area / room | One metaphor only |
+| level, stage, quest | area / room for the castle; step for the journey (D30) | One metaphor only |
 | agent (for a role) | role, or the role name | Every role is an agent; be specific |
 | planner / coder / reviewer (in UI text) | Mage / Warrior / Paladin | Code may alias them in docstrings, UI never mixes |
 | retry (for review failure) | respawn | "retry" is reserved for provider-level retries and the paused-run option |

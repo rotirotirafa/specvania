@@ -1,16 +1,17 @@
-# specvania — Spec v0.3.1
+# specvania — Spec v0.4
 
 > A spec-driven coding agent where **your spec becomes a metroidvania castle**.
-> A party of open models (served by NVIDIA NIM by default) plans, codes and reviews your work. You direct it from a desktop game — type the idea, answer the Mage, approve commands — and watch the party clear the castle built from your spec, room by room, in English or Brazilian Portuguese.
+> A party of open models (served by NVIDIA NIM by default) plans, codes and reviews your work. You direct it from a desktop game — type the idea, answer the Mage, approve commands — and watch the party clear the castle built from your spec, room by room, in English or Brazilian Portuguese. A dialogue box always tells you what is happening and when it is your turn, with music and sound.
 
 | | |
 |---|---|
-| Status | Approved by the owner (2026-10-13), including the v0.3.1 amendment |
+| Status | Approved by the owner (2026-10-13), including the v0.3.1 amendment; v0.4 amendment approved on 2026-10-15 |
 | Owner | @rotirotirafa |
-| Date | 2026-10-13 |
+| Date | 2026-10-15 |
 | Read with | [`docs/domain.md`](domain.md) · [`docs/conventions.md`](conventions.md) · [`docs/tasks.md`](tasks.md) · [`.agent/execution-protocol.md`](../.agent/execution-protocol.md) |
 
 **Changelog**
+- v0.4 (2026-10-14) — Playability, after the v0.3 launch. The owner's dogfood run showed the game is not intuitive: "I don't know what to do at the current step" (C22). A JRPG-style dialogue box at the bottom of the castle says who is acting and what they did, and becomes "your turn" when the player must answer; approvals, Clarify questions and pauses move into it, with keys (C23, D28). The party thinks out loud with playful verbs next to the real wait, without spending tokens (C24, D29). A step chip shows where the player is in the six-step journey, and `?` explains the current step (C25, D30, D31). Music from CC0 files and sound effects synthesized in code (C26, D32). New area A12 (S25–S27, T42–T47), after the launch (C27). Providers beyond an OpenAI-compatible endpoint move to v0.5.
 - v0.3.1 (2026-10-13) — Launch: the CLI ships on PyPI and the desktop app on GitHub Releases, from a tag the owner pushes (C19, D26); a new last area A11 prepares the public repository (community files, sponsor), the release automation and the launch kit with the recorded demo and LinkedIn drafts (C20, D27, S24, T39–T41). The dogfood run (T23) happens in a fresh repository the owner creates. Providers beyond an OpenAI-compatible endpoint (Claude, Codex, OpenClaw, Hermes…) are v0.4 (C21).
 - v0.3 (2026-10-13) — The desktop game becomes the main surface: a long-lived `specvania studio` server started by the Electron app runs plan and run without a terminal (C12–C18). The map becomes a castle cross-section drawn with the Kenney Tiny Dungeon pack (CC0), replacing the code-drawn sprites (D10). Read-only code and diff per room in an embedded Monaco editor. Stamina becomes a per-run token budget. The game, the agents' prose and the README in English and Brazilian Portuguese. Party probe before an expedition. T23 moves to the new last area so the dogfood run happens in the game. Purpose: a demo and portfolio piece.
 - v0.2 (2026-10-12) — Added the ledger (runs, features, spec versions, bugs) with SQLite by default and Postgres as a pluggable adapter; bugs become monsters on the map; Electron desktop window next to the browser; shell approvals also from the desktop window. Redis considered and left out (D14).
@@ -42,8 +43,9 @@ specvania combines it all: **SDD-native workflow + a team of open models + a pro
 - G8. Offer the game and the agents' human-facing text in English and Brazilian Portuguese.
 - G9. Be demo-ready: someone who watches about two minutes of the game understands the concept without an explanation, and a recorded real run plays offline inside the app.
 - G10. Be launch-ready: installable from PyPI and GitHub Releases, in a repository that welcomes issues, contributions and sponsors, with the launch material ready for the owner to publish.
+- G11. Be playable: at every moment the game says what is happening and whether it is the player's turn, every player action has a key, and the castle has music, sound effects and a party that thinks out loud.
 
-## 3. Non-goals (v0.3)
+## 3. Non-goals (v0.4)
 
 - Editing code inside the app, an integrated terminal, VS Code or other IDE extensions; Docker sandbox for command execution; parallel task execution.
 - Several projects, runs or windows at once in the game; switching projects during a run.
@@ -54,9 +56,11 @@ specvania combines it all: **SDD-native workflow + a team of open models + a pro
 - Native function-calling (D3), multiplayer, approvals from a plain browser tab.
 - Long-context summarization of agent history (truncation only).
 - Signed and notarized desktop builds; Windows as a first-class platform (best effort).
-- Providers other than an OpenAI-compatible endpoint — native Claude, Codex, OpenClaw, Hermes or other agents as party members (v0.4, C21).
+- Providers other than an OpenAI-compatible endpoint — native Claude, Codex, OpenClaw, Hermes or other agents as party members (v0.5, C21, C27).
 - Distribution through npm (C19).
 - Publishing, tagging, posting or making the repository public from automation: the launch rooms prepare everything, the owner presses the buttons (S-7).
+- Pausing an expedition from the game at any moment: a run still pauses only on its own (stamina, lives, a failed boss, an exhausted chain).
+- Spoken voices, a sound per typed letter, music chosen by the player, gamepad input, and thought balloons on the map (C24).
 
 ## 4. Clarify log
 
@@ -82,7 +86,13 @@ specvania combines it all: **SDD-native workflow + a team of open models + a pro
 | C18 | Front-end approach | Evolve the existing web app and Electron shell (no bundler); a long-lived studio server bridges the engine to the game |
 | C19 | Distribution (v0.3.1) | The CLI on PyPI (`uvx specvania`, `uv tool install specvania`) and the desktop app on GitHub Releases; no npm package |
 | C20 | Launch (v0.3.1) | A last area after the dogfood run prepares the public repository (contributing, issue forms, code of conduct, security policy, GitHub Sponsors), the release automation and the launch kit (recorded demo, screenshots, LinkedIn drafts in English and Portuguese); the owner publishes and posts |
-| C21 | Providers beyond NIM | Wanted next (v0.4): use any provider or agent — Claude, Codex, OpenClaw, Hermes and others — instead of being tied to NVIDIA NIM; brainstorm and spec it after v0.3 ships |
+| C21 | Providers beyond NIM | Wanted next: use any provider or agent — Claude, Codex, OpenClaw, Hermes and others — instead of being tied to NVIDIA NIM; v0.5 since C27, brainstormed and specified after v0.4 |
+| C22 | Playability (v0.4) | After the dogfood run the game was "not intuitive — I don't know what to do at the current step". Every moment must say what is happening and whether it is the player's turn, and the game should feel like one: music, sounds on buttons, on finished work and on monsters, a help menu, and characters thinking out loud |
+| C23 | Layout (v0.4) | A JRPG-style dialogue box at the bottom, the castle in the rest of the window, the step and the party as small chips at the top; chosen from mockups over a mission bar and a journey sidebar |
+| C24 | Thoughts (v0.4) | Like Claude Code's waiting words (churning, confabulating, scheming): a playful verb that changes by itself next to the real wait, in the dialogue box's last line; chosen over balloons on the map. No model writes them |
+| C25 | Help (v0.4) | `?` explains the current step — what happens, when it is your turn, the keys that work now, what comes next — with every key one Tab away; chosen over a plain controls list and an Esc game menu |
+| C26 | Sound (v0.4) | Music from CC0 files, sound effects synthesized in code; on by default, with music and effects volumes and mute in Settings |
+| C27 | Order (v0.4) | Playability ships after the v0.3 launch, as v0.4; providers move to v0.5 |
 
 ## 5. How SDD maps to the game
 
@@ -105,7 +115,7 @@ specvania combines it all: **SDD-native workflow + a team of open models + a pro
 
 Full glossary and naming rules: [`docs/domain.md`](domain.md).
 
-## 6. User-facing surface (v0.3)
+## 6. User-facing surface (v0.4)
 
 **The game (main surface).** Open the specvania app from the Dock. It starts `specvania studio` and shows the title screen:
 
@@ -116,9 +126,26 @@ Title ── New project / Open project ── pick a git folder (init offered) 
   │                                               → Start expedition → approvals, pauses, bosses → end screen
   ├─ Watch demo (bundled real run, 1×/2×/4×, offline)
   ├─ Language: EN | PT-BR
-  └─ Settings: language, token budget, path to specvania, reduced motion
+  └─ Settings: language, token budget, path to specvania, reduced motion, music and effects volume, mute
 Click any chamber → panel with Mission (checklist), Code, Diff (read-only Monaco) and Review.
 ```
+
+**In the castle (v0.4).** The castle fills the window; a dialogue box at the bottom says who is acting and what they did, and turns gold when it is the player's turn (D28):
+
+```
+[5/6 Expedition · T03] [Mage  Warrior!  Paladin  ♥♥♡]                       [mute] [?]
+
+              castle cross-section — the camera follows the party; M shows it whole
+
+┌──────────────────────────────────────────────────────────────────────────────────────┐
+│ [portrait] Warrior                                                                    │
+│ I wrote src/total.py. Now I'll run the room's tests.                                  │
+│ ✻ Hammering… (12 s · z-ai/glm-5.3)                                                    │
+└──────────────────────────────────────────────────────────────────────────────────────┘
+  your turn:  "May I run npm test in T03?"   A approve · N deny (reason) · V view command
+```
+
+Keys (D31): `?` or F1 help for the current step (Tab: every key) · Esc close or back · M whole castle · arrows move the camera · A / N / V in an approval · 1–n or ↑↓ Enter to pick a Clarify option or a pause choice · in Watch demo 1 / 2 / 4 and Space.
 
 **The CLI (engine, scripting, CI).** Everything the game does goes through the same engine; the CLI keeps working:
 
@@ -233,6 +260,15 @@ Studio mode (v0.3), started from the Dock:
          GET /api/rooms/<id>/code ──► files + diff per room (read-only, Sandbox + redaction)
 ```
 
+Playability (v0.4) lives in the web app and is derived from what the studio already sends — no new event, no new control message, so live play, Watch demo and old ledgers behave the same:
+
+```
+ studio_state + events ─┬─► play/step.js ────► step chip (1–6, current room)
+                        ├─► play/narrator.js ─► dialogue box: speaker, line, your turn, keys ◄── play/thinking.js (verbs, timer)
+                        ├─► play/keys.js ─────► existing control messages: approval_answer · clarify_answer · pause_decision
+                        └─► audio/cues.js ────► audio/engine.js ──► music (vendored CC0 OGG) + effects (audio/sfx.js, Web Audio)
+```
+
 ## 9. Decisions
 
 | Id | Decision | Why |
@@ -264,6 +300,11 @@ Studio mode (v0.3), started from the Dock:
 | D25 | **Saving the world.** After Clarify the game commits only `.specvania/specs/<slug>/` on the current branch ("specvania: map <slug>") before the run. If other files are dirty, the game lists them and asks to cancel or start anyway (`--allow-dirty`) | The v0.2 flow required a manual commit between plan and run (T23 friction) |
 | D26 | **Distribution.** One version, in `pyproject.toml`, drives everything. Pushing a tag `vX.Y.Z` runs a release workflow that builds the sdist and wheel and publishes them to PyPI through trusted publishing (OIDC, no token stored in the repository), builds the desktop app (unsigned dmg arm64 and x64, AppImage) and creates the GitHub Release with the artifacts, `SHA256SUMS` and the version's `CHANGELOG.md` section. Pull requests run the same builds without publishing. The owner sets up the PyPI trusted publisher and pushes the tag | The CLI is a Python package (PyPI is where `uvx` finds it); Releases carry the desktop builds; OIDC avoids long-lived secrets in a public repository |
 | D27 | **Community.** `CONTRIBUTING.md` explains the SDD contract (spec, rooms, gates, deviations) and the local setup; issue forms for a bug, a feature idea and a room proposal; a pull-request template with the gate checklist; `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1); `SECURITY.md` pointing to GitHub private vulnerability reporting; `.github/FUNDING.yml` for GitHub Sponsors (@rotirotirafa). Everything in English, with the README in both languages | A portfolio project that invites contributions needs a front door; issue forms keep reports actionable |
+| D28 | **Dialogue box and chips.** In the castle, the map fills the window and a dialogue box sits at the bottom: the speaker's portrait and name, their latest real line (the Warrior's `thought` and action, the Paladin's feedback, a gate result, a bug opened or closed, a boss scenario, an approval result) and the thinking line (D29). When the player must answer — an approval, a Clarify question, a run pause — the box becomes **your turn**: gold border, the alert sound, the question and its choices with keys. The approval modal and the pause screen are replaced by the box, and the Clarify screen uses the same box; the full command opens with V; a deny reason (T20) is typed in the box under the same rules. At the top left, a step chip (D30) and a party chip (portraits, stamina hearts, `!` on whoever waits for the player) that opens today's party panel and Bestiary as a drawer; at the top right, mute (D32) and `?` (D31). The room panel (D20) is unchanged. Everything is derived in the web app from `studio_state` and the event stream; a replay never shows a turn | C22, C23; one place to look, the castle stays in view, and live play and replays share one projection (D6) |
+| D29 | **Thinking line.** While a party member is thinking — the party HUD's existing state: a role from its `model_requested` until its `model_call` or action, the Paladin while gates and reviews run — the box's last line reads `✻ <verb>… (<elapsed> · <model>)`, with `gates` in place of the model while gates run, and the box speaks for that role. Verbs come from per-role lists in `i18n/en.json` and `i18n/pt-BR.json`, at least 12 per role and language, drawn at random without repeating the previous verb, changing every 4 s; the elapsed time counts from the event that started the wait. With reduced motion the verb stays and the ✻ does not pulse. Verbs never come from a model and spend no tokens | C24; a wait feels alive, while the Warrior's own `thought` stays the real line |
+| D30 | **Journey steps.** Six steps derived in the web app from the studio phase and the screen on display: 1 Project (title, project screen, party check), 2 Idea, 3 Clarify (the Mage's questions and the spec being written), 4 Map (castle revealed, saving the map), 5 Expedition (the run, with its approvals, pauses and bosses), 6 End. The step chip shows `n/6 <step>` and, in the expedition, the current room. Watch demo shows the step of the moment it replays | C22; the player always knows where they are in the whole cycle |
+| D31 | **Step help and keys.** `?` or F1 opens the card of the current step: what happens, when it is your turn, the keys that work now and what comes next; Tab in the card lists every key by step; Esc closes it. The first time a viewer reaches a step, the box adds "First time here? Press ? to learn this step" (remembered in browser storage; without storage the hint simply shows again). Keys: A approve, N deny (optional reason), V view the full command; 1–n or ↑↓ Enter pick a Clarify option or a pause choice; M whole castle; arrows move the camera; Esc closes or goes back; Watch demo keeps 1 / 2 / 4 and Space. Keys are the same in both languages. No key fires while a text field has focus, and keys that answer the studio do nothing without the control token (D16) | C25; every player action has a key, explained where it is used |
+| D32 | **Sound.** Music: vendored OGG loops, CC0 only, each listed with its source URL and license in `THIRD_PARTY_NOTICES.md` and in a manifest a test checks, all under 4 MB: a calm theme (steps 1–4), an exploration loop (expedition), a boss loop and two end jingles (every room cleared, or not); tracks crossfade when the step changes. Effects: synthesized in code with Web Audio in an 8-bit style, no files: hover, confirm, back, help; your turn; room entered, gate passed, bug opened, bug closed, room cleared, room failed or skipped, boss appears, boss defeated, stamina exhausted, stamina restored; one short blip per new line in the box. Settings gain music volume (default 40 %), effects volume (default 70 %) and mute, saved with the other settings; the mute chip toggles it. Watch demo plays sound. The same effect never repeats within 120 ms. Without audio output the game stays silent and never fails. The desktop app allows autoplay; in a browser, sound starts at the first click or key. The CSP allows media only from the app itself | C26; files make the music sound like a game, synthesized effects need no assets or licenses |
 
 ## 10. Acceptance — business scenarios (BDD)
 
@@ -484,6 +525,45 @@ And the visitor can open a bug, a feature idea or a room proposal through an iss
 And the README and CONTRIBUTING.md explain how to contribute and how to sponsor the project
 ```
 
+### S25 · I always know what to do
+```gherkin
+Given I play in the desktop game in Brazilian Portuguese
+Then a chip shows the current step, from "1/6 Projeto" to "6/6 Fim", and the current room during the expedition
+And the dialogue box at the bottom shows who is acting and their latest line
+When the Warrior asks to run a command
+Then the box turns gold with the command and the keys A, N and V, and the your-turn sound plays
+And pressing A approves it, and pressing N lets me type a reason and deny it
+When I press ?
+Then a card explains the current step: what happens, when it is my turn, the keys that work now and what comes next
+And every key of every step is one Tab away
+And no shortcut fires while I type in a text field
+```
+
+### S26 · The party thinks out loud
+```gherkin
+Given the Warrior is waiting for its model
+Then the last line of the dialogue box reads "✻ <verb>… (<seconds> · <model>)"
+And the verb comes from the Warrior's list in the current language and changes every 4 seconds without repeating
+And the seconds count from the model request
+And no model call is made and no token is spent for these lines
+Given reduced motion is on
+Then the verb stays the same until the wait ends
+```
+
+### S27 · The castle has sound
+```gherkin
+Given sound is on
+Then the title, the expedition and the boss fight each have their own music
+And the end screen plays a victory jingle when every room is cleared, and another jingle otherwise
+And my turn, a room cleared, a monster appearing and defeated, and a boss appearing and falling each have their own sound effect
+When I set music to 0 and effects to 50 % in Settings, or press the mute chip
+Then the game follows at once and keeps the choice on the next start
+Given Watch demo plays at 4×
+Then no sound effect repeats within 120 ms
+Given the computer has no audio output
+Then the game plays silently without errors
+```
+
 ## 11. Acceptance — technical checklist
 
 - [ ] `ruff check`, `ruff format --check`, `pyright` and `pytest` pass in CI on Linux and macOS, Python 3.12 and 3.13.
@@ -499,10 +579,16 @@ And the README and CONTRIBUTING.md explain how to contribute and how to sponsor 
 - [ ] The game loads with the network disabled, including the vendored Kenney tiles and Monaco, with a CSP that has no remote sources and no `'unsafe-eval'`.
 - [ ] `i18n/en.json` and `i18n/pt-BR.json` have the same keys and placeholders (covered by a test).
 - [ ] Kenney Tiny Dungeon (CC0) and Monaco (MIT) are listed with their licenses in `THIRD_PARTY_NOTICES.md`.
+- [ ] Every music file is CC0 and listed with its source URL and license in `THIRD_PARTY_NOTICES.md` and the music manifest; all music stays under 4 MB and ships in the wheel (covered by a test).
+- [ ] The game's CSP allows media only from the app itself and still has no remote sources and no `'unsafe-eval'` (covered by a test).
+- [ ] Each role has at least 12 thinking verbs in each language (covered by the i18n test).
+- [ ] No keyboard shortcut fires while a text field has focus, and no key answers the studio without the control token (covered by a test).
 
-## 12. Definition of done (v0.3)
+## 12. Definition of done
 
-All scenarios S1–S24 pass, the technical checklist is green, the desktop app builds for macOS (arm64, x64) and Linux (AppImage) in CI, and the full cycle of S22 works from the Dock. The package ships a real recorded run (`real-run`, plan and run) produced by specvania through the game on a fresh repository the owner creates (the sample project is the fallback), playable as Watch demo next to the synthetic `demo`. The README exists in English and Brazilian Portuguese, and its GIF comes from the real run. The release workflow, the community files and the launch kit are ready; publishing to PyPI, creating the release and posting are the owner's steps.
+**v0.3.** All scenarios S1–S24 pass, the technical checklist is green, the desktop app builds for macOS (arm64, x64) and Linux (AppImage) in CI, and the full cycle of S22 works from the Dock. The package ships a real recorded run (`real-run`, plan and run) produced by specvania through the game on a fresh repository the owner creates (the sample project is the fallback), playable as Watch demo next to the synthetic `demo`. The README exists in English and Brazilian Portuguese, and its GIF comes from the real run. The release workflow, the community files and the launch kit are ready; publishing to PyPI, creating the release and posting are the owner's steps.
+
+**v0.4.** Scenarios S25–S27 pass and the technical checklist stays green. The owner plays one expedition with sound on, from the idea to the end screen, without asking what to do next, and confirms the A12 boss (G8). Watch demo shows the dialogue box, the step chip, the thinking line and the sound.
 
 ## 13. Open points (decide during execution, log in `.agent/deviations.md`)
 
@@ -512,3 +598,5 @@ All scenarios S1–S24 pass, the technical checklist is green, the desktop app b
 - O4. How the desktop app is distributed beyond GitHub Releases (Homebrew cask, etc.).
 - O5. Bundling a Python runtime with the desktop app so it works without `uv tool install specvania`.
 - O6. Moving the `run --ui` desktop launch to the D19 handshake too, so the control token leaves argv on that path as well.
+- O7. Which CC0 tracks to vendor (D32): Claude picks candidates and checks each license before T47; the owner hears them in G8.
+- O8. Re-recording the README GIF and the launch video with the v0.4 interface and sound.
