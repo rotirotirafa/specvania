@@ -143,8 +143,15 @@ technical.add("open_replay"); technical.add("replaying");
 technical.add("darwin"); technical.add("border-box");
 // Existing replay bar id is also measured by the castle title gutter.
 technical.add("replay-bar");
+// T42 pure projections carry protocol/key/screen ids, never visible labels.
+// Keep this file-scoped; the visible-sink check below still rejects these ids.
+const playTechnical = new Set(`plaintext-only map approval pause replay F1 M ArrowLeft ArrowRight A help all-keys
+  Space view-command deny-reason pause_decision overview camera object approve deny view abort retry skip
+  read_file list_dir search write_file edit_file run_shell terminal narrator wontfix probe saving end expedition`.split(/\s+/));
+for (const value of ["?", " ", "pause.${}", "play.action.${}", "play.step.${}", "desktop window"]) playTechnical.add(value);
+diagnostics["play/narrator.js"] = ["stamina exhausted", "out of lives", "model chain exhausted", "boss failed"];
 function approved(value, file) {
-  return !value || Object.hasOwn(en, value) || Object.hasOwn(en, `event.${value}`) || technical.has(value) || file === "hud/room-panel.js" && panelTechnical.has(value) || /^(screens\/(pause|boss|end)\.js)$/.test(file) && expeditionTechnical.has(value) || file === "screens/replay.js" && replayTechnical.has(value) || exact.has(value) || diagnostics[file]?.includes(value)
+  return !value || file.startsWith("play/") && playTechnical.has(value) || Object.hasOwn(en, value) || Object.hasOwn(en, `event.${value}`) || technical.has(value) || file === "hud/room-panel.js" && panelTechnical.has(value) || /^(screens\/(pause|boss|end)\.js)$/.test(file) && expeditionTechnical.has(value) || file === "screens/replay.js" && replayTechnical.has(value) || exact.has(value) || diagnostics[file]?.includes(value)
     || /^specvania:[a-z-]+$/.test(value) // internal DOM event names
     || /^(\.\.\/|\.\/)[\w/.-]+$/.test(value) // local imports/assets only
     || /^\d+(px|%|px 0)?$/.test(value) || /^\d+(\.\d+)?$/.test(value) // CSS sizes and numeric formats
@@ -159,7 +166,7 @@ function scanJS(source, file) {
     // are also status/event keys. Check common sinks independently of allowlist.
     const before = source.slice(Math.max(0, start - 100), start);
     const visible = /(?:textContent\s*=|(?:label|text)\([^\n]*,|setAttribute\("aria-label",)\s*$/.test(before);
-    return (!approved(value, file) || visible && (technical.has(value) || expeditionTechnical.has(value) || file === "screens/replay.js" && replayTechnical.has(value) || diagnostics[file]?.includes(value)) && !["aria-label", "p", "h2", "h3", "div", "button", "span", "strong", "small"].includes(value));
+    return (!approved(value, file) || visible && (file.startsWith("play/") && playTechnical.has(value) || technical.has(value) || expeditionTechnical.has(value) || file === "screens/replay.js" && replayTechnical.has(value) || diagnostics[file]?.includes(value)) && !["aria-label", "p", "h2", "h3", "div", "button", "span", "strong", "small"].includes(value));
   }).map(({value}) => value);
 }
 function walk(directory) {
@@ -185,6 +192,8 @@ test("static_JS_and_HTML_have_no_untranslated_visible_literals", () => {
   assert.ok(scanJS('node.textContent = "replay-bar";', "map/scene.js").length);
   assert.ok(scanJS('node.textContent = "replay_speed";', "screens/replay.js").length);
   assert.ok(scanJS('node.textContent = "retry";', "screens/replay.js").length);
+  // T42's new technical ids remain invalid when used directly as UI prose.
+  for (const value of ["M", "retry", "narrator", "view-command"]) assert.ok(scanJS(`node.textContent = "${value}";`, "play/keys.js").length);
   // Prove the scan rejects prose, single words and technical keys in text sinks.
   for (const source of ['const hint = "World map · M";', 'node.textContent = "running";', 'label(document, "h2", "Mage");', 'text("p", `Oops ${id}`);']) assert.ok(scanJS(source,"main.js").length, source);
 });

@@ -656,9 +656,9 @@ files: src/specvania/ui/static/play/step.js, src/specvania/ui/static/play/narrat
 Pure modules, no screen yet (D28, D30, D31). `step.js` maps the studio phase and the screen on display to steps 1–6, plus the current room during the expedition. `narrator.js` folds `studio_state` and events into the dialogue box's content: speaker, latest line (Warrior thought and action, Paladin feedback, gate result, bug opened or closed, boss scenario, approval result), whether it is the player's turn (approval, Clarify question, run pause) with its choices, and the keys valid now; one function serves live play and Watch demo, and a replay never has a turn. `keys.js` maps a key to a control message that already exists (`approval_answer`, `clarify_answer`, `pause_decision`) or to a UI action (help, whole castle, close), ignores keys while a text field has focus and sends nothing to the studio without the control token.
 
 Checklist:
-- [ ] Each studio phase and screen maps to its step, and a replay shows the step of the replayed moment (test)
-- [ ] Every event type that has a line gets its speaker and line in both languages; approvals, Clarify questions and pauses become a turn with their choices, never during a replay (test)
-- [ ] A, N, V, 1–n, ↑↓ Enter, M, ?, F1 and Esc map as in D31; no key fires while a text field has focus or answers the studio without the control token (test)
+- [x] Each studio phase and screen maps to its step, and a replay shows the step of the replayed moment (test)
+- [x] Every event type that has a line gets its speaker and line in both languages; approvals, Clarify questions and pauses become a turn with their choices, never during a replay (test)
+- [x] A, N, V, 1–n, ↑↓ Enter, M, ?, F1 and Esc map as in D31; no key fires while a text field has focus or answers the studio without the control token (test)
 
 ### T43 · Dialogue box and chips
 depends_on: T42
