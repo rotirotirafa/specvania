@@ -141,6 +141,8 @@ for (const value of ["-", " ", "pause.${}"]) replayTechnical.add(value);
 technical.add("open_replay"); technical.add("replaying");
 // Desktop platform identifier and title bar CSS value; never visible prose.
 technical.add("darwin"); technical.add("border-box");
+// Existing replay bar id is also measured by the castle title gutter.
+technical.add("replay-bar");
 function approved(value, file) {
   return !value || Object.hasOwn(en, value) || Object.hasOwn(en, `event.${value}`) || technical.has(value) || file === "hud/room-panel.js" && panelTechnical.has(value) || /^(screens\/(pause|boss|end)\.js)$/.test(file) && expeditionTechnical.has(value) || file === "screens/replay.js" && replayTechnical.has(value) || exact.has(value) || diagnostics[file]?.includes(value)
     || /^specvania:[a-z-]+$/.test(value) // internal DOM event names
@@ -180,6 +182,7 @@ test("static_JS_and_HTML_have_no_untranslated_visible_literals", () => {
   // T36's new protocol identifiers are never accepted as direct UI labels.
   assert.ok(scanJS('node.textContent = "abort";', "screens/pause.js").length);
   assert.ok(scanJS('node.textContent = "stamina exhausted";', "screens/pause.js").length);
+  assert.ok(scanJS('node.textContent = "replay-bar";', "map/scene.js").length);
   assert.ok(scanJS('node.textContent = "replay_speed";', "screens/replay.js").length);
   assert.ok(scanJS('node.textContent = "retry";', "screens/replay.js").length);
   // Prove the scan rejects prose, single words and technical keys in text sinks.

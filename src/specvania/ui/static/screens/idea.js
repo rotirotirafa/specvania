@@ -1,7 +1,10 @@
+import { createRunningIndicator } from "../hud/running.js";
 import { mageDialogue } from "../hud/dialogue.js";
 
 /** Studio-only dialogue. Transient questions are rendered from server snapshots. */
-export function ideaScreen(ui, initial = {}) {
+export function ideaScreen(ui, initial = {}, timing = {}) {
+  const running = createRunningIndicator(ui.browser || globalThis, () => render(), timing);
+  let working = null, started = null;
   const box = mageDialogue(ui); box.tabIndex = -1;
   const content = ui.document.createElement("div"); content.className = "dialogue-content"; box.append(content);
   const actions = ui.document.createElement("footer"); actions.className = "dialogue-actions"; box.append(actions);
@@ -21,6 +24,7 @@ export function ideaScreen(ui, initial = {}) {
     box.setAttribute("aria-label", ui.t("role.mage"));
     if (options[0]?.parentNode) options[0].parentNode.setAttribute("aria-label", ui.t("idea.options"));
     for (const [item, key, params] of labels) item.textContent = ui.t(key, params);
+    if (working) working.textContent = running.text(ui.t("idea.working"), started);
     for (const [index, item] of options.entries()) {
       item.setAttribute("aria-selected", String(index === selected));
       item.style.borderColor = index === selected ? ui.palette.Y : ui.palette.S;
@@ -46,6 +50,10 @@ export function ideaScreen(ui, initial = {}) {
     box.dataset.mode = error ? "error" : dirty ? "dirty" : next;
     box.setAttribute("aria-modal", String(box.dataset.mode !== "world"));
     ui.dialogueLayout(box.dataset.mode);
+    const isWorking = next === "working" && !error && !dirty;
+    if (isWorking && started === null) started = running.now();
+    if (!isWorking) started = null;
+    working = null; running.active(isWorking);
     mode = next; labels = []; options = []; input = null; start = null;
     content.replaceChildren(); actions.replaceChildren();
     if (error) {
@@ -103,7 +111,7 @@ export function ideaScreen(ui, initial = {}) {
       start = button("idea.start", () => {
         if (canStart() && ui.startRun(slug)) {pending = true; draw("working");}
       }, !canStart());
-    } else text("p", "idea.working");
+    } else working = text("p", "idea.working");
     render();
     if (next !== "idea" || error || dirty) {
       const first = options[selected] || input || Array.from(actions.children).find(item => item.tagName.toLowerCase() === "button" && !item.disabled);
@@ -133,6 +141,13 @@ export function ideaScreen(ui, initial = {}) {
       } else if (!question) {request = null; pending = false; if (mode !== "working") draw("working");}
     }
   }
+  const onEvent = ({detail}) => {
+    if (working && (detail.type === "clarify_answer" || detail.role === "mage" && ["model_requested", "model_call", "fallback"].includes(detail.type))) {
+      const ts = Date.parse(detail.ts);
+      started = Number.isFinite(ts) ? ts : running.now(); render();
+    }
+  };
+  ui.browser?.addEventListener("specvania:event", onEvent);
   draw(initial.world_slug ? "world" : "idea"); update(initial);
   return {render() {render(); if (input) input.setAttribute("aria-label", ui.t(mode === "clarify" ? "idea.answer" : "idea.field"));}, update,
     previewReady() {if (mode === "world" && !error && !dirty) draw("world");},
@@ -141,7 +156,7 @@ export function ideaScreen(ui, initial = {}) {
       if (value.dirty_paths?.length && slug) dirty = value.dirty_paths;
       else error = studioErrorKey(value.reason);
       draw(state.phase === "world_ready" ? "world" : request ? "clarify" : "idea");
-    }, destroy() {box.removeEventListener("keydown", keydown);},
+    }, destroy() {running.destroy(); ui.browser?.removeEventListener("specvania:event", onEvent); box.removeEventListener("keydown", keydown);},
   };
 }
 

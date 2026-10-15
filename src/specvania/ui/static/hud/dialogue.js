@@ -10,7 +10,12 @@ export function approvalResult(event) {
 
 export function dialogueFor(event, control = false) {
   if (!event) return null;
-  if (event.type === "action") return {speaker: t("role.warrior"), text: [event.thought, t("dialogue.action", {action: event.action, args: event.args_summary})].filter(Boolean).join("\n")};
+  if (event.type === "action") {
+    const action = event.action === "finish" ? t("dialogue.finished") : event.action;
+    const summary = event.args_summary?.trim();
+    return {speaker: t("role.warrior"), text: [event.thought,
+      summary ? t("dialogue.action", {action, args: event.args_summary}) : action].filter(Boolean).join("\n")};
+  }
   if (event.type === "review") return {speaker: t("role.paladin"), text: event.feedback || ""};
   if (event.type === "approval_answered") return {speaker: t("role.warrior"), text: approvalResult(event)};
   if (event.type === "approval_requested") return {speaker: t("role.warrior"), text: t("approval.request", {command: event.command, cwd: t("approval.cwd", {cwd: event.cwd}), waiting: t(control ? "approval.waiting" : "approval.watch")})};

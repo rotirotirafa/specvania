@@ -708,3 +708,106 @@ test("canvas_hud_overlay_blocks_have_opaque_palette_backgrounds_and_borders", as
   assert.match(main, /borderBottom:\s*`2px solid \$\{UI_COLORS\.border\}`/);
   assert.match(main, /webkitAppRegion:\s*"drag"/);
 });
+
+test("area_titles_follow_own_floor_clamp_without_overlap_and_overview_is_unchanged", async () => {
+  const {mountMap} = await load("map/scene.js"), {layoutWorld} = await load("map/layout.js");
+  for (const [width, height] of [[960, 540], [1280, 800], [1920, 1080]]) {
+    const h = harness(width, height), nodes = [];
+    h.browser.document.createElement = tag => ({tagName: tag, style: {}, children: [], hidden: false,
+      setAttribute() {}, append(node) {this.children.push(node);}, replaceChildren() {this.children = [];},
+      getBoundingClientRect() {return {height: this.textContent?.includes("Núcleo") ? 48 : 24};},
+      remove() {this.removed = true;}});
+    h.host.append = node => nodes.push(node);
+    const world = syntheticWorld(12, 5);
+    world.areas[0].title = "Núcleo de conversão e testes";
+    const layout = layoutWorld(world);
+    const map = mountMap(h.Phaser, h.host, h.browser);
+    try {
+      h.emit("specvania:event", {type: "world_loaded", ...world}); h.create();
+      const rail = nodes[0]; assert.equal(rail.hidden, false);
+      assert.equal(rail.style.width, "104px"); assert.equal(rail.style.left, "8px");
+      assert.equal(rail.style.top, "32px"); assert.equal(rail.style.bottom, "8px");
+      assert.ok(8 + 104 < h.camera.x, "Map viewport starts beyond the label gutter");
+      assert.deepEqual([h.camera.x, h.camera.width], [120, width - 120]);
+      for (const x of [0, 64, 128, 240, 400]) {
+        h.camera.scrollX = x; h.camera.scrollY = -h.camera.height / 2 * (1 - 1 / h.camera.zoom);
+        h.config().scene.update.call(h.scene);
+        const label = rail.children[0];
+        assert.equal(label.hidden, false); assert.equal(label.textContent, "A1\nNúcleo de conversão e testes");
+        assert.equal(label.style.whiteSpace, "pre-wrap"); assert.equal(label.style.overflowWrap, "anywhere");
+        assert.equal(h.live().filter(node => node.kind === "text" && node.text?.includes("Núcleo")).length, 0);
+      }
+      // At a vertical camera edge the complete title is still in the gutter.
+      const floor = layout.areas[7];
+      h.camera.scrollY = floor.y - h.camera.height / 2 * (1 - 1 / h.camera.zoom);
+      h.config().scene.update.call(h.scene);
+      assert.equal(rail.children[7].hidden, false); assert.equal(rail.children[0].hidden, true);
+      h.descriptions["replay-bar"] = {hidden: false, getBoundingClientRect: () => ({bottom: 128})};
+      h.config().scene.update.call(h.scene); assert.equal(rail.style.top, "136px");
+      h.descriptions["replay-bar"].hidden = true;
+      h.config().scene.update.call(h.scene); assert.equal(rail.style.top, "32px");
+      const screenY = y => h.camera.y + h.camera.height / 2 + (y - h.camera.scrollY - h.camera.height / 2) * h.camera.zoom;
+      function checkTitles() {
+        const topEdge = Math.max(32, h.camera.y, h.descriptions["replay-bar"]?.hidden === false ? 136 : 0);
+        const bottomEdge = Math.min(height - 8, h.camera.y + h.camera.height);
+        let previousBottom = topEdge - 8;
+        const shown = rail.children.filter(node => !node.hidden);
+        assert.ok(shown.length);
+        for (const node of shown) {
+          assert.equal(node.style.position, "absolute", "Camera-derived top must position the DOM title");
+          assert.equal(node.style.left, "0"); assert.equal(node.style.width, "100%");
+          const area = layout.areas[rail.children.indexOf(node)];
+          const labelTop = Number.parseFloat(rail.style.top) + Number.parseFloat(node.style.top);
+          const labelHeight = node.getBoundingClientRect().height;
+          const floorTop = Math.round(screenY(area.y)), floorBottom = Math.round(screenY(area.y + area.height));
+          assert.ok(Number.isFinite(labelTop), `${area.id} needs a camera-derived top`);
+          assert.ok(labelTop >= topEdge && labelTop + labelHeight <= bottomEdge, `${area.id} is fully inside the usable viewport`);
+          assert.ok(labelTop >= previousBottom + 8, `${area.id} overlaps the previous title`);
+          const clamped = Math.min(bottomEdge - labelHeight, Math.max(topEdge, floorTop));
+          // A collision at the bottom propagates that clamp to the titles
+          // above it, preserving the whole group inside the viewport.
+          const below = shown.slice(shown.indexOf(node));
+          const bottomClamp = bottomEdge - below.reduce((sum, item) => sum + item.getBoundingClientRect().height, 0) - 8 * (below.length - 1);
+          assert.ok(labelTop >= floorTop && labelTop <= floorBottom || labelTop === clamped || labelTop === bottomClamp,
+            `${area.id} top ${labelTop}, floor ${floorTop}..${floorBottom}, clamp ${clamped}, previous bottom ${previousBottom}`);
+          previousBottom = labelTop + labelHeight;
+        }
+      }
+      // Floor alignment (or a downward collision adjustment) at every zoom.
+      for (const zoom of [1, 2, 3]) for (const scrollX of [0, 240]) {
+        h.camera.zoom = zoom; h.camera.scrollX = scrollX;
+        h.camera.scrollY = 32 - h.camera.height / 2 * (1 - 1 / zoom);
+        h.config().scene.update.call(h.scene); checkTitles();
+        const second = rail.children[1];
+        const absoluteTop = Number.parseFloat(rail.style.top) + Number.parseFloat(second.style.top);
+        const firstBottom = Number.parseFloat(rail.style.top) + Number.parseFloat(rail.children[0].style.top) + rail.children[0].getBoundingClientRect().height;
+        assert.equal(absoluteTop, Math.max(Math.round(screenY(layout.areas[1].y)), firstBottom + 8), "A2 title must track the A2 floor or clear the preceding title");
+      }
+      // A top-edge sliver pins A1; A2 is pushed down past the taller A1 title.
+      h.camera.zoom = 3;
+      h.camera.scrollY = 78 - h.camera.height / 2 * (1 - 1 / 3);
+      h.config().scene.update.call(h.scene); checkTitles();
+      assert.equal(Number.parseFloat(rail.children[0].style.top), 0);
+      assert.equal(Number.parseFloat(rail.children[1].style.top), 56);
+      // A bottom-edge sliver pins its entire title above the bottom edge.
+      h.camera.scrollY = layout.areas[4].y - (height - 12) / 3 - h.camera.height / 2 * (1 - 1 / 3);
+      h.config().scene.update.call(h.scene); checkTitles();
+      assert.equal(Number.parseFloat(rail.style.top) + Number.parseFloat(rail.children[4].style.top), height - 8 - rail.children[4].getBoundingClientRect().height);
+      // Replay bar and a nonzero camera viewport origin both participate in the clamp.
+      h.descriptions["replay-bar"].hidden = false;
+      h.camera.y = 40; h.camera.height = height - 80;
+      h.camera.scrollY = layout.areas[2].y - h.camera.height / 2 * (1 - 1 / 3);
+      h.config().scene.update.call(h.scene); checkTitles();
+      assert.equal(Number.parseFloat(rail.style.top) + Number.parseFloat(rail.children[2].style.top), 136);
+      h.descriptions["replay-bar"].hidden = true;
+      h.config().scene.update.call(h.scene); checkTitles();
+      h.keys.get("keydown-M")({repeat: false});
+      assert.equal(rail.hidden, true); assert.deepEqual([h.camera.x, h.camera.width], [0, width]);
+      for (const area of layout.areas) {
+        const label = h.live().find(node => node.kind === "text" && node.text === `${area.id}\n${area.title}`);
+        assert.ok(label); assert.deepEqual([label.x, label.y], [area.x, area.y + 3]); assert.equal(label.style.wordWrap.width, 104);
+      }
+    } finally {map.destroy();}
+    assert.equal(nodes[0].removed, true);
+  }
+});

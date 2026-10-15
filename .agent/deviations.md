@@ -14,6 +14,12 @@ Every change to the spec's intent, logged before the commit that introduces it. 
 
 ## Entries
 
+### DEV-019 · 2026-10-15 · T14/T05, T34
+**What changed:** Animated thinking dots with elapsed whole seconds appear in the party panel and the Clarify working text ahead of v0.4 D29. Reduced motion keeps a static ellipsis while seconds count; Watch demo uses recorded event time.
+**Why:** The owner's T23 dogfood report: multi-minute model waits looked frozen because the UI changed only when a step completed. The owner explicitly chose a simple running indicator before launch on 2026-10-15.
+**Impact:** T14/T05 party HUD, T34 Clarify screen and i18n. No new event, control message or server change; D28's dialogue box and D29's full thinking line remain for v0.4.
+**Approved by:** owner, 2026-10-15
+
 ### DEV-018 · 2026-10-15 · T19
 **What changed:** T19's frameless 16:9 window becomes a standard, freely resizable desktop window with native controls: macOS uses `titleBarStyle: "hiddenInset"` over the pixel title bar, with space for the traffic lights; Windows and Linux use a native frame. The aspect lock is removed, the minimum stays 960×540, and size, position, maximized/full-screen state and page zoom are validated and saved in `userData/desktop-window.json`, with a centered default for an unreachable saved position. An explicit application/Edit/View/Window menu supplies native editing, zoom and window roles; packaged builds have no reload or developer-tools menu items.
 **Why:** The owner's T23 dogfood report found no minimize or maximize/full-screen buttons and no configurable window size. On 2026-10-15 the owner explicitly chose a standard macOS window.

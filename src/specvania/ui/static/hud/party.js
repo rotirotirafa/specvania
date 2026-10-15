@@ -1,4 +1,5 @@
 import { t, onLanguageChange, setLanguage, i18n } from "../i18n/index.js";
+import { createRunningIndicator } from "./running.js";
 import { textureKey } from "../pixel/textures.js";
 import { UI_COLORS, PALETTE } from "../pixel/palette.js";
 
@@ -53,7 +54,7 @@ export function eventStatuses(event) {
 export function partyFromState(state, now = 0) {
   const currentRoom = state.party_room || state.active_room;
   const room = (state.rooms || []).find(room => room.id === currentRoom);
-  return { lives: state.lives || 3, prices: [...(state.prices || [])],
+  return { run_id: state.run_id || null, lives: state.lives || 3, prices: [...(state.prices || [])],
     token_budget: state.token_budget ?? null,
     tokens_spent: state.tokens_spent ?? (state.models || []).reduce((sum, model) => sum + model.tokens_in + model.tokens_out, 0),
     room: currentRoom || null, attempt: room?.attempt || 1,
@@ -65,6 +66,7 @@ export function partyFromState(state, now = 0) {
       const duration = member?.cooldown_duration || remaining;
       return {role, model: member?.model || t("party.noModel"), status: member?.status || "idle",
         tokens_spent: state.tokens_spent_by_role?.[role] || 0,
+        thinkingSince: member?.status === "thinking" ? now : null,
         start: now - (duration - remaining) * 1000, duration, until: now + remaining * 1000};
     }) };
 }
@@ -76,6 +78,7 @@ export function projectParty(state, event, now = 0) {
   for (const member of next.members) {
     if (statuses[member.role]) {
       member.status = statuses[member.role];
+      member.thinkingSince = member.status === "thinking" ? (Number.isFinite(Date.parse(event.ts)) ? Date.parse(event.ts) : now) : null;
       member.until = now; member.duration = 0;
     }
     if (event.role === member.role) {
@@ -125,7 +128,7 @@ export function partyView(state, now = 0) {
       const price = state.prices.find(price => price.model === member.model && /^https?:\/\//.test(price.source_url || ""));
       const metrics = price ? t("party.coins", {value: ((input * Number(price.input_per_mtok) + output * Number(price.output_per_mtok)) / 1000000).toFixed(6), currency: price.currency})
         : t("party.tokens", {spent: input + output});
-      return {...member, countdown, metrics, source: price?.source_url, priced: Boolean(price),
+      return {...member, thinkingSince: member.status === "cooldown" && !countdown ? member.until : member.thinkingSince, countdown, metrics, source: price?.source_url, priced: Boolean(price),
         status: member.status === "cooldown" && !countdown ? "thinking" : member.status};
     })};
 }
@@ -143,12 +146,11 @@ export function label(document, tag, text) {
   const element = document.createElement(tag); element.textContent = text; return element;
 }
 
-export function mountParty(host, browser = window) {
+export function mountParty(host, browser = window, timing = {}) {
   const document = browser.document;
   const element = panel(document, "party-hud", t("party.title")); host.append(element);
-  // Browser animation frames are the UI Clock. Inject the browser for fake time;
-  // no wall-clock timestamps or waits are used in projections.
-  let now = browser.performance.now(), state = partyFromState({}, now), frame;
+  const running = createRunningIndicator(browser, () => {now = running.now(); render();}, timing);
+  let now = running.now(), state = partyFromState({}, now), frame;
   let textures;
   const switcher = document.createElement("nav");
   const buttons = ["pt-BR", "en"].map(language => {
@@ -161,6 +163,7 @@ export function mountParty(host, browser = window) {
   });
   function render() {
     const view = partyView(state, now);
+    running.active(view.members.some(member => member.status === "thinking"));
     element.setAttribute("aria-label", t("party.title"));
     switcher.setAttribute("aria-label", t("language.title"));
     for (const [index, key] of ["language.pt", "language.en"].entries()) {
@@ -183,6 +186,8 @@ export function mountParty(host, browser = window) {
     for (const member of view.members) {
       const row = document.createElement("div");
       Object.assign(row.style, {display: "grid", gridTemplateColumns: "32px minmax(0, 1fr)", gap: "6px", marginTop: "8px"});
+      row.dataset.role = member.role;
+      row.style.backgroundColor = member.status === "thinking" ? UI_COLORS.background : "";
       const portrait = document.createElement("canvas"); portrait.width = 32; portrait.height = 32;
       portrait.setAttribute("role", "img"); portrait.setAttribute("aria-label", t(`role.${member.role}`));
       portrait.style.imageRendering = "pixelated";
@@ -193,7 +198,7 @@ export function mountParty(host, browser = window) {
       const name = label(document, "p", member.model); name.title = member.model;
       Object.assign(name.style, {whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", margin: "2px 0"});
       details.append(label(document, "strong", t(`role.${member.role}`)), name,
-        label(document, "p", member.countdown ? t("party.countdown", {status: t(`status.${member.status}`), seconds: member.countdown}) : t(`status.${member.status}`)),
+        label(document, "p", member.status === "thinking" ? running.text(t("status.thinking"), member.thinkingSince) : member.countdown ? t("party.countdown", {status: t(`status.${member.status}`), seconds: member.countdown}) : t(`status.${member.status}`)),
         label(document, "p", t("party.spent", {spent: member.tokens_spent})));
       if (member.priced) {
         const source = label(document, "small", t("party.sourceLabel"));
@@ -212,12 +217,32 @@ export function mountParty(host, browser = window) {
     frame = undefined;
     if (state.members.some(member => member.until > now)) frame = browser.requestAnimationFrame(tick);
   }
-  function tick(timestamp) { now = timestamp; frame = undefined; render(); schedule(); }
-  const onState = ({detail}) => { now = browser.performance.now(); state = partyFromState(detail, now); render(); schedule(); };
-  const onEvent = ({detail}) => { now = browser.performance.now(); state = projectParty(state, detail, now); render(); schedule(); };
+  function tick() { now = running.now(); frame = undefined; render(); schedule(); }
+  const onState = ({detail}) => {
+    running.playback(detail.replay); now = running.now();
+    const restored = partyFromState(detail, now);
+    if (restored.run_id === state.run_id) for (const member of restored.members) {
+      const previous = state.members.find(value => value.role === member.role);
+      if (member.status === "thinking" && previous?.status === "thinking" && member.model === previous.model) member.thinkingSince = previous.thinkingSince;
+    }
+    state = restored; render(); schedule();
+  };
+  const onEvent = ({detail}) => {
+    const shift = running.event(detail);
+    // A replay snapshot may precede its first recorded timestamp. Carry waits
+    // learned from that snapshot into the recording's time coordinates.
+    if (shift) state = {...state, members: state.members.map(member => ({...member,
+      thinkingSince: member.thinkingSince === null ? null : member.thinkingSince + shift,
+      start: member.start + shift, until: member.until + shift}))};
+    now = running.now(); state = projectParty(state, detail, now); render(); schedule();
+  };
   browser.addEventListener("specvania:state", onState); browser.addEventListener("specvania:event", onEvent);
+  const onStudio = ({detail}) => {running.playback(detail.replay); now = running.now(); render();};
+  browser.addEventListener("specvania:studio-state", onStudio);
   render();
   return {destroy() {
+    running.destroy();
+    browser.removeEventListener("specvania:studio-state", onStudio);
     unsubscribe();
     browser.removeEventListener("specvania:textures-ready", onTextures);
     if (frame !== undefined) browser.cancelAnimationFrame(frame);

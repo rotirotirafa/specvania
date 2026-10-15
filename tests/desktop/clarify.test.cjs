@@ -309,7 +309,7 @@ test("world_ready_bar_leaves_visible_castle_region_during_reveal_at_both_window_
       h.button("Start expedition").click();
       for(const phase of ["running","finished"]) {
         h.hud.hidden=true;h.message({...projectState,phase});h.browser.dispatchEvent(new h.browser.CustomEvent("specvania:studio-state",{detail:{phase}}));
-        assert.equal(h.hud.hidden,false);assert.equal(h.hud.getAttribute("inert"),null);assert.deepEqual([camera.x,camera.y,camera.width,camera.height],[0,0,width,height]);
+        assert.equal(h.hud.hidden,false);assert.equal(h.hud.getAttribute("inert"),null);assert.deepEqual([camera.x,camera.y,camera.width,camera.height],[120,0,width-120,height]);
       }
     }finally{map.destroy();h.screens.destroy();}
   }

@@ -112,7 +112,7 @@ function connectRun() {
         const stale = !replaying && message.state.seq < (appliedSequences.get(message.state.run_id) || 0);
         if (!stale) {
           if (!replaying) rememberSequence(message.state);
-          window.dispatchEvent(new CustomEvent("specvania:state", { detail: message.state }));
+          window.dispatchEvent(new CustomEvent("specvania:state", { detail: {...message.state, replay: message.replay || null} }));
         }
       }
     } else if (message.kind === "event") {

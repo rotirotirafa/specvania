@@ -130,7 +130,7 @@ export function mountScreens({host, browser = window, socket, startup, watchDemo
     }, !available, parent);
     return node;
   };
-  const ui = {document, t, restoreGame, dialogueLayout, palette: PALETTE, label, element, text, button, send, chooseFolder, demo,
+  const ui = {browser, document, t, restoreGame, dialogueLayout, palette: PALETTE, label, element, text, button, send, chooseFolder, demo,
     heading: (key, tag = "h1") => text(tag, key), back: parent => button("screen.back", back, false, parent), show, applySettings,
     restart: desktop?.studio?.restart ? () => desktop.studio.restart() : null,
     startRun: (slug, allowDirty = false) => send("start_run", {slug, allow_dirty: allowDirty, token_budget: settings.tokenBudget}),

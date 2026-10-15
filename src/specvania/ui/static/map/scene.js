@@ -91,6 +91,49 @@ export function mountMap(Phaser, host, browser = window) {
   let width = browser.innerWidth || host.clientWidth || 960;
   let height = browser.innerHeight || 540;
   const objects = [];
+  // A separate gutter keeps complete floor titles readable during camera follow
+  // without painting over chambers, the party or the HUD. Overview keeps the
+  // original world-space labels and full viewport.
+  const rail = browser.document.createElement?.("section");
+  if (rail) {
+    rail.setAttribute("aria-label", t("map.areas"));
+    Object.assign(rail.style, {position: "fixed", left: "8px", top: "32px", width: "104px",
+      bottom: "8px", pointerEvents: "none", fontFamily: '"Press Start 2P", monospace', fontSize: "8px", lineHeight: "1.4"});
+    host.append?.(rail);
+  }
+  let floorLabels = [];
+  function positionAreaTitles() {
+    if (!rail || !scene || rail.hidden) return;
+    const camera = scene.cameras.main;
+    const replayBar = browser.document.getElementById("replay-bar");
+    const barBottom = replayBar && !replayBar.hidden ? replayBar.getBoundingClientRect?.().bottom || 0 : 0;
+    const viewportTop = Math.max(32, camera.y, Math.ceil(barBottom) + 8);
+    const viewportBottom = Math.min(height - 8, camera.y + camera.height);
+    rail.style.top = `${viewportTop}px`;
+    // Phaser scales around the viewport center before translating to screen
+    // coordinates. CSS positions are relative to the rail's clamped top.
+    const screenY = y => camera.y + camera.height / 2 + (y - camera.scrollY - camera.height / 2) * camera.zoom;
+    const visible = [];
+    let previousBottom = viewportTop - 8;
+    for (const {area, node} of floorLabels) {
+      const floorTop = Math.round(screenY(area.y)), floorBottom = Math.round(screenY(area.y + area.height));
+      node.hidden = floorBottom <= camera.y || floorTop >= camera.y + camera.height;
+      if (node.hidden) continue;
+      const labelHeight = Math.ceil(node.getBoundingClientRect?.().height || node.offsetHeight || 0);
+      const clamped = Math.min(viewportBottom - labelHeight, Math.max(viewportTop, Math.round(floorTop)));
+      const top = Math.max(clamped, previousBottom + 8);
+      visible.push({node, top, height: labelHeight});
+      previousBottom = top + labelHeight;
+    }
+    // If pushing a lower title down reaches the bottom, make room above it.
+    // This preserves complete labels at both edges instead of clipping them.
+    let bottom = viewportBottom;
+    for (const entry of visible.reverse()) {
+      entry.top = Math.min(entry.top, bottom - entry.height);
+      entry.node.style.top = `${entry.top - viewportTop}px`;
+      bottom = entry.top - 8;
+    }
+  }
   const animations = createMapAnimations(browser, () => redraw());
   let scrollBounds = null, overviewScroll = null, drag = null, dragged = false;
   const previousTabIndex = host.tabIndex;
@@ -150,6 +193,17 @@ export function mountMap(Phaser, host, browser = window) {
     for (const object of objects.splice(0)) object.destroy();
     const preview = Boolean(studioWorld && barHeight > 0);
     const layout = layoutWorld(world, overview || preview);
+    const useRail = Boolean(rail && !overview && !preview && !activeArena && layout.areas.length);
+    if (rail) {
+      rail.hidden = !useRail; rail.replaceChildren(); floorLabels = [];
+      rail.setAttribute("aria-label", t("map.areas"));
+      if (useRail) for (const area of layout.areas) {
+        const node = browser.document.createElement("p");
+        node.textContent = t("map.area", {id: area.id, title: area.title});
+        Object.assign(node.style, {color: PALETTE[AREA_COLORS[area.id] || "B"], position: "absolute", left: "0", width: "100%", whiteSpace: "pre-wrap", overflowWrap: "anywhere", marginTop: "0", marginBottom: "0"});
+        rail.append(node); floorLabels.push({area, node});
+      }
+    }
     const tile = (x, y, name) => {
       const object = scene.add.image(x + 8, y + 8, textureKey(name, "idle"));
       objects.push(object);
@@ -181,7 +235,7 @@ export function mountMap(Phaser, host, browser = window) {
         tile(x, area.y, "wall_top_middle"); tile(x, area.y + 16, "back_wall");
         tile(x, area.y + 32, "floor_plain");
       }
-      text(area.x, area.y + 3, `${area.id}\n${area.title}`, PALETTE[AREA_COLORS[area.id] || "B"], 104);
+      if (!useRail) text(area.x, area.y + 3, `${area.id}\n${area.title}`, PALETTE[AREA_COLORS[area.id] || "B"], 104);
       chamber(area.boss);
       tile(area.boss.x + 16, area.boss.y + 16, "banner");
       tile(area.boss.x + 48, area.boss.y + 16, "wall_grate");
@@ -225,13 +279,14 @@ export function mountMap(Phaser, host, browser = window) {
     if (hud) hud.hidden = overview; // M exposes the entire castle, including the stairwell.
     const overlayWidth = Math.min(width - 1, hud?.getBoundingClientRect?.().width || 0);
     const visibleWidth = width - overlayWidth;
+    const gutter = useRail ? 120 : 0;
     const viewport = preview ? {x: 16, y: 32, width: Math.max(1, width - overlayWidth - 32),
-      height: Math.max(1, height - 32 - barHeight - 16)} : {x: 0, y: 0, width, height};
+      height: Math.max(1, height - 32 - barHeight - 16)} : {x: gutter, y: 0, width: width - gutter, height};
     const frame = preview && (layout.width > viewport.width || layout.height > viewport.height)
       && layout.areas.length ? layout.areas[0] : {x: 0, y: 0, width: layout.width, height: layout.height};
     camera.setViewport?.(viewport.x, viewport.y, viewport.width, viewport.height);
     camera.roundPixels = true;
-    const zoom = castleViewZoom(preview ? viewport.width : overview ? visibleWidth : width, viewport.height, preview ? frame : layout, overview || preview);
+    const zoom = castleViewZoom(preview ? viewport.width : overview ? visibleWidth : viewport.width, viewport.height, preview ? frame : layout, overview || preview);
     camera.setZoom(zoom);
     // A small overview needs negative bounds so Phaser does not clamp its
     // centered scroll to the top-left. Labels share the castle's coordinates.
@@ -271,6 +326,7 @@ export function mountMap(Phaser, host, browser = window) {
       if (party && !animations.isReducedMotion()) camera.startFollow(party, true, 1, 1, -offset || 0, 0);
       camera.centerOn(Math.round(target.x) + offset, Math.round(target.y));
     }
+    positionAreaTitles();
     const description = browser.document.getElementById("map-rooms");
     if (description) description.textContent = world.rooms.map(room => t("map.room", {area: room.area, id: room.id, title: room.title, state: t(`room.${room.state}`)})).join("\n");
   }
@@ -333,7 +389,7 @@ export function mountMap(Phaser, host, browser = window) {
         overview = !overview; overviewScroll = drag = null; redraw();
       });
       redraw(); revealReady();
-    }, update() { revealReady(); } },
+    }, update() { positionAreaTitles(); revealReady(); } },
   });
   const resize = () => {
     width = Math.max(1, Math.floor(browser.innerWidth || host.clientWidth || 960));
@@ -344,6 +400,7 @@ export function mountMap(Phaser, host, browser = window) {
   resize();
   return { setReducedMotion: animations.setReducedMotion,
     setReplaySpeed: animations.setReplaySpeed, destroy() {
+    rail?.remove();
     host.removeEventListener?.("wheel", onWheel);
     host.removeEventListener?.("keydown", onScrollKey);
     host.removeEventListener?.("pointerdown", onDragStart);
