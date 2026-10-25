@@ -10,7 +10,7 @@ from openai.types.chat import ChatCompletionMessageParam
 from pydantic import Field
 
 from specvania.clock import Clock
-from specvania.config import Config, ProviderConfig
+from specvania.config import Config, ProviderConfig, resolve_api_key
 from specvania.run.events import FrozenModel, NonNegativeInt
 
 
@@ -122,8 +122,14 @@ class OpenAIProvider:
     """
 
     def __init__(
-        self, config: ProviderConfig, *, api_key: str, sdk: OpenAI | None = None
+        self,
+        config: ProviderConfig,
+        *,
+        api_key: str | None = None,
+        sdk: OpenAI | None = None,
     ) -> None:
+        if api_key is None:
+            api_key = resolve_api_key(config).value
         if not api_key.strip():
             raise ProviderError(status=401)
         self._sdk = sdk or OpenAI(

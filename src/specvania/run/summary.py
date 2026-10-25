@@ -7,7 +7,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Literal
 
-from specvania.config import Config
+from specvania.config import Config, ProviderConfig, resolve_api_key
 from specvania.ledger.repo import Ledger, Run
 from specvania.pricing import Pricing, load_pricing
 from specvania.run.events import Event, FrozenModel, RedactionGuard, SecretLeakError
@@ -87,14 +87,16 @@ def report_secrets(
 ) -> tuple[str, ...]:
     environment = os.environ if environ is None else environ
     names = (
-        config.provider.api_key_env,
         config.ledger.database_url_env,
-        "NVIDIA_API_KEY",
         "SPECVANIA_DATABASE_URL",
         "SPECVANIA_VIEW_TOKEN",
         "SPECVANIA_CONTROL_TOKEN",
     )
-    return tuple(environment[name] for name in names if environment.get(name))
+    return (
+        *resolve_api_key(config.provider, environment).secrets,
+        *resolve_api_key(ProviderConfig(), environment).secrets,
+        *(environment[name] for name in names if environment.get(name)),
+    )
 
 
 def validate_report(text: str, secrets: Sequence[str]) -> None:
@@ -128,6 +130,9 @@ def render_summary(
     secrets: Sequence[str] = (),
 ) -> str:
     prices = pricing if pricing is not None else Pricing()
+    # Validate before Markdown escaping can split a printable API-key value.
+    validate_report(summary.model_dump_json(), secrets)
+    validate_report(prices.model_dump_json(), secrets)
     cleared = summary.rooms_cleared if summary.rooms_cleared is not None else "n/a"
     lines = [
         f"# Run {_cell(summary.run_id)}",

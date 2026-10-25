@@ -35,16 +35,20 @@ No macOS, arraste `specvania.app` para `/Applications` e, na primeira abertura,
 e não notarizados. Veja **Aplicativo desktop opcional** abaixo se o macOS ainda
 bloquear a abertura. No Linux, torne o AppImage executável e abra-o.
 
-Para expedições reais, exporte a chave do provedor no perfil lido pelo shell
-de login, por exemplo `~/.zshrc`, e reabra o app ou escolha
-**Reiniciar estúdio** na tela de erro:
+Para expedições, use **Colar chave de API** na tela de projeto ou em Configurações
+e depois **Salvar**. O app usa o chaveiro do sistema e armazena apenas o texto
+cifrado; Configurações permite substituir ou remover a chave. Salvar ou remover
+a chave reinicia o estúdio. Se a criptografia do sistema estiver indisponível,
+o app recusa salvar a chave e explica o motivo.
+
+Como alternativa, exporte a chave do provedor no perfil lido pelo shell de login,
+por exemplo `~/.zshrc`, e reabra o app ou escolha **Reiniciar estúdio**:
 
 ```sh
 export NVIDIA_API_KEY='<sua chave>'
 ```
 
-A entrada da chave de API no app chegará em uma atualização futura. Ver demo
-não precisa de chave. Configurações mostra o runtime em uso; um caminho
+Ver demo não precisa de chave. Configurações mostra o runtime em uso; um caminho
 personalizado do specvania substitui o runtime embutido. **Usar o runtime padrão**
 remove essa escolha na próxima abertura do estúdio. Se o runtime estiver ausente
 ou não puder iniciar, a tela de erro oferece Configurações e Reiniciar estúdio.
@@ -263,9 +267,12 @@ no clone ao terminar; Redis não é necessário.
   Origin. A aba do navegador só observa. Mensagens de controle do desktop exigem
   outro token de controle. Mantenha os URLs de visualização privados.
 - **Abertura pelo Dock:** Electron inicia `specvania studio` por
-  `$SHELL -lic`. Exporte a chave do provedor no perfil lido pelo shell de login
-  (por exemplo `~/.zshrc`): a chave nunca passa pelo Electron. O estúdio devolve
-  porta e tokens em um handshake no stdout; no modo estúdio os tokens nunca vão
+  `$SHELL -lic`. A chave colada no app é criptografada pelo safeStorage do Electron;
+  apenas o texto cifrado é armazenado em userData. O estúdio a recebe somente por
+  `SPECVANIA_API_KEY` no ambiente, com prioridade sobre a chave configurada do shell.
+  Exportar a chave no perfil do shell (por exemplo `~/.zshrc`) continua sendo uma alternativa.
+  Nenhuma chave chega a argv, logs, configurações, página, WebSocket ou exports.
+  O estúdio devolve porta e tokens em um handshake no stdout; os tokens nunca vão
   para argv, arquivos ou logs. Configurações permite definir o caminho da CLI.
 - **Desktop iniciado pela CLI:** `run --ui=desktop` ainda passa o token de
   controle como argumento do processo (`--control-token`), visível na inspeção

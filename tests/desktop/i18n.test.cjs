@@ -69,6 +69,8 @@ const technical = new Set(`en pt-BR specvania.language specvania.settings text/j
   data-i18n data-i18n-aria [data-i18n] [data-i18n-aria] .webp .png
   art`.split(/\s+/));
 technical.add("waiting for player");
+// T50 password-field attributes and non-secret source/env identifiers only.
+for (const value of ["password", "off", "autocapitalize", "NVIDIA_API_KEY", "env"]) technical.add(value);
 // T49 runtime selection identifiers and translated key template, never prose.
 for (const value of ["path", "bundled", "custom"]) technical.add(value);
 

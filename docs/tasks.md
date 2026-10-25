@@ -764,9 +764,9 @@ files: apps/desktop/main.js, apps/desktop/preload.js, apps/desktop/studio.cjs, s
 D35. Main process: `safeStorage` encryption, ciphertext in userData, refusal when encryption is unavailable, decryption only when spawning the studio, `SPECVANIA_API_KEY` in the child environment only, studio restart on change. Preload: set, remove and "is a key stored" — never the key itself. Python: the provider and `doctor` prefer `SPECVANIA_API_KEY` over `provider.api_key_env` and report which source is used, and the redaction guard covers both values. UI: a "Paste API key" field on the project screen when no key is found and in Settings, with remove and replace.
 
 Checklist:
-- [ ] The key is stored only as `safeStorage` ciphertext and refused when encryption is unavailable; the renderer only learns whether a key is stored (test with a fake safeStorage)
-- [ ] The studio receives the key only through `SPECVANIA_API_KEY` in its environment; argv, logs, settings files and the page never contain it (test)
-- [ ] The provider and `doctor` prefer `SPECVANIA_API_KEY`, fall back to `provider.api_key_env`, and the redaction guard masks either value in events, exports and summaries (test)
+- [x] The key is stored only as `safeStorage` ciphertext and refused when encryption is unavailable; the renderer only learns whether a key is stored (test with a fake safeStorage)
+- [x] The studio receives the key only through `SPECVANIA_API_KEY` in its environment; argv, logs, settings files and the page never contain it (test)
+- [x] The provider and `doctor` prefer `SPECVANIA_API_KEY`, fall back to `provider.api_key_env`, and the redaction guard masks either value in events, exports and summaries (test)
 - [ ] Pasting, replacing and removing the key in the project screen and Settings works in both languages and restarts the studio (G6 screenshots)
 
 ---

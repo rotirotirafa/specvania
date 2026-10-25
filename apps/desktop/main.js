@@ -3,8 +3,8 @@
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { mkdirSync, createWriteStream, readFileSync, writeFileSync, renameSync } = require("node:fs");
-const { resolveStudio, launchStudio, quitStudio, readSettings, startingPage, connectControl, readAppSettings, writeSettings } = require(path.join(__dirname, "studio.cjs"));
-const { app, BrowserWindow, ipcMain, Notification, shell, dialog, screen, Menu } = require("electron");
+const { createApiKeyStore, resolveStudio, launchStudio, quitStudio, readSettings, startingPage, connectControl, readAppSettings, writeSettings } = require(path.join(__dirname, "studio.cjs"));
+const { app, BrowserWindow, ipcMain, Notification, shell, dialog, screen, Menu, safeStorage } = require("electron");
 
 function readWindowState(file) {
   const defaults = { bounds: { width: 960, height: 540, center: true }, maximized: false, fullScreen: false, zoomLevel: 0 };
@@ -82,6 +82,7 @@ async function openWindow() {
   }
   const userData = app.getPath("userData");
   const stateFile = path.join(userData, "desktop-window.json");
+  const apiKeys = createApiKeyStore({userData, safeStorage});
   const saved = readWindowState(stateFile);
   const window = new BrowserWindow({
     ...saved.bounds,
@@ -180,13 +181,28 @@ async function openWindow() {
   });
   handle("specvania:studio", () => studioStatus);
   let startStudio, restarting = false;
-  handle("specvania:studio-restart", () => {
+  const restartStudio = () => {
     if (!startStudio || quitting || restarting || studioStatus.kind === "starting") return;
     restarting = true;
     return quitStudio(lifecycle, {connect: connectControl}).then(() => {
       if (!quitting) startStudio();
     }).finally(() => {restarting = false;});
-  });
+  };
+  handle("specvania:studio-restart", restartStudio);
+  handle("specvania:api-key-status", () => apiKeys.status());
+  const changeApiKey = async change => {
+    if (!startStudio || quitting || restarting || studioStatus.kind === "starting") return {ok: false, reason: "apiKey.busy"};
+    try {
+      change();
+      await restartStudio();
+      return {ok: true};
+    } catch (error) {
+      const allowed = ["apiKey.invalid", "apiKey.encryptionUnavailable", "apiKey.storeFailed"];
+      return {ok: false, reason: allowed.includes(error.message) ? error.message : "apiKey.storeFailed"};
+    }
+  };
+  handle("specvania:api-key-set", value => changeApiKey(() => apiKeys.set(value)));
+  handle("specvania:api-key-remove", () => changeApiKey(() => apiKeys.remove()));
   if (target) {
     await window.loadURL(target.href);
   } else {
@@ -205,6 +221,7 @@ async function openWindow() {
       log.on("error", () => {});
       lifecycle = launchStudio({
         spawn, executable: readSettings(userData), resourcesPath: process.resourcesPath, logPath,
+        apiKeyForSpawn: () => apiKeys.forSpawn(),
         log: (data) => log.write(data),
         open: (url, token) => {
           studioStatus = {kind: "ready", runtime};

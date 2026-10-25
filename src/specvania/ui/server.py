@@ -59,15 +59,18 @@ from specvania.ui.launcher import open_browser
 class TokenLogFormatter(logging.Formatter):
     """Redact even exception text before a log handler writes to stderr."""
 
-    def __init__(self, tokens: tuple[str, ...]) -> None:
+    def __init__(
+        self, tokens: tuple[str, ...], *, guard: RedactionGuard | None = None
+    ) -> None:
         super().__init__()
         self.tokens = tokens
+        self.guard = guard
 
     def format(self, record: logging.LogRecord) -> str:
         rendered = super().format(record)
         for token in self.tokens:
             rendered = rendered.replace(token, "[redacted]")
-        return rendered
+        return self.guard.redact(rendered) if self.guard else rendered
 
 
 class UIServerError(Exception):
@@ -214,8 +217,14 @@ class ReplayStatus(FrozenModel):
     dialogue: Event | None = None
 
 
+class ApiKeyStatus(FrozenModel):
+    source: Literal["app", "env", "none"] = "none"
+    env_name: str = "NVIDIA_API_KEY"
+
+
 class StudioState(FrozenModel):
     kind: Literal["studio_state"] = "studio_state"
+    api_key: ApiKeyStatus = Field(default_factory=ApiKeyStatus)
     phase: StudioPhase
     project: StudioProject | None
     language: Language = "en"

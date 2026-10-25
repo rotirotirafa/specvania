@@ -4,6 +4,39 @@ const { readFileSync, mkdirSync, writeFileSync, renameSync, existsSync } = requi
 const path = require("node:path");
 const HANDSHAKE_TIMEOUT_MS = 60000;
 
+/** Ciphertext has its own file; status never decrypts or returns credentials. */
+function createApiKeyStore({userData, safeStorage, fs = require("node:fs")}) {
+  const file = path.join(userData, "api-key.enc");
+  const encryption = () => Boolean(safeStorage?.isEncryptionAvailable()) && safeStorage.getSelectedStorageBackend?.() !== "basic_text";
+  const status = () => ({stored: fs.existsSync(file), encryption: encryption()});
+  return {
+    status,
+    set(value) {
+      if (typeof value !== "string") throw new Error("apiKey.invalid");
+      value = value.trim();
+      if (!/^[\x21-\x7e]{1,512}$/.test(value)) throw new Error("apiKey.invalid");
+      if (!encryption()) throw new Error("apiKey.encryptionUnavailable");
+      const temporary = file + "." + require("node:crypto").randomBytes(16).toString("hex") + ".tmp";
+      try {
+        const ciphertext = safeStorage.encryptString(value);
+        fs.mkdirSync(userData, {recursive: true, mode: 0o700});
+        fs.writeFileSync(temporary, ciphertext, {mode: 0o600, flag: "wx"});
+        fs.renameSync(temporary, file);
+      } catch { throw new Error("apiKey.storeFailed"); }
+      finally { try { fs.unlinkSync(temporary); } catch { /* Renamed or never created. */ } }
+    },
+    remove() {
+      try { fs.unlinkSync(file); }
+      catch (error) { if (error.code !== "ENOENT") throw new Error("apiKey.storeFailed"); }
+    },
+    forSpawn() {
+      if (!fs.existsSync(file) || !encryption()) return "";
+      try { return safeStorage.decryptString(fs.readFileSync(file)); }
+      catch { throw new Error("apiKey.readFailed"); }
+    },
+  };
+}
+
 function resolveStudio({ executable = "specvania", resourcesPath = process.resourcesPath, exists = existsSync } = {}) {
   if (executable && executable !== "specvania") return {kind: "custom", executable, args: ["studio"]};
   const python = resourcesPath && path.join(resourcesPath, "runtime/bin/python3");
@@ -64,7 +97,7 @@ ${code}
 mountScreens({host: document.getElementById("screen-host"), browser: window, startup: ${json(startup)}});
 </script></body></html>`;
 }
-function launchStudio({ spawn, env = process.env, platform = process.platform, executable = "specvania", resourcesPath = process.resourcesPath, exists = existsSync, timer = globalThis, logPath, log, open, error }) {
+function launchStudio({ spawn, env = process.env, platform = process.platform, executable = "specvania", resourcesPath = process.resourcesPath, exists = existsSync, timer = globalThis, logPath, log, open, error, apiKeyForSpawn = () => "" }) {
   const runtime = resolveStudio({executable, resourcesPath, exists});
   const launch = shellLaunch({ executable, resourcesPath, exists, env, platform });
   const lifecycle = { child: null, handshake: null, exited: false, quitting: false };
@@ -75,8 +108,34 @@ function launchStudio({ spawn, env = process.env, platform = process.platform, e
     error(errorPage(reason, logPath, runtime), {kind: "failed", reasonKey: reason, logPath, runtime});
     if (!lifecycle.exited) lifecycle.child?.kill();
   };
+  let appKey;
+  try { appKey = apiKeyForSpawn(); }
+  catch { fail("apiKey.readFailed"); return lifecycle; }
+  const childEnv = { ...env };
+  if (appKey) childEnv.SPECVANIA_API_KEY = appKey;
+  const secrets = [...new Set([appKey, childEnv.SPECVANIA_API_KEY, childEnv.NVIDIA_API_KEY]
+    .filter(Boolean).flatMap(value => [value, JSON.stringify(value).slice(1, -1)]))]
+    .sort((left, right) => right.length - left.length);
+  // Buffer whole lines so a secret split between chunks cannot reach the log.
+  // Oversized diagnostics are discarded rather than persisting an unsafe prefix.
+  let logLine = "", discardedLine = false;
+  const writeLog = () => {
+    if (!discardedLine) {
+      let safe = logLine;
+      for (const secret of secrets) safe = safe.replaceAll(secret, "[redacted]");
+      log(safe);
+    }
+    logLine = ""; discardedLine = false;
+  };
+  const logData = data => {
+    for (const part of data.toString().split(/(?<=\n)/)) {
+      logLine += part;
+      if (logLine.length > 16384) { discardedLine = true; logLine = ""; }
+      if (part.endsWith("\n")) writeLog();
+    }
+  };
   try {
-    lifecycle.child = spawn(launch.command, launch.args, { env: { ...env }, stdio: ["ignore", "pipe", "pipe"] });
+    lifecycle.child = spawn(launch.command, launch.args, { env: childEnv, stdio: ["ignore", "pipe", "pipe"] });
   } catch { fail("error.startFailed"); return lifecycle; }
   const child = lifecycle.child;
   timeout = timer.setTimeout(() => fail("error.startTimeout"), HANDSHAKE_TIMEOUT_MS);
@@ -89,10 +148,11 @@ function launchStudio({ spawn, env = process.env, platform = process.platform, e
       commandMissing ||= /command not found/i.test(text);
       diagnostic = text.slice(-32);
     }
-    log(data);
+    logData(data);
   });
   child.on("error", () => fail("error.startFailed"));
   child.on("exit", code => {
+    if (logLine) writeLog();
     lifecycle.exited = true;
     if (lifecycle.quitting) return;
     if (lifecycle.handshake) error(errorPage("error.stopped", logPath, runtime), {kind: "failed", reasonKey: "error.stopped", logPath, runtime});
@@ -113,7 +173,8 @@ function launchStudio({ spawn, env = process.env, platform = process.platform, e
       if (!value || !Number.isInteger(value.port) || value.port < 1 || value.port > 65535 ||
           typeof value.view_token !== "string" || !value.view_token.trim() ||
           typeof value.control_token !== "string" || !value.control_token.trim() || value.view_token === value.control_token ||
-          Object.keys(value).sort().join(",") !== "control_token,port,view_token") {
+          Object.keys(value).sort().join(",") !== "control_token,port,view_token" ||
+          secrets.some(secret => JSON.stringify(value).includes(secret))) {
         fail("error.startInvalid"); return;
       }
       settled = true; timer.clearTimeout(timeout); pending = "";
@@ -180,4 +241,4 @@ function connectControl(value, origin, request = require("node:http").request) {
   upgrade.end();
   return client;
 }
-module.exports = { resolveStudio, HANDSHAKE_TIMEOUT_MS, shellLaunch, launchStudio, quitStudio, readSettings, errorPage, startingPage, connectControl, readAppSettings, writeSettings };
+module.exports = { createApiKeyStore, resolveStudio, HANDSHAKE_TIMEOUT_MS, shellLaunch, launchStudio, quitStudio, readSettings, errorPage, startingPage, connectControl, readAppSettings, writeSettings };

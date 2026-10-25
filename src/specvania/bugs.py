@@ -6,7 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from specvania.clock import Clock
-from specvania.config import load_config
+from specvania.config import load_config, resolve_api_key
 from specvania.ledger import LedgerError
 from specvania.ledger.repo import Bug, Ledger
 from specvania.run.events import BugClosed, BugOpened, Event, RedactionGuard
@@ -117,7 +117,7 @@ def open_bug_ledger(
     git = GitOps(root)
     config = load_config(git.root / ".specvania/config.toml")
     for secret in (
-        os.environ.get(config.provider.api_key_env, ""),
+        *resolve_api_key(config.provider).secrets,
         os.environ.get(config.ledger.database_url_env, ""),
     ):
         if secret:

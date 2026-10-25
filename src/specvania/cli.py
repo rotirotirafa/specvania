@@ -33,6 +33,7 @@ from specvania.config import (
     initialize_config,
     load_config,
     repository_root,
+    resolve_api_key,
 )
 from specvania.ledger.repo import Ledger, LedgerError
 from specvania.pricing import PricingError, load_pricing
@@ -214,7 +215,8 @@ def create_app() -> typer.Typer:
                 (
                     instance.server.view_token,
                     instance.server.control_token,
-                )
+                ),
+                guard=instance.guard,
             )
         )
         logging.basicConfig(handlers=[handler], level=logging.WARNING, force=True)
@@ -292,7 +294,8 @@ def create_app() -> typer.Typer:
             raise typer.Exit(code=1) from None
         failed = False
         guard = RedactionGuard()
-        key = os.environ.get(config.provider.api_key_env, "")
+        resolved_key = resolve_api_key(config.provider)
+        key = resolved_key.value
         ledger_url = os.environ.get(config.ledger.database_url_env, "")
         if ledger_url:
             guard.register(ledger_url)
@@ -302,8 +305,9 @@ def create_app() -> typer.Typer:
             )
             failed = True
         else:
-            guard.register(key)
-            console.print(f"API key: {config.provider.api_key_env} set", markup=False)
+            guard.register_api_keys(config.provider)
+            source = "app" if resolved_key.source == "app" else resolved_key.env_name
+            console.print(f"API key: {source} set", markup=False)
             try:
                 with OpenAIProvider(config.provider, api_key=key) as provider:
                     if probe:
@@ -329,8 +333,10 @@ def create_app() -> typer.Typer:
                             for model in getattr(config.roles, role.value):
                                 found = model in models
                                 console.print(
-                                    f"{role.value}: {model} "
-                                    f"{'found' if found else 'missing'}",
+                                    guard.redact(
+                                        f"{role.value}: {model} "
+                                        f"{'found' if found else 'missing'}"
+                                    ),
                                     markup=False,
                                 )
                                 failed |= not found
@@ -384,10 +390,10 @@ def create_app() -> typer.Typer:
 
         try:
             config = load_config(root / ".specvania/config.toml")
-            key = os.environ.get(config.provider.api_key_env, "")
+            key = resolve_api_key(config.provider).value
             if not key.strip():
                 raise PlanError(f"API key: {config.provider.api_key_env} missing")
-            guard.register(key)
+            guard.register_api_keys(config.provider)
             ledger_url = os.environ.get(config.ledger.database_url_env, "")
             if ledger_url:
                 guard.register(ledger_url)
@@ -495,10 +501,10 @@ def create_app() -> typer.Typer:
             git = GitOps(Path.cwd())
             git.check(allow_dirty=allow_dirty)
             config = load_config(git.root / ".specvania/config.toml")
-            key = os.environ.get(config.provider.api_key_env, "")
+            key = resolve_api_key(config.provider).value
             if not key.strip():
                 raise EngineError(f"API key: {config.provider.api_key_env} missing")
-            guard.register(key)
+            guard.register_api_keys(config.provider)
             ledger_url = os.environ.get(config.ledger.database_url_env, "")
             if ledger_url:
                 guard.register(ledger_url)

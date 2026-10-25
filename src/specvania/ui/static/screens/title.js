@@ -138,6 +138,7 @@ export function mountScreens({host, browser = window, socket, startup, watchDemo
     get revealedSlug() {return revealedSlug;},
     hasMap: Boolean(browser.Phaser),
     get canControl() {return Boolean(desktop?.controlToken?.());},
+    get apiKeyStatus() {return project.api_key;},
     get settings() {return settings;}};
   function render() {
     for (const [node, key, params] of labels) node.textContent = t(key, params);
@@ -217,7 +218,10 @@ export function mountScreens({host, browser = window, socket, startup, watchDemo
     else if (value.kind === "approval_rejected") {
       savingSlug = null;
       if (screen === "idea" && !host.hidden) view.reject?.(value);
-      else if (value.reason.includes("API key missing")) showError({kind:"missingKey"});
+      else if (value.reason.includes("API key missing")) {
+        if (desktop?.apiKey) {project = {...project, api_key: {source: "none", env_name: project.api_key?.env_name || "NVIDIA_API_KEY"}}; show("project", t("apiKey.missing"));}
+        else showError({kind:"missingKey"});
+      }
       else if (screen === "project") show("project", value.reason.includes("git work tree") ? t("project.outsideGit") : value.reason);
     }
   };

@@ -16,9 +16,11 @@ from specvania.config import (
     Config,
     ConfigError,
     Language,
+    ProviderConfig,
     UIConfig,
     initialize_config,
     load_config,
+    resolve_api_key,
 )
 from specvania.ledger import Ledger, LedgerError
 from specvania.provider.client import (
@@ -53,6 +55,7 @@ from specvania.sdd.lint import WorldLintError, validate_directory
 from specvania.sdd.planner import PlanError, Question, plan
 from specvania.sdd.world import WorldParseError, parse_world
 from specvania.ui.server import (
+    ApiKeyStatus,
     ClarifyPrompt,
     ClarifyReply,
     CloseReplay,
@@ -145,6 +148,7 @@ class Studio:
         self._language_override: Language | None = None
         self._active_ui: UIConfig | None = None
         self.guard, self.clock = guard, clock
+        self.guard.register_api_keys(ProviderConfig())
         self.server = UIServer(
             guard=guard,
             clock=clock,
@@ -191,7 +195,17 @@ class Studio:
                 and self._replay is None
             ):
                 return None
+            provider = ProviderConfig()
+            if self._project and self._project.initialized:
+                provider = load_config(
+                    Path(self._project.path) / ".specvania/config.toml"
+                ).provider
+            resolved_key = resolve_api_key(provider)
+            self.guard.register_api_keys(provider)
             message = StudioState(
+                api_key=ApiKeyStatus(
+                    source=resolved_key.source, env_name=resolved_key.env_name
+                ),
                 phase=self.phase,
                 project=None if self._replay else self._project,
                 replay=self._replay,
@@ -380,12 +394,12 @@ class Studio:
         config = load_config(root / ".specvania/config.toml")
         if self._language_override is not None:
             config.ui.language = self._language_override
-        key = os.environ.get(config.provider.api_key_env, "")
+        key = resolve_api_key(config.provider).value
         if not key.strip():
             raise StudioError(
                 "API key missing; check the configured environment variable."
             )
-        self.guard.register(key)
+        self.guard.register_api_keys(config.provider)
         if url := os.environ.get(config.ledger.database_url_env, ""):
             self.guard.register(url)
         return root, config, key

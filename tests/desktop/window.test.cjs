@@ -212,7 +212,7 @@ function loadPreload(args) {
 
 test("preload_exposes_only_T33_capabilities", () => {
   const { api, sent } = loadPreload(["--control-token", control]);
-  assert.deepEqual(Object.keys(api).sort(), ["controlToken", "isDesktop", "notify", "pickFolder", "platform", "settings", "studio"]);
+  assert.deepEqual(Object.keys(api).sort(), ["apiKey", "controlToken", "isDesktop", "notify", "pickFolder", "platform", "settings", "studio"]);
   assert.equal(api.isDesktop, true);
   assert.equal(api.platform, "darwin");
   assert.equal(api.controlToken(), control);

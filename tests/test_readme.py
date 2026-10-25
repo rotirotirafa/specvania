@@ -260,10 +260,12 @@ def test_readmes_credit_every_asset_and_distinguish_studio_from_argv(name: str) 
     for label in labels:
         assert f"**{label}:**" in safety
     if name == "README.md":
-        assert "key never passes through Electron" in safety
+        assert "encrypted with Electron safeStorage" in safety
+        assert "`SPECVANIA_API_KEY` in its environment" in safety
         assert "tokens never go\n  to argv, files or logs" in safety
         assert "still passes the control token" in safety
     else:
-        assert "chave nunca passa pelo Electron" in safety
+        assert "criptografada pelo safeStorage do Electron" in safety
+        assert "`SPECVANIA_API_KEY` no ambiente" in safety
         assert "tokens nunca vão\n  para argv, arquivos ou logs" in safety
         assert "ainda passa o token de" in safety

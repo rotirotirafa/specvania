@@ -351,5 +351,20 @@
   "runtime.failed": "The bundled runtime could not start. Reinstall the app or choose another specvania executable in Settings.",
   "runtime.missing": "The bundled runtime is missing, and specvania on PATH could not start. Reinstall the app or choose a specvania executable in Settings.",
   "runtime.customFailed": "The custom specvania executable could not start. Check its path in Settings or use the default runtime.",
-  "runtime.customHelp": "Settings lets you choose a custom specvania executable. Restart studio after changing it."
+  "runtime.customHelp": "Settings lets you choose a custom specvania executable. Restart studio after changing it.",
+  "apiKey.paste": "Paste API key",
+  "apiKey.cancel": "Cancel",
+  "apiKey.save": "Save",
+  "apiKey.replace": "Replace",
+  "apiKey.remove": "Remove",
+  "apiKey.stored": "Key stored in the system keychain",
+  "apiKey.shell": "Using {env} from your shell",
+  "apiKey.none": "No key found",
+  "apiKey.empty": "",
+  "apiKey.missing": "Paste your API key, then check the party.",
+  "apiKey.encryptionUnavailable": "System encryption is unavailable. The key cannot be saved here; a key from your shell still works.",
+  "apiKey.invalid": "Use a non-empty API key of at most 512 printable ASCII characters, without whitespace.",
+  "apiKey.storeFailed": "Could not save or remove the API key. Check your system keychain and file permissions.",
+  "apiKey.readFailed": "Could not unlock the stored API key. Open Settings to replace or remove it.",
+  "apiKey.busy": "Wait for the studio to finish starting or restarting, then try again."
 }

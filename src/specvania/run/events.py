@@ -21,6 +21,7 @@ from pydantic import (
     field_validator,
 )
 
+from specvania.config import ProviderConfig, resolve_api_key
 from specvania.sdd.world import World
 
 type ShortText = Annotated[str, Field(max_length=200)]
@@ -401,6 +402,11 @@ class RedactionGuard:
     def __init__(self) -> None:
         self._secrets: set[str] = set()
         self._lock = RLock()
+
+    def register_api_keys(self, provider: ProviderConfig) -> None:
+        """Cover the app and configured shell key, even when one is inactive."""
+        for secret in resolve_api_key(provider).secrets:
+            self.register(secret)
 
     def register(self, secret: str) -> None:
         if not secret:

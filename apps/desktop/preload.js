@@ -9,6 +9,11 @@ function exposeDesktop() {
     platform: process.platform,
     controlToken: () => token,
     pickFolder: () => ipcRenderer.invoke("specvania:pick-folder"),
+    apiKey: {
+      set: (value) => ipcRenderer.invoke("specvania:api-key-set", value),
+      remove: () => ipcRenderer.invoke("specvania:api-key-remove"),
+      status: () => ipcRenderer.invoke("specvania:api-key-status"),
+    },
     settings: {
       get: () => ipcRenderer.invoke("specvania:settings-get"),
       set: (value) => ipcRenderer.invoke("specvania:settings-set", value),

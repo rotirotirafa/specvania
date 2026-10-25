@@ -34,15 +34,20 @@ the first time and confirm: builds are unsigned and not notarized. See
 **Optional desktop app** below if macOS still blocks opening it. On Linux,
 make the AppImage executable and open it.
 
-For actual expeditions, export your provider key in the profile read by your
-login shell, for example `~/.zshrc`, then reopen the app or choose
-**Restart studio** on its error screen:
+For expeditions, use **Paste API key** on the project screen or in Settings,
+then **Save**. The app stores only encrypted ciphertext through the system
+keychain; Settings lets you replace or remove it. Saving or removing a key
+restarts the studio. When system encryption is unavailable, the app refuses
+to save the key and explains why.
+
+Alternatively, export your provider key in the profile read by your login
+shell, for example `~/.zshrc`, then reopen the app or choose **Restart studio**:
 
 ```sh
 export NVIDIA_API_KEY='<your key>'
 ```
 
-API-key entry in the app is coming in a later update. Watch demo needs no key.
+Watch demo needs no key.
 Settings shows the runtime in use; a custom specvania path overrides the bundled
 runtime. **Use the default runtime** clears that override for the next studio
 start. If the runtime is missing or cannot start, the error screen offers
@@ -264,9 +269,12 @@ from the clone when finished; no Redis service is required.
   tab only watches. Desktop control messages require a separate control token.
   Keep view URLs private.
 - **Dock launch:** Electron starts `specvania studio` through
-  `$SHELL -lic`. Export the provider key in the profile the login shell reads
-  (e.g. `~/.zshrc`): the key never passes through Electron. The studio returns
-  port and tokens in one stdout handshake; in studio mode the tokens never go
+  `$SHELL -lic`. A key pasted in the app is encrypted with Electron safeStorage;
+  only ciphertext is stored in userData. The studio receives it only through
+  `SPECVANIA_API_KEY` in its environment, ahead of the configured shell key.
+  Exporting the key in your shell profile (e.g. `~/.zshrc`) remains an alternative.
+  Neither API key reaches argv, logs, settings, the page, the WebSocket or exports.
+  The studio returns port and tokens in one stdout handshake; the tokens never go
   to argv, files or logs. Settings can override the CLI path.
 - **CLI desktop launch:** `run --ui=desktop` still passes the control token
   as a process argument (`--control-token`), visible to local process inspection.

@@ -1,3 +1,5 @@
+import { apiKeyControls } from "./project.js";
+
 export function settingsScreen(ui) {
   ui.heading("title.settings");
   const field = (key, tag, type, value, changed) => {
@@ -50,7 +52,8 @@ export function settingsScreen(ui) {
 
   const motion = field("settings.motion", "input", "checkbox", "", node => save({reducedMotion: node.checked}));
   motion.checked = ui.settings.reducedMotion;
+  const apiKey = apiKeyControls(ui, {always: true});
   ui.back();
   language.focus();
-  return { render() { language.value = ui.settings.language; specvaniaPath.value = ui.settings.specvaniaPath; renderStatus(); renderRuntime(); }, destroy() {destroyed = true;} };
+  return { render() { language.value = ui.settings.language; specvaniaPath.value = ui.settings.specvaniaPath; renderStatus(); renderRuntime(); apiKey.render(); }, destroy() {destroyed = true; apiKey.destroy();} };
 }

@@ -27,7 +27,7 @@ class Element {
   set innerHTML(_) {assert.fail("Use inert text nodes");}
   remove() {if(this.parent)this.parent.children=this.parent.children.filter(n=>n!==this);}
 }
-async function harness({studio = true, desktop = true} = {}) {
+async function harness({studio = true, desktop = true, apiKey = false} = {}) {
   const {setLanguage} = await load("i18n/index.js"); setLanguage("en");
   const doc = {createElement:tag=>new Element(tag,doc)};
   doc.head=new Element("head",doc);doc.body=new Element("body",doc);
@@ -43,6 +43,12 @@ async function harness({studio = true, desktop = true} = {}) {
     addEventListener(type,fn){const a=events.get(type)||[];a.push(fn);events.set(type,a);},removeEventListener(type,fn){events.set(type,(events.get(type)||[]).filter(f=>f!==fn));},
     dispatchEvent(event){if(event.type==="specvania:settings")motion.push(event.detail);for(const fn of events.get(event.type)||[])fn(event);},
     specvaniaDesktop:{isDesktop:true,controlToken:()=>"control",pickFolder:async()=>folder,settings:{get:async()=>({...saved}),set:async value=>{writes.push(value);saved={...saved,...value};return {...saved};}},studio:{get:async()=>({kind:"ready"}),restart:async()=>{restarts.push(true);}}}};
+  const keyWrites=[];let keyStored=false;
+  if (apiKey) browser.specvaniaDesktop.apiKey={
+    status:async()=>({stored:keyStored,encryption:true}),
+    set:async value=>{keyWrites.push(value);keyStored=true;return {ok:true};},
+    remove:async()=>{keyStored=false;restarts.push(true);return {ok:true};},
+  };
   if (!desktop) delete browser.specvaniaDesktop;
   const socket=new EventEmitter();socket.readyState=1;socket.addEventListener=socket.on.bind(socket);socket.removeEventListener=socket.off.bind(socket);socket.send=data=>sent.push(JSON.parse(data));
   const {mountScreens}=await load("screens/title.js");const screens=mountScreens({host,browser,socket});
@@ -55,7 +61,7 @@ async function harness({studio = true, desktop = true} = {}) {
     // Simulate the browser's default focus traversal and button activation.
     if(!event.prevented && key==="Tab") {const nodes=flat(doc.body).filter(n=>["button","input","select","summary"].includes(n.tagName)&&!n.disabled&&!function inert(node){return node.attrs.inert!==undefined||node.hidden||node.parent&&inert(node.parent);}(n));const at=nodes.indexOf(doc.activeElement);nodes[(at+(shiftKey?-1:1)+nodes.length)%nodes.length]?.focus();}
     if(!event.prevented && ["Enter"," "].includes(key) && doc.activeElement?.tagName==="button")doc.activeElement.click();}
-  return {host,doc,game,hud,browser,socket,screens,sent,writes,motion,restarts,message,key,tick,initial,intervals,
+  return {host,doc,game,hud,browser,socket,keyWrites,screens,sent,writes,motion,restarts,message,key,tick,initial,intervals,
     advance(ms){now+=ms;for(const {fn} of intervals.values())fn();},
     folder:value=>{folder=value;},button:label=>flat(host).find(n=>n.tagName==="button"&&n.textContent===label)};
 }
@@ -206,9 +212,11 @@ function preload() {
   return {api,calls};
 }
 test("preload_exact_capabilities_use_narrow_ipc",async()=>{
-  const {api,calls}=preload();assert.deepEqual(Object.keys(api).sort(),["controlToken","isDesktop","notify","pickFolder","platform","settings","studio"]);
+  const {api,calls}=preload();assert.deepEqual(Object.keys(api).sort(),["apiKey","controlToken","isDesktop","notify","pickFolder","platform","settings","studio"]);
+  assert.deepEqual(Object.keys(api.apiKey).sort(),["remove","set","status"]);
+  await api.apiKey.set("fake-T50");await api.apiKey.remove();await api.apiKey.status();
   await api.pickFolder();await api.settings.get();await api.settings.set({tokenBudget:10});await api.studio.get();await api.studio.restart();
-  assert.deepEqual(calls.map(c=>c[0]),["specvania:pick-folder","specvania:settings-get","specvania:settings-set","specvania:studio","specvania:studio-restart"]);
+  assert.deepEqual(calls.map(c=>c[0]),["specvania:api-key-set","specvania:api-key-remove","specvania:api-key-status","specvania:pick-folder","specvania:settings-get","specvania:settings-set","specvania:studio","specvania:studio-restart"]);
 });
 async function main(directory) {
   const app=new EventEmitter();app.getPath=()=>directory;app.whenReady=()=>Promise.resolve();app.quit=()=>{};app.exit=()=>assert.fail("main failed");
@@ -346,3 +354,91 @@ test("title_uses_cast_party_at_integer_scale_with_castle_and_shared_centered_lay
     assert.match(text(h.doc.head),/#screen-host \{[^}]*align-items: safe center; justify-content: safe center/);assert.match(text(h.doc.head),/font-size: 36px/);
   } finally {h.screens.destroy();}
 });
+
+for(const language of ["en","pt-BR"]) test(`api_key_project_settings_paste_replace_remove_and_no_echo_${language}`,async()=>{
+  const h=await harness({apiKey:true});
+  const {setLanguage}=await load("i18n/index.js");const dictionary=JSON.parse(fs.readFileSync(path.join(root,`i18n/${language}.json`),"utf8"));
+  const button=key=>h.button(dictionary[key]);
+  const input=()=>flat(h.host).find(n=>n.type==="password");
+  try {
+    setLanguage(language);
+    h.message({kind:"studio_state",phase:"project_open",project:{path:"/repo",initialized:true},api_key:{source:"none",env_name:"NVIDIA_API_KEY"},worlds:[],open_bugs:0});
+    await h.tick();
+    assert.equal(input().type,"password");assert.equal(input().autocomplete,"off");
+    assert.ok(text(h.host).includes(dictionary["apiKey.none"]));
+    const secret="fake-T50-typed-secret";input().value=secret;button("apiKey.save").click();
+    assert.equal(input().value,"");await h.tick();assert.deepEqual(h.keyWrites,[secret]);
+    assert.ok(!JSON.stringify(h.sent).includes(secret));assert.ok(!text(h.host).includes(secret));
+    button("title.settings").click();await h.tick();
+    assert.ok(text(h.host).includes(dictionary["apiKey.stored"]));assert.equal(input().hidden,true);
+    button("apiKey.replace").click();assert.equal(input().hidden,false);assert.equal(input().value,"");
+    input().value="fake-T50-replacement";button("apiKey.save").click();assert.equal(input().value,"");await h.tick();
+    button("apiKey.remove").click();await h.tick();assert.ok(text(h.host).includes(dictionary["apiKey.none"]));assert.equal(input().hidden,false);
+    h.key("Escape");button("title.open").click();await h.tick();
+    h.message({kind:"studio_state",phase:"project_open",project:{path:"/repo",initialized:true},api_key:{source:"env",env_name:"CUSTOM_KEY"},worlds:[],open_bugs:0});await h.tick();
+    assert.ok(text(h.host).includes(dictionary["apiKey.shell"].replace("{env}","CUSTOM_KEY")));assert.equal(input().hidden,true);
+    h.message({kind:"approval_rejected",reason:"API key missing; check the configured environment variable."});await h.tick();
+    assert.equal(h.host.dataset.screen,"project");assert.equal(input().hidden,false);
+  }finally{h.screens.destroy();}
+});
+test("api_key_save_refusal_is_translated_never_echoes_input_or_underlying_exception",async()=>{
+  const h=await harness({apiKey:true});
+  try {
+    h.browser.specvaniaDesktop.apiKey.set=async()=>({ok:false,reason:"apiKey.encryptionUnavailable"});
+    h.button("Settings").click();await h.tick();
+    const input=flat(h.host).find(n=>n.type==="password");input.value="fake-T50-secret";h.button("Save").click();await h.tick();
+    assert.equal(input.value,"");assert.match(text(h.host),/encryption/i);assert.ok(!text(h.host).includes("fake-T50-secret"));
+    h.browser.specvaniaDesktop.apiKey.set=async()=>{throw new Error("fake-T50-secret");};
+    input.value="fake-T50-secret";h.button("Save").click();await h.tick();assert.ok(!text(h.host).includes("fake-T50-secret"));
+  }finally{h.screens.destroy();}
+});
+
+for (const language of ["en", "pt-BR"]) for (const screen of ["project", "settings"]) {
+  test(`api_key_stored_label_hidden_replace_cancel_and_save_${screen}_${language}`, async () => {
+    const h = await harness({apiKey: true});
+    const {setLanguage} = await load("i18n/index.js");
+    const dictionary = JSON.parse(fs.readFileSync(path.join(root, `i18n/${language}.json`), "utf8"));
+    const button = key => h.button(dictionary[key]);
+    const input = () => flat(h.host).find(node => node.type === "password");
+    const field = () => input().parent;
+    const storedView = () => {
+      // The screen stylesheet gives labels display:grid. An explicit display
+      // override must hide the whole label, including its translated caption.
+      assert.equal(field().style.display, "none");
+      assert.equal(field().hidden, true);
+      assert.equal(input().hidden, true);
+      assert.equal(button("apiKey.save").hidden, true);
+      assert.equal(button("apiKey.cancel").hidden, true);
+      assert.equal(button("apiKey.replace").hidden, false);
+      assert.equal(button("apiKey.remove").hidden, false);
+      assert.ok(text(h.host).includes(dictionary["apiKey.stored"]));
+    };
+    try {
+      setLanguage(language);
+      h.message({kind: "studio_state", phase: "project_open", project: {path: "/repo", initialized: true},
+        api_key: {source: "none", env_name: "NVIDIA_API_KEY"}, worlds: [], open_bugs: 0});
+      if (screen === "settings") button("title.settings").click();
+      await h.tick();
+      assert.equal(field().hidden, false);
+      assert.equal(field().children[0].textContent, dictionary["apiKey.paste"]);
+      input().value = "fake-T50-original"; button("apiKey.save").click(); await h.tick();
+      storedView();
+      button("apiKey.replace").click();
+      assert.equal(field().hidden, false); assert.notEqual(field().style.display, "none");
+      assert.equal(input().hidden, false); assert.equal(input().value, "");
+      assert.equal(field().children[0].textContent, dictionary["apiKey.paste"]);
+      assert.equal(button("apiKey.save").hidden, false); assert.equal(button("apiKey.cancel").hidden, false);
+      assert.equal(button("apiKey.replace").hidden, true); assert.equal(button("apiKey.remove").hidden, true);
+      const sentBefore = h.sent.length, writesBefore = h.keyWrites.length, restartsBefore = h.restarts.length;
+      input().value = "fake-T50-cancelled"; button("apiKey.cancel").click();
+      storedView(); assert.equal(input().value, "");
+      assert.equal(h.doc.activeElement, button("apiKey.replace"));
+      assert.equal(h.keyWrites.length, writesBefore); assert.equal(h.sent.length, sentBefore); assert.equal(h.restarts.length, restartsBefore);
+      button("apiKey.replace").click(); assert.equal(input().value, "");
+      input().value = "fake-T50-replacement"; button("apiKey.save").click();
+      assert.equal(input().value, ""); await h.tick(); storedView();
+      assert.deepEqual(h.keyWrites, ["fake-T50-original", "fake-T50-replacement"]);
+      assert.ok(!text(h.host).includes("fake-T50-cancelled"));
+    } finally { h.screens.destroy(); }
+  });
+}

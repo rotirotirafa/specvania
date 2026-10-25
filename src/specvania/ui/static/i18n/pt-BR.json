@@ -351,5 +351,20 @@
   "runtime.failed": "O runtime embutido não pôde iniciar. Reinstale o app ou escolha outro executável do specvania em Configurações.",
   "runtime.missing": "O runtime embutido está ausente e o specvania no PATH não pôde iniciar. Reinstale o app ou escolha um executável do specvania em Configurações.",
   "runtime.customFailed": "O executável personalizado do specvania não pôde iniciar. Confira o caminho em Configurações ou use o runtime padrão.",
-  "runtime.customHelp": "Em Configurações, escolha um executável personalizado do specvania. Reinicie o estúdio após alterar o caminho."
+  "runtime.customHelp": "Em Configurações, escolha um executável personalizado do specvania. Reinicie o estúdio após alterar o caminho.",
+  "apiKey.paste": "Colar chave de API",
+  "apiKey.cancel": "Cancelar",
+  "apiKey.save": "Salvar",
+  "apiKey.replace": "Substituir",
+  "apiKey.remove": "Remover",
+  "apiKey.stored": "Chave salva no chaveiro do sistema",
+  "apiKey.shell": "Usando {env} do seu shell",
+  "apiKey.none": "Nenhuma chave encontrada",
+  "apiKey.empty": "",
+  "apiKey.missing": "Cole sua chave de API e depois verifique o grupo.",
+  "apiKey.encryptionUnavailable": "A criptografia do sistema está indisponível. Não é possível salvar a chave aqui; a chave do seu shell continua funcionando.",
+  "apiKey.invalid": "Use uma chave de API não vazia de até 512 caracteres ASCII imprimíveis, sem espaços em branco.",
+  "apiKey.storeFailed": "Não foi possível salvar ou remover a chave de API. Verifique o chaveiro do sistema e as permissões dos arquivos.",
+  "apiKey.readFailed": "Não foi possível desbloquear a chave de API salva. Abra Configurações para substituí-la ou removê-la.",
+  "apiKey.busy": "Aguarde o estúdio terminar de iniciar ou reiniciar e tente novamente."
 }

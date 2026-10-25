@@ -1,7 +1,10 @@
 """Validated config and repository initialization, with no terminal output."""
 
+import os
 import subprocess
 import tomllib
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -31,6 +34,32 @@ class ProviderConfig(ConfigModel):
     base_url: NonEmptyText = "https://integrate.api.nvidia.com/v1"
     api_key_env: EnvName = "NVIDIA_API_KEY"
     timeout_s: Annotated[float, Field(strict=True, gt=0, allow_inf_nan=False)] = 300.0
+
+
+@dataclass(frozen=True)
+class ResolvedApiKey:
+    """Process-local credentials; repr and UI metadata never contain values."""
+
+    value: str = field(repr=False)
+    source: Literal["app", "env", "none"]
+    env_name: str
+    secrets: tuple[str, ...] = field(repr=False)
+
+
+def resolve_api_key(
+    provider: ProviderConfig, environ: Mapping[str, str] | None = None
+) -> ResolvedApiKey:
+    """The only API-key environment reader (D2/D35), including inactive secrets."""
+    environment = os.environ if environ is None else environ
+    app = environment.get("SPECVANIA_API_KEY", "")
+    shell = environment.get(provider.api_key_env, "")
+    value = app or shell
+    return ResolvedApiKey(
+        value=value,
+        source="app" if app else "env" if shell else "none",
+        env_name=provider.api_key_env,
+        secrets=tuple(dict.fromkeys(key for key in (app, shell) if key)),
+    )
 
 
 class RolesConfig(ConfigModel):
