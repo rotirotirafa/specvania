@@ -9,6 +9,10 @@ import { CAST, TILE_SIZE, SHEET_URL } from "../pixel/cast.js";
 export function expeditionDialog(name, {browser, document = browser.document}) {
   let root = null, previousFocus = null, bindings = [], escape = null;
   const underlying = new Map();
+  const signal = active => {
+    const EventClass = browser.CustomEvent || globalThis.CustomEvent;
+    if (EventClass) browser.dispatchEvent?.(new EventClass("specvania:expedition-dialog", {detail: {name, active}}));
+  };
   const nodes = () => {
     const walk = node => Array.from(node.children || []).filter(child => !child.hidden).flatMap(child => [child, ...walk(child)]);
     return root ? walk(root).filter(node => !node.disabled && !node.hidden &&
@@ -29,8 +33,9 @@ export function expeditionDialog(name, {browser, document = browser.document}) {
       if (castle) {castle.tabIndex = 0; castle.focus?.();}
     }
     previousFocus = null;
+    signal(false);
   }
-  const otherDialog = ({detail}) => {if (detail.name !== name) close();};
+  const otherDialog = ({detail}) => {if (detail.active !== false && detail.name !== name) close();};
   browser.addEventListener?.("specvania:expedition-dialog", otherDialog);
   const unsubscribe = onLanguageChange(() => {for (const render of bindings) render();});
   const api = {
@@ -56,8 +61,7 @@ export function expeditionDialog(name, {browser, document = browser.document}) {
     disable() {for (const node of nodes()) if (node.tagName.toLowerCase() === "button") node.disabled = true;},
     open(titleKey, build, {onEscape = null, initial = 0} = {}) {
       close();
-      const EventClass = browser.CustomEvent || globalThis.CustomEvent;
-      if (EventClass) browser.dispatchEvent?.(new EventClass("specvania:expedition-dialog", {detail: {name}}));
+      signal(true);
       previousFocus = document.activeElement;
       for (const id of ["world-map", "castle-hud", "screen-host"]) {
         const node = document.getElementById?.(id);
@@ -111,47 +115,5 @@ export function pauseReason(reason) {
   return t("pause.reason", {reason});
 }
 
-export function mountPause(socket, {browser = window} = {}) {
-  const dialog = expeditionDialog("pause", {browser});
-  let studio = false, connected = true, pending = false, reason = null;
-  const canControl = () => studio && connected && Boolean(browser.specvaniaDesktop?.controlToken?.());
-  function show(value) {
-    if (reason === value && dialog.root) return;
-    reason = value; pending = false;
-    dialog.open("pause.title", (content, actions, ui) => {
-      ui.portrait(content, "warrior");
-      ui.text(content, "h2", () => t("pause.title"));
-      ui.text(content, "p", () => pauseReason(value));
-      if (!canControl()) {ui.text(content, "p", () => t("pause.watch")); return;}
-      const choices = value === "stamina exhausted" ? [["rest", "retry"], ["abort", "abort"]] : [["retry", "retry"], ["skip", "skip"], ["abort", "abort"]];
-      for (const [key, choice] of choices) {
-        ui.text(content, "p", () => t(`pause.${key}Help`));
-        ui.button(actions, `pause.${key}`, () => {
-          if (pending || !canControl() || socket.readyState !== 1) return;
-          pending = true; ui.disable();
-          socket.send(JSON.stringify({kind: "pause_decision", choice, control_token: browser.specvaniaDesktop.controlToken()}));
-        });
-      }
-    });
-  }
-  function close() {dialog.close(); reason = null; pending = false;}
-  const message = ({data}) => {
-    const value = JSON.parse(data);
-    if (value.phase) studio = true;
-    if (value.kind === "studio_state") {
-      if (value.pause_request) show(value.pause_request);
-      else if (reason && !pending) close();
-    } else if (value.kind === "state") {
-      if (!connected) {connected = true; close();}
-      if (value.state.status === "paused") show(value.state.reason || ""); else close();
-    } else if (value.kind === "event") {
-      if (value.event.type === "run_paused") show(value.event.reason);
-      else if (["run_started", "world_loaded", "stamina_restored", "attempt_started", "room_entered", "room_skipped", "boss_started", "run_finished"].includes(value.event.type)) close();
-    } else if (value.kind === "approval_rejected" && pending && reason) {
-      const retryReason = reason; close(); show(retryReason);
-    }
-  };
-  const disconnected = () => {connected = false; if (reason) {const old = reason; close(); show(old);}};
-  socket.addEventListener("message", message); socket.addEventListener("close", disconnected);
-  return {destroy() {socket.removeEventListener?.("message", message); socket.removeEventListener?.("close", disconnected); dialog.destroy();}};
-}
+/** Pauses are rendered by mountDialogueBox; keep the old mount as wiring compatibility. */
+export function mountPause() {return {destroy() {}};}

@@ -668,8 +668,8 @@ files: src/specvania/ui/static/hud/dialogue-box.js, src/specvania/ui/static/hud/
 The castle layout of D28, drawn from T42's projections: the map fills the window, the dialogue box sits at the bottom, the step and party chips at the top left, mute and `?` placeholders at the top right (wired in T45 and T46). The approval modal and the pause screen go away: approvals and pauses are answered inside the box, by key or click; a deny reason is typed in the box under T20's rules. The Clarify screen uses the same box component. The party chip opens the party panel and the Bestiary as a drawer. The camera keeps the party and the current chamber clear of the box. The project and idea screens show the step chip.
 
 Checklist:
-- [ ] Approvals, Clarify questions and pauses are answered from the box by key and by click, and the old approval modal and pause screen are gone (test)
-- [ ] The party chip opens and closes the party panel and the Bestiary; a chamber click still opens the room panel (test)
+- [x] Approvals, Clarify questions and pauses are answered from the box by key and by click, and the old approval modal and pause screen are gone (test)
+- [x] The party chip opens and closes the party panel and the Bestiary; a chamber click still opens the room panel (test)
 - [ ] At 1280×800 and in the whole-castle view, the box and the chips never cover the party or the current chamber, in both languages (G6 screenshots)
 - [ ] Watch demo shows the same box, watch-only, with the recorded answers (G6 screenshot)
 

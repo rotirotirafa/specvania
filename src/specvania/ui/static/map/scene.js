@@ -90,6 +90,7 @@ export function mountMap(Phaser, host, browser = window) {
   let world = worldFromRooms([]), scene = null, overview = false, partyRoom = null, activeArena = null;
   let width = browser.innerWidth || host.clientWidth || 960;
   let height = browser.innerHeight || 540;
+  let insets = null;
   const objects = [];
   // A separate gutter keeps complete floor titles readable during camera follow
   // without painting over chambers, the party or the HUD. Overview keeps the
@@ -101,9 +102,15 @@ export function mountMap(Phaser, host, browser = window) {
       bottom: "8px", pointerEvents: "none", fontFamily: '"Press Start 2P", monospace', fontSize: "8px", lineHeight: "1.4"});
     host.append?.(rail);
   }
-  let floorLabels = [];
+  let floorLabels = [], railEnabled = false;
+  const overlayNames = new Set();
   function positionAreaTitles() {
-    if (!rail || !scene || rail.hidden) return;
+    if (!rail || !scene) return;
+    const screen = browser.document.getElementById("screen-host");
+    const overlays = Array.from(browser.document.querySelectorAll?.(".expedition-dialog, #room-panel, #command-overlay") || []);
+    rail.hidden = !railEnabled || overlayNames.size > 0 || Boolean(screen && !screen.hidden)
+      || overlays.some(node => !node.hidden && node.style.visibility !== "hidden");
+    if (rail.hidden) return;
     const camera = scene.cameras.main;
     const replayBar = browser.document.getElementById("replay-bar");
     const barBottom = replayBar && !replayBar.hidden ? replayBar.getBoundingClientRect?.().bottom || 0 : 0;
@@ -180,8 +187,9 @@ export function mountMap(Phaser, host, browser = window) {
     if (drag.moved) {dragged = true; scrollTo(drag.scrollX - dx, drag.scrollY - dy);}
   };
   const onDragEnd = event => {if (drag?.id === event.pointerId) drag = null;};
-  host.addEventListener?.("wheel", onWheel, {passive: false});
   host.addEventListener?.("keydown", onScrollKey);
+  host.addEventListener?.("wheel", onWheel, {passive: false});
+
   host.addEventListener?.("pointerdown", onDragStart);
   browser.addEventListener("pointermove", onDragMove);
   browser.addEventListener("pointerup", onDragEnd);
@@ -195,7 +203,7 @@ export function mountMap(Phaser, host, browser = window) {
     const layout = layoutWorld(world, overview || preview);
     const useRail = Boolean(rail && !overview && !preview && !activeArena && layout.areas.length);
     if (rail) {
-      rail.hidden = !useRail; rail.replaceChildren(); floorLabels = [];
+      railEnabled = useRail; rail.replaceChildren(); floorLabels = [];
       rail.setAttribute("aria-label", t("map.areas"));
       if (useRail) for (const area of layout.areas) {
         const node = browser.document.createElement("p");
@@ -276,17 +284,25 @@ export function mountMap(Phaser, host, browser = window) {
     const arena = layout.areas.find(area => area.id === activeArena)?.boss;
     const camera = scene.cameras.main;
     const hud = browser.document.getElementById("castle-hud");
-    if (hud) hud.hidden = overview; // M exposes the entire castle, including the stairwell.
-    const overlayWidth = Math.min(width - 1, hud?.getBoundingClientRect?.().width || 0);
+    if (hud && !insets) hud.hidden = overview;
+    const overlayWidth = insets ? 0 : Math.min(width - 1, hud?.getBoundingClientRect?.().width || 0);
     const visibleWidth = width - overlayWidth;
     const gutter = useRail ? 120 : 0;
-    const viewport = preview ? {x: 16, y: 32, width: Math.max(1, width - overlayWidth - 32),
-      height: Math.max(1, height - 32 - barHeight - 16)} : {x: gutter, y: 0, width: width - gutter, height};
+    const viewport = preview ? {x: 16, y: insets?.top || 32, width: Math.max(1, width - overlayWidth - 32),
+      height: Math.max(1, height - (insets?.top || 32) - barHeight - 16)} : {x:gutter, y:insets?.top || 0, width:width - gutter, height:Math.max(1, height - (insets?.top || 0) - (insets?.bottom || 0))};
     const frame = preview && (layout.width > viewport.width || layout.height > viewport.height)
       && layout.areas.length ? layout.areas[0] : {x: 0, y: 0, width: layout.width, height: layout.height};
     camera.setViewport?.(viewport.x, viewport.y, viewport.width, viewport.height);
     camera.roundPixels = true;
-    const zoom = castleViewZoom(preview ? viewport.width : overview ? visibleWidth : viewport.width, viewport.height, preview ? frame : layout, overview || preview);
+    const current = layout.rooms.find(room => room.id === partyRoom) || layout.rooms[0];
+    const floor = layout.areas.find(area => area.id === current?.area) || layout.areas[0];
+    const floorRooms = layout.rooms.filter(room => room.area === floor?.id);
+    const castleLeft = floor ? Math.min(...floorRooms.map(room => room.x), floor.boss.x) : 0;
+    const titleHeight = floorLabels.find(row => row.area.id === floor?.id)?.node.getBoundingClientRect?.().height || 34;
+    // Follow pans horizontally, so only the floor's height limits its zoom.
+    // Include the title and a tile of breathing room above and below the row.
+    const floorZoom = Math.max(1, Math.min(3, Math.floor(viewport.height / ((floor?.height || 48) + titleHeight + 2 * TILE_SIZE))));
+    const zoom = insets && !overview && !preview && floor ? floorZoom : castleViewZoom(preview ? viewport.width : overview ? visibleWidth : viewport.width, viewport.height, preview ? frame : layout, overview || preview);
     camera.setZoom(zoom);
     // A small overview needs negative bounds so Phaser does not clamp its
     // centered scroll to the top-left. Labels share the castle's coordinates.
@@ -296,6 +312,8 @@ export function mountMap(Phaser, host, browser = window) {
     camera.setBounds(overview || preview ? frame.x + Math.min(0, (frame.width - viewWidth) / 2) : 0,
       overview || preview ? frame.y + Math.min(0, (frame.height - viewHeight) / 2) : 0,
       Math.max(layout.width, viewWidth) + coveredWidth, Math.max(layout.height, viewHeight));
+    if (insets && !overview && !preview && floor) camera.setBounds(castleLeft, -viewHeight,
+      Math.max(layout.width - castleLeft, viewWidth), layout.height + viewHeight * 2);
     const scrollable = overview && !preview && !arena
       && (layout.width > visibleWidth || layout.height > viewport.height);
     if (scrollable) {
@@ -313,8 +331,8 @@ export function mountMap(Phaser, host, browser = window) {
       dragged = false;
     }
     if (arena) {
-      camera.setViewport?.(0, 0, width, height);
-      camera.setZoom(Math.max(1, Math.min(4, Math.floor(width / (arena.width + 64)), Math.floor(height / 128))));
+      camera.setViewport?.(insets ? viewport.x : 0, insets ? viewport.y : 0, width, insets ? viewport.height : height);
+      camera.setZoom(Math.max(1, Math.min(4, Math.floor(width / (arena.width + 64)), Math.floor((insets ? viewport.height : height) / 128))));
       // Center the real T30 arena below the HP header and above Continue.
       camera.setBounds(-width, -height, layout.width + width * 2, layout.height + height * 2);
       camera.centerOn(arena.x + Math.floor(arena.width / 2), arena.y + 24);
@@ -323,14 +341,38 @@ export function mountMap(Phaser, host, browser = window) {
       const target = party || { x: layout.rooms[0].x + 40, y: layout.rooms[0].y + 24 };
       // Phaser subtracts its follow offset from the target before centering.
       // The HUD's screen width becomes world units at the integer zoom.
-      if (party && !animations.isReducedMotion()) camera.startFollow(party, true, 1, 1, -offset || 0, 0);
-      camera.centerOn(Math.round(target.x) + offset, Math.round(target.y));
+      const centerY = insets && floor ? floor.y + floor.height / 2 : Math.round(target.y);
+      if (party && !animations.isReducedMotion()) camera.startFollow(party, true, 1, insets ? 0 : 1, -offset || 0, target.y - centerY);
+      camera.centerOn(Math.round(target.x) + offset, centerY);
     }
     positionAreaTitles();
     const description = browser.document.getElementById("map-rooms");
     if (description) description.textContent = world.rooms.map(room => t("map.room", {area: room.area, id: room.id, title: room.title, state: t(`room.${room.state}`)})).join("\n");
   }
-  const onExpedition = () => {overview = false; redraw();};
+  const onInsets = ({detail}) => {insets = detail; host.removeEventListener?.("keydown", onScrollKey); redraw();};
+  browser.addEventListener("specvania:castle-insets", onInsets);
+  const onPlay = ({detail}) => {
+    if (host.getAttribute?.("inert") != null) return;
+    if (detail.action === "overview") {overview = !overview; overviewScroll = drag = null; redraw();}
+    if (detail.action === "camera" && scene) {
+      const delta = {left:[-TILE_SIZE, 0], right:[TILE_SIZE, 0], up:[0, -TILE_SIZE], down:[0, TILE_SIZE]}[detail.direction];
+      if (!delta) return;
+      const camera = scene.cameras.main;
+      if (scrollBounds) scrollTo(camera.scrollX + delta[0], camera.scrollY + delta[1]);
+      else {
+        camera.stopFollow();
+        const x = Math.round(camera.scrollX + delta[0]), y = Math.round(camera.scrollY + delta[1]);
+        camera.scrollX = camera.clampX ? camera.clampX(x) : x;
+        camera.scrollY = camera.clampY ? camera.clampY(y) : y;
+      }
+    }
+  };
+  browser.addEventListener("specvania:play-action", onPlay);
+  const onExpedition = ({detail}) => {
+    if (detail.active === false) overlayNames.delete(detail.name);
+    else {overlayNames.add(detail.name); overview = false;}
+    redraw();
+  };
   browser.addEventListener("specvania:expedition-dialog", onExpedition);
   const onBossScreen = ({detail}) => {activeArena = detail.active ? detail.area_id : null; overview = false; redraw();};
   browser.addEventListener("specvania:boss-screen", onBossScreen);
@@ -384,10 +426,6 @@ export function mountMap(Phaser, host, browser = window) {
       scene = this;
       registerTextures(this);
       if (browser.CustomEvent) browser.dispatchEvent?.(new browser.CustomEvent("specvania:textures-ready", {detail: this.textures}));
-      this.input.keyboard.on("keydown-M", event => {
-        if (host.getAttribute?.("inert") != null || event.repeat || /^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName) || event.target?.isContentEditable) return;
-        overview = !overview; overviewScroll = drag = null; redraw();
-      });
       redraw(); revealReady();
     }, update() { positionAreaTitles(); revealReady(); } },
   });
@@ -400,6 +438,8 @@ export function mountMap(Phaser, host, browser = window) {
   resize();
   return { setReducedMotion: animations.setReducedMotion,
     setReplaySpeed: animations.setReplaySpeed, destroy() {
+    browser.removeEventListener("specvania:castle-insets", onInsets);
+    browser.removeEventListener("specvania:play-action", onPlay);
     rail?.remove();
     host.removeEventListener?.("wheel", onWheel);
     host.removeEventListener?.("keydown", onScrollKey);

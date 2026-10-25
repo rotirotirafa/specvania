@@ -157,11 +157,11 @@ if (process.argv[2] === "mount") {
   assert.ok(camera.following);
   const target = layoutWorld(world).rooms.find(room => room.id === "T16");
   assert.deepEqual(camera.center, [target.x + target.width / 2, target.y + target.height / 2]);
-  keyboard.get("keydown-M")({repeat: false});
+  handlers.get("specvania:play-action")({detail:{action:"overview"}});
   assert.equal(camera.zoom, 1);
   assert.deepEqual(camera.center, [layoutWorld(world).width / 2, layoutWorld(world).height / 2]);
   assert.equal(camera.following, null);
-  keyboard.get("keydown-M")({repeat: false});
+  handlers.get("specvania:play-action")({detail:{action:"overview"}});
   mediaHandler({matches: true});
   assert.equal(camera.following, null);
   handlers.get("specvania:event")({detail: {type: "room_entered", room_id: "T02"}});

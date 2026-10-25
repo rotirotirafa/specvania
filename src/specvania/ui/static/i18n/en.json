@@ -343,5 +343,16 @@
   "play.respawn": "Respawn in {room} · attempt {attempt}: {feedback}",
   "play.toolRefused": "Tool {tool} refused: {reason}",
   "play.cooldown": "Cooldown · {seconds} s: {reason}",
-  "play.fallback": "Switching model to {model}: {reason}"
+  "play.fallback": "Switching model to {model}: {reason}",
+  "box.yourTurn": "Your turn",
+  "box.choice": "{key} · {label}",
+  "box.pickKeys": "↑↓ Enter · 1–n",
+  "box.close": "Esc · Close",
+  "box.denySubmit": "Deny command",
+  "box.step": "Step {number}/{total} · {step}",
+  "box.room": " · {room}",
+  "box.wait": "!",
+  "box.help": "?",
+  "box.mute": "Sound",
+  "box.thinking": "{role} · {text} · {model}"
 }

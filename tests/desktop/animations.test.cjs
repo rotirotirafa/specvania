@@ -504,11 +504,11 @@ test("follow_camera_keeps_last_floor_boss_arena_and_party_clear_of_dom_hud_at_bo
       assert.equal(camera._bounds.width, Math.max(layout.width, width / camera.zoom));
       assert.equal(camera.followOffset.x, 0);
     }
-    mounted.keys.get("keydown-M")({ repeat: false }); camera.update();
+    ((event) => {if (!event.repeat) mounted.emit("specvania:play-action", {action:"overview"});})({ repeat: false }); camera.update();
     const visibleWidth = width - (mounted.hud?.getBoundingClientRect().width || 0);
     assert.ok(Math.abs((screenX(0) + screenX(layout.width)) / 2 - visibleWidth / 2) <= camera.zoom);
     // Returning from the overview must measure the panel after showing it.
-    mounted.keys.get("keydown-M")({ repeat: false }); camera.update();
+    ((event) => {if (!event.repeat) mounted.emit("specvania:play-action", {action:"overview"});})({ repeat: false }); camera.update();
     assert.ok(screenX(arena.x + arena.width) <= width - overlayWidth);
     mounted.emit("specvania:settings", { reducedMotion: true }); camera.update();
     assert.ok(screenX(arena.x + arena.width) <= width - overlayWidth);

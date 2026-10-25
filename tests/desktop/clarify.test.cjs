@@ -80,23 +80,23 @@ test("idea_enter_ctrl_enter_mouse_skip_and_empty_ideas_use_studio_messages",asyn
 });
 test("clarify_enter_accepts_default_arrows_and_mouse_select_each_answer_shape",async()=>{
   const h=await entrance();try {
-    ask(h);assert.equal(h.doc.activeElement.textContent,"No");assert.equal(h.doc.activeElement.getAttribute("aria-selected"),"true");h.key("Enter");
+    ask(h);assert.equal(h.doc.activeElement.textContent,"2 · No");assert.equal(h.doc.activeElement.getAttribute("aria-selected"),"true");h.key("Enter");
     assert.deepEqual(last(h,"clarify_answer"),{kind:"clarify_answer",question_id:"q1",answer:"No",control_token:"control"});
     h.key("Enter");assert.equal(h.sent.filter(n=>n.kind==="clarify_answer").length,1);
-    ask(h,{...question,question_id:"q2"});h.key("ArrowDown");assert.equal(h.doc.activeElement.textContent,"Maybe");h.key("ArrowDown");assert.equal(h.doc.activeElement.textContent,"Yes");h.key("ArrowUp");h.key("Enter");
+    ask(h,{...question,question_id:"q2"});h.key("ArrowDown");assert.equal(h.doc.activeElement.textContent,"3 · Maybe");h.key("ArrowDown");assert.equal(h.doc.activeElement.textContent,"1 · Yes");h.key("ArrowUp");h.key("Enter");
     assert.deepEqual(last(h,"clarify_answer"),{kind:"clarify_answer",question_id:"q2",answer:"Maybe",control_token:"control"});
-    ask(h,{...question,question_id:"q3"});h.button("Yes").click();assert.equal(h.button("Yes").getAttribute("aria-selected"),"true");h.button("Send answer").click();
+    ask(h,{...question,question_id:"q3"});h.button("1 · Yes").click();assert.equal(h.button("1 · Yes").getAttribute("aria-selected"),"true");h.button("Send answer").click();
     assert.deepEqual(last(h,"clarify_answer"),{kind:"clarify_answer",question_id:"q3",answer:"Yes",control_token:"control"});
   } finally {h.screens.destroy();}
 });
 test("clarify_free_text_no_options_reconnect_and_language_preserve_input",async()=>{
   const h=await harness();try {
-    ask(h);assert.equal(h.host.dataset.screen,"idea");assert.equal(h.doc.activeElement.textContent,"No");
+    ask(h);assert.equal(h.host.dataset.screen,"idea");assert.equal(h.doc.activeElement.textContent,"2 · No");
     const field=textarea(h);field.focus();field.value="Different behavior\nwith details";
     const {setLanguage}=await load("i18n/index.js");setLanguage("pt-BR");
     assert.equal(textarea(h),field);assert.equal(field.value,"Different behavior\nwith details");assert.ok(field.parent);assert.match(text(h.host),/Enviar resposta/);
-    ask(h);assert.equal(textarea(h),field);h.key("Enter");assert.equal(last(h,"clarify_answer").answer,"Different behavior\nwith details");
-    ask(h,{question_id:"q2",text:"How?",options:[],default:"Default text"});h.key("Enter");assert.equal(last(h,"clarify_answer").answer,"Default text");
+    ask(h);assert.equal(textarea(h),field);h.key("Enter");assert.equal(last(h,"clarify_answer"),undefined);h.button("Enviar resposta").click();assert.equal(last(h,"clarify_answer").answer,"Different behavior\nwith details");
+    ask(h,{question_id:"q2",text:"How?",options:[],default:"Default text"});h.button("Enviar resposta").click();assert.equal(last(h,"clarify_answer").answer,"Default text");
   } finally {h.screens.destroy();}
 });
 test("start_disabled_until_save_ack_and_settings_budget_rides_on_start_run",async()=>{
@@ -329,4 +329,14 @@ test("tall_planned_world_frames_first_floor_above_world_ready_bar",async()=>{
       assert.ok(top>=32&&top+room.height*camera.zoom<=height-88,"First floor must stay visible when the whole castle cannot fit");
     }finally{map.destroy();}
   }
+});
+
+test("clarify_number_overrides_unfocused_draft_and_enter_on_send_keeps_free_text",async()=>{
+ const h=await entrance();try{ask(h);textarea(h).value="Draft";h.button("2 · No").focus();h.key("1");assert.equal(last(h,"clarify_answer").answer,"Yes");
+ ask(h,{...question,question_id:"q2"});textarea(h).value="Free text";h.button("Send answer").focus();h.key("Enter");assert.equal(last(h,"clarify_answer").answer,"Free text");
+ }finally{h.screens.destroy();}
+});
+
+test("mage_clarify_turn_caps_the_shared_box_at_45_percent_with_long_questions",async()=>{
+ const h=await entrance();try{ask(h,{...question,text:"A long question ".repeat(300),options:Array.from({length:30},(_,i)=>`Option ${i}`)});const box=flat(h.host).find(n=>n.className==="mage-dialogue");assert.equal(box.style.maxHeight,"45vh");assert.equal(box.getAttribute("role"),"status");assert.ok(text(h.host).includes("A long question ".repeat(300)));h.button("Send answer").click();h.message({...projectState,phase:"planning",clarify_request:null});assert.equal(box.style.maxHeight,"");}finally{h.screens.destroy();}
 });

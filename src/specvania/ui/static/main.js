@@ -3,16 +3,9 @@ import { connectSocket } from "./transport.js";
 // T14 transport; subsequent Map rooms project these state/event notifications.
 import { UI_COLORS } from "./pixel/palette.js";
 import { mountScreens } from "./screens/title.js";
-import { mountReplay } from "./screens/replay.js";
-import { mountApproval } from "./hud/approval.js";
-import { mountPause } from "./screens/pause.js";
-import { mountBoss } from "./screens/boss.js";
-import { mountEnd } from "./screens/end.js";
+import { mountChips, mountReplayControls } from "./hud/chips.js";
 
 import { mountMap } from "./map/scene.js";
-import { mountParty } from "./hud/party.js";
-import { mountBestiary } from "./hud/bestiary.js";
-import { mountDialogue } from "./hud/dialogue.js";
 import { mountRoomPanel } from "./hud/room-panel.js";
 
 // External module boot keeps the game compatible with script-src 'self'.
@@ -23,10 +16,7 @@ if (window.Phaser) {
     document.documentElement.style.setProperty(`--${name}`, color);
   }
 
-  mountParty(hudHost);
   mountMap(window.Phaser, document.getElementById("world-map"));
-  mountBestiary(hudHost);
-  mountDialogue(hudHost);
   mountRoomPanel(hudHost);
 }
 
@@ -75,10 +65,9 @@ function connectRun() {
   const socket = connectSocket(socketUrl, {shouldReconnect: () => !replayFromStart});
   const screenHost = document.getElementById("screen-host");
   let screens;
-  if (screenHost) mountReplay(socket, {browser: window, back: () => screens?.showTitle()});
-  else {
-    mountApproval(socket); mountPause(socket); mountBoss(socket); mountEnd(socket);
-  }
+  const surface = document.getElementById("world-map") || screenHost || hudHost;
+  if (surface) mountReplayControls(socket, {browser:window, back:() => screens?.showTitle()});
+  const chips = surface ? mountChips(socket, {browser:window}) : null;
   screens = screenHost ? mountScreens({host: screenHost, browser: window, socket}) : null;
   // T34 mounts its Start expedition button by listening for this controller.
   if (screens) window.dispatchEvent(new CustomEvent("specvania:screens-ready", {detail: screens}));
@@ -120,6 +109,7 @@ function connectRun() {
       if (!replaying) rememberSequence(event);
       window.dispatchEvent(new CustomEvent("specvania:event", { detail: event }));
     }
+    chips?.render();
     render();
   });
   const disconnected = () => {
@@ -129,3 +119,20 @@ function connectRun() {
   socket.addEventListener("error", disconnected);
 }
 connectRun();
+
+if (document.createElement && document.head) {
+const playStyle = document.createElement("style");
+playStyle.textContent = `#screen-host[data-screen=project], #screen-host[data-screen=idea] {padding-top:64px;}
+  #screen-host[data-screen=idea] {right:0;}
+  #party-drawer[hidden], #play-chips[hidden], #replay-bar[hidden], #dialogue-box[hidden] {display:none;}
+  #party-drawer main {position:static; width:auto;}
+  #dialogue-box button:focus-visible, #play-chips button:focus-visible {outline:3px solid ${UI_COLORS.accent};}
+  #dialogue-box input {min-width:0; max-width:100%;}
+  .expedition-dialog, .expedition-dialog[data-screen=end] {top:var(--castle-top, 76px); bottom:var(--castle-bottom, 128px);}
+  .boss-dialog .expedition-content {flex:1 1 auto; min-height:0; overflow:auto;}
+  #replay-bar button {margin:0; padding:4px;}
+  #replay-bar p {max-width:40vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  #replay-bar {max-width:none; border:0; padding:0;}
+`;
+document.head.append(playStyle);
+}

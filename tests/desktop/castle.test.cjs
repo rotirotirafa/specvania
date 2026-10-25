@@ -232,7 +232,7 @@ async function overviewHarness(world = syntheticWorld()) {
   const { mountMap } = await load("map/scene.js");
   const h = harness(), map = mountMap(h.Phaser, h.host, h.browser);
   h.emit("specvania:event", {type: "world_loaded", ...world}); h.create();
-  h.keys.get("keydown-M")({repeat: false});
+  ((event) => {if (!event.repeat && !/^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName)) h.emit("specvania:play-action", {action:"overview"});})({repeat: false});
   return {h, map};
 }
 
@@ -271,7 +271,7 @@ test("oversized_overview_arrow_and_page_keys_scroll_only_with_castle_focus", asy
     assert.equal(key("PageDown", fields).defaultPrevented, false); assert.equal(h.camera.scrollY, 0);
   }
   h.host.inert = true; key("PageDown"); assert.equal(h.camera.scrollY, 0); h.host.inert = false;
-  h.keys.get("keydown-M")({repeat: false});
+  ((event) => {if (!event.repeat && !/^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName)) h.emit("specvania:play-action", {action:"overview"});})({repeat: false});
   const before = [h.camera.scrollX, h.camera.scrollY];
   key("PageDown"); h.dom("host", "wheel", {deltaY: 1000});
   assert.deepEqual([h.camera.scrollX, h.camera.scrollY], before, "Follow mode ignores overview scrolling");
@@ -458,7 +458,7 @@ test("scene_draws_cast_cross_section_bosses_state_accents_party_and_stable_monst
   for (const room of stateWorld().rooms) assert.ok(h.live().some(item => item.kind === "text" && item.text === room.id));
   h.emit("specvania:event", {type: "bug_opened", bug_id: "bug-1", room_id: "T06"});
   assert.ok(keys().includes(`${monsterForBug("bug-1")}:idle:0`));
-  h.keys.get("keydown-M")({repeat: false});
+  ((event) => {if (!event.repeat && !/^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName)) h.emit("specvania:play-action", {action:"overview"});})({repeat: false});
   assert.ok(keys().includes("warrior:idle:0"), "Active party remains visible in whole-castle view");
   h.emit("specvania:event", {type: "bug_closed", bug_id: "bug-1", status: "fixed"});
   assert.ok(!keys().includes(`${monsterForBug("bug-1")}:idle:0`));
@@ -563,14 +563,14 @@ test("chamber_click_dispatches_dom_room_id_and_M_toggles_same_castle_geometry", 
       assert.deepEqual(selected.detail, {room_id: layout.rooms[index].id});
     }
     const before = zones.map(zone => [zone.x, zone.y, zone.width, zone.height]);
-    h.keys.get("keydown-M")({repeat: true});
+    ((event) => {if (!event.repeat && !/^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName)) h.emit("specvania:play-action", {action:"overview"});})({repeat: true});
     assert.deepEqual(h.live().filter(item => item.kind === "zone").map(zone => [zone.x, zone.y, zone.width, zone.height]), before);
-    h.keys.get("keydown-M")({repeat: false});
+    ((event) => {if (!event.repeat && !/^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName)) h.emit("specvania:play-action", {action:"overview"});})({repeat: false});
     assert.deepEqual(h.live().filter(item => item.kind === "zone").map(zone => [zone.x, zone.y, zone.width, zone.height]), before);
     assert.equal(h.descriptions["castle-hud"].hidden, !overview);
     assert.equal(h.camera.zoom, overview ? 3 : 1);
   }
-  h.keys.get("keydown-M")({repeat: false, target: {tagName: "INPUT"}});
+  ((event) => {if (!event.repeat && !/^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName)) h.emit("specvania:play-action", {action:"overview"});})({repeat: false, target: {tagName: "INPUT"}});
   assert.equal(h.camera.zoom, 3);
   mounted.destroy(); assert.equal(h.listenerCount(), 0); assert.equal(h.mediaHandlers.size, 0); assert.equal(h.destroyed(), true);
 });
@@ -590,7 +590,7 @@ test("canvas_fills_windows_and_resizes_with_integer_camera_zoom_in_both_views", 
     assert.equal(h.config().pixelArt, true); assert.equal(h.config().roundPixels, true);
     assert.equal(h.config().scale.zoom, 1); assert.equal(h.config().scale.mode, h.Phaser.Scale.NONE);
     for (const overview of [false, true]) {
-      if (overview) h.keys.get("keydown-M")({repeat: false});
+      if (overview) ((event) => {if (!event.repeat && !/^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName)) h.emit("specvania:play-action", {action:"overview"});})({repeat: false});
       for (const [w, height] of sizes) {
         h.resize(w, height);
         assert.deepEqual(h.resizes.at(-1), [w, height]);
@@ -605,8 +605,8 @@ test("canvas_fills_windows_and_resizes_with_integer_camera_zoom_in_both_views", 
           if (world === repository && (layout.width > w - overlayWidth || layout.height > height)) {
             assert.deepEqual([w, height], w === 960 ? [960, 540] : [1000, 600]);
             // Re-enter at this size; resize alone intentionally retains scrolling.
-            h.keys.get("keydown-M")({repeat: false});
-            h.keys.get("keydown-M")({repeat: false});
+            ((event) => {if (!event.repeat && !/^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName)) h.emit("specvania:play-action", {action:"overview"});})({repeat: false});
+            ((event) => {if (!event.repeat && !/^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName)) h.emit("specvania:play-action", {action:"overview"});})({repeat: false});
             assert.equal(zoom, 1);
             assert.deepEqual([h.camera.scrollX, h.camera.scrollY], [w === 960 ? 114 : 94, 0]);
             const first = layout.areas[0];
@@ -807,7 +807,7 @@ test("area_titles_follow_own_floor_clamp_without_overlap_and_overview_is_unchang
       assert.equal(Number.parseFloat(rail.style.top) + Number.parseFloat(rail.children[2].style.top), 136);
       h.descriptions["replay-bar"].hidden = true;
       h.config().scene.update.call(h.scene); checkTitles();
-      h.keys.get("keydown-M")({repeat: false});
+      ((event) => {if (!event.repeat && !/^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName)) h.emit("specvania:play-action", {action:"overview"});})({repeat: false});
       assert.equal(rail.hidden, true); assert.deepEqual([h.camera.x, h.camera.width], [0, width]);
       for (const area of layout.areas) {
         const label = h.live().find(node => node.kind === "text" && node.text === `${area.id}\n${area.title}`);
@@ -816,4 +816,118 @@ test("area_titles_follow_own_floor_clamp_without_overlap_and_overview_is_unchang
     } finally {map.destroy();}
     assert.equal(nodes[0].removed, true);
   }
+});
+
+test("dialogue_and_chip_camera_viewport_reserves_top_bottom_at_minimum_and_large_sizes_in_both_views_and_languages",async()=>{
+ const {mountMap}=await load("map/scene.js"),{layoutWorld}=await load("map/layout.js"),{setLanguage}=await load("i18n/index.js");
+ for(const [width,height]of [[960,540],[1280,800]])for(const language of ["en","pt-BR"]){
+  setLanguage(language);const h=harness();h.browser.document.createElement=tag=>new (require("./play-dom.cjs").Element)(tag,h.browser.document);const map=mountMap(h.Phaser,h.host,h.browser);try{
+   h.emit("specvania:castle-insets",{top:76,bottom:128});h.emit("specvania:event",{type:"world_loaded",...sample});h.create();h.resize(width,height);
+   for(const overview of [false,true]){if(overview)h.emit("specvania:play-action",{action:"overview"});const c=h.camera;
+    assert.ok(c.y>=76);assert.ok(c.y+c.height<=height-128);assert.ok(c.width>0&&c.height>0);assert.ok(Number.isInteger(c.zoom));
+    // Phaser clips every castle object to this viewport, including the active
+    // chamber/party, so no map pixel can be painted under the dialogue or chips.
+    const layout=layoutWorld(sample,overview);assert.ok(layout.rooms.length);
+    assert.equal(c.x,overview?0:120);assert.equal(c.width,width-c.x);
+   }
+   h.emit("specvania:castle-insets",{top:112,bottom:128});assert.equal(h.camera.y,112);assert.equal(h.camera.y+h.camera.height,height-128);
+  }finally{map.destroy();}
+ }setLanguage("en");
+});
+
+test("camera_actions_pan_follow_and_overview_with_one_castle_key_route",async()=>{
+ const {mountMap}=await load("map/scene.js");const h=harness(),map=mountMap(h.Phaser,h.host,h.browser);try{
+ h.emit("specvania:castle-insets",{top:76,bottom:128});h.emit("specvania:event",{type:"world_loaded",...syntheticWorld()});h.create();
+ const before=h.camera.scrollY;h.emit("specvania:play-action",{action:"camera",direction:"down"});assert.equal(h.camera.scrollY,before+16);assert.equal(h.camera.following,null);
+ const after=h.camera.scrollY;h.dom("host","keydown",{key:"ArrowDown"});assert.equal(h.camera.scrollY,after,"The map no longer installs a competing castle key handler");assert.equal(h.keys.size,0);
+ h.emit("specvania:play-action",{action:"overview"});const initial=h.camera.scrollY;h.emit("specvania:play-action",{action:"camera",direction:"down"});assert.equal(h.camera.scrollY,initial+16);
+ }finally{map.destroy();}
+});
+
+test("followed_demo_floor_uses_zoom_three_at_1280_and_two_at_960_with_vertical_center_and_left_clamp",async()=>{
+ const {mountMap}=await load("map/scene.js"),{layoutWorld,worldFromRooms}=await load("map/layout.js"),{setLanguage}=await load("i18n/index.js");
+ const demo=readFileSync(path.join(root,"src/specvania/examples/demo/events.jsonl"),"utf8").trim().split("\n").map(JSON.parse).find(event=>event.type==="world_loaded");
+ const layout=layoutWorld(worldFromRooms(demo.rooms,demo.areas,demo.doors));
+ for(const [width,height]of [[960,540],[1280,800]])for(const language of ["en","pt-BR"])for(const reduced of [false,true]){setLanguage(language);const h=harness(width,height,reduced);const follows=[];h.camera.startFollow=(...args)=>{h.camera.following=args[0];follows.push(args);};h.browser.document.createElement=tag=>new(require("./play-dom.cjs").Element)(tag,h.browser.document);
+ const map=mountMap(h.Phaser,h.host,h.browser);try{
+ const top=width===960?112:76;h.emit("specvania:castle-insets",{top,bottom:128});h.emit("specvania:event",demo);h.create();
+ for(const id of ["T01","T03"]){h.emit("specvania:event",{type:"room_entered",room_id:id});const room=layout.rooms.find(room=>room.id===id),floor=layout.areas.find(floor=>floor.id===room.area),c=h.camera;
+ assert.equal(c.zoom,width===1280?3:2);if(!reduced){assert.equal(follows.at(-1)[2],1);assert.equal(follows.at(-1)[3],0);}assert.equal(c.y,top);assert.equal(c.y+c.height,height-128);assert.equal(c.centers.at(-1)[1],floor.y+floor.height/2);
+ const screenX=x=>c.x+c.width/2+(x-c.scrollX-c.width/2)*c.zoom;
+ const first=layout.rooms.find(candidate=>candidate.area===floor.id);assert.ok(Math.abs(screenX(first.x)-c.x)<1,"First chamber starts at the gutter, without an empty left band");
+ const screenY=y=>c.y+c.height/2+(y-c.scrollY-c.height/2)*c.zoom;assert.ok(Math.abs(screenY(floor.y+floor.height/2)-(top+(height-128-top)/2))<1);assert.ok(screenY(room.y)>=top&&screenY(room.y+room.height)<=height-128);
+ }
+ h.emit("specvania:play-action",{action:"overview"});assert.equal(h.camera.zoom,Math.max(1,Math.floor(Math.min(width/layout.width,(height-128-top)/layout.height))));
+ }finally{map.destroy();}
+ }setLanguage("en");
+});
+
+test("follow_zoom_is_capped_at_three_and_horizontal_follow_can_leave_the_left_clamp", async () => {
+  const {mountMap} = await load("map/scene.js"), {layoutWorld, worldFromRooms} = await load("map/layout.js");
+  const world = syntheticWorld(2, 12), layout = layoutWorld(worldFromRooms(world.rooms, world.areas, world.doors));
+  const h = harness(1920, 1080);
+  h.browser.document.createElement = tag => new (require("./play-dom.cjs").Element)(tag, h.browser.document);
+  const map = mountMap(h.Phaser, h.host, h.browser);
+  try {
+    h.emit("specvania:castle-insets", {top:76, bottom:128});
+    h.emit("specvania:event", {type:"world_loaded", ...world}); h.create();
+    h.emit("specvania:event", {type:"room_entered", room_id:"T01"});
+    const c = h.camera, screenX = x => c.x + c.width / 2 + (x - c.scrollX - c.width / 2) * c.zoom;
+    assert.equal(c.zoom, 3); assert.equal(screenX(layout.rooms[0].x), c.x);
+    const leftScroll = c.scrollX;
+    h.emit("specvania:event", {type:"room_entered", room_id:"T08"});
+    assert.equal(c.zoom, 3); assert.ok(c.scrollX > leftScroll);
+    assert.ok(c.following, "Horizontal follow remains active after the start of the castle");
+    const room = layout.rooms.find(room => room.id === "T08");
+    assert.ok(screenX(room.x) >= c.x && screenX(room.x + room.width) <= c.x + c.width);
+  } finally {map.destroy();}
+});
+
+test("floor_title_gutter_hides_for_real_expedition_dialogs_and_overlay_screens_then_returns", async () => {
+  const {mountMap} = await load("map/scene.js"), {expeditionDialog} = await load("screens/pause.js");
+  const {Element, flat} = require("./play-dom.cjs");
+  const h = harness(1280, 800), document = h.browser.document;
+  document.createElement = tag => new Element(tag, document);
+  document.body = document.createElement("body");
+  for (const id of ["world-map", "castle-hud", "screen-host"]) {
+    const node = document.createElement("section"); node.id = id; node.hidden = id === "screen-host";
+    document.body.append(node);
+  }
+  document.getElementById = id => flat(document.body).find(node => node.id === id);
+  document.querySelectorAll = () => flat(document.body).filter(node => node.className === "expedition-dialog" || ["room-panel", "command-overlay"].includes(node.id));
+  h.host.append = node => document.getElementById("world-map").append(node);
+  // Use the actual open/close signals, including handoff between end and boss.
+  h.browser.dispatchEvent = event => {
+    if (event.type === "specvania:expedition-dialog") h.emit(event.type, event.detail);
+  };
+  const map = mountMap(h.Phaser, h.host, h.browser);
+  const end = expeditionDialog("end", {browser:h.browser}), boss = expeditionDialog("boss", {browser:h.browser});
+  try {
+    h.emit("specvania:castle-insets", {top:76, bottom:128});
+    h.emit("specvania:event", {type:"world_loaded", ...sample}); h.create();
+    const rail = document.getElementById("world-map").children[0];
+    const frame = () => h.config().scene.update.call(h.scene);
+    assert.equal(rail.hidden, false);
+    for (const dialog of [end, boss]) {
+      dialog.open(dialog === end ? "end.title" : "boss.title", () => {});
+      assert.equal(rail.hidden, true); frame(); assert.equal(rail.hidden, true);
+      dialog.close(); frame(); assert.equal(rail.hidden, false);
+    }
+    end.open("end.title", () => {}); boss.open("boss.title", () => {});
+    assert.equal(end.root, null); assert.ok(boss.root, "Closing the previous dialog cannot close its replacement");
+    frame(); assert.equal(rail.hidden, true);
+    boss.close(); frame(); assert.equal(rail.hidden, false);
+    const screen = document.getElementById("screen-host");
+    for (const name of ["title", "project", "idea", "settings", "error"]) {
+      screen.dataset.screen = name; screen.hidden = false; frame(); assert.equal(rail.hidden, true, name);
+      screen.hidden = true; frame(); assert.equal(rail.hidden, false, name);
+    }
+    for (const id of ["room-panel", "command-overlay"]) {
+      const node = document.createElement("aside"); node.id = id; document.body.append(node);
+      frame(); assert.equal(rail.hidden, true, id);
+      node.hidden = true; frame(); assert.equal(rail.hidden, false, id); node.remove();
+    }
+    h.emit("specvania:boss-screen", {active:true, area_id:"A1"}); frame(); assert.equal(rail.hidden, true);
+    h.emit("specvania:boss-screen", {active:false}); frame(); assert.equal(rail.hidden, false);
+  } finally {end.destroy(); boss.destroy(); map.destroy();}
 });

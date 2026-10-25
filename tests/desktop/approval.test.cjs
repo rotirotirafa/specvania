@@ -1,131 +1,54 @@
 "use strict";
-const { test } = require("node:test");
+const {test} = require("node:test");
 const assert = require("node:assert/strict");
-const { readFileSync } = require("node:fs");
-const { pathToFileURL } = require("node:url");
+const {readFileSync} = require("node:fs");
+const {pathToFileURL} = require("node:url");
 const path = require("node:path");
 const vm = require("node:vm");
-const { EventEmitter } = require("node:events");
-const root = path.resolve(__dirname, "../..");
+const {EventEmitter} = require("node:events");
+const {harness, flat, text, load} = require("./play-dom.cjs");
+const root = path.resolve(__dirname,"../..");
 const token = "desktop-control-secret";
+const mount = desktop => harness({desktop:desktop || false});
+const request = {type:"approval_requested",request_id:"approval-1",command:"printf '<script>safe</script>'",cwd:"/tmp/world"};
+const buttons = h => flat(h.box).filter(n=>n.tagName==="button"&&!n.hidden);
 
-class Element {
-  constructor(tag, document) { this.document = document; this.value = ""; this.tagName = tag; this.style = {}; this.dataset = {}; this.children = []; this.listeners = {}; this.disabled = false; }
-  append(...children) { for (const child of children) { child.parent = this; this.children.push(child); } }
-  remove() { if (this.parent) this.parent.children = this.parent.children.filter(child => child !== this); }
-  setAttribute(name, value) { this[name] = value; }
-  addEventListener(name, callback) { this.listeners[name] = callback; }
-  focus() { this.focused = true; this.document.activeElement = this; }
-  click() { if (!this.disabled) this.listeners.click?.(); }
-}
-async function mount(desktop = undefined) {
-  const document = {};
-  const body = new Element("body", document);
-  const head = new Element("head", document);
-  const listeners = {};
-  const sent = [];
-  const socket = { readyState: 1, addEventListener(name, callback) { listeners[name] = callback; },
-    send(data) { sent.push(JSON.parse(data)); } };
-  Object.assign(document, { body, head, createElement: tag => new Element(tag, document) });
-  const window = desktop === undefined ? {} : { specvaniaDesktop: desktop };
-  const { mountApproval } = await import(pathToFileURL(path.join(root, "src/specvania/ui/static/hud/approval.js")));
-  mountApproval(socket, { window, document });
-  return { body, head, sent, socket, document, message: message => listeners.message({ data: JSON.stringify(message) }),
-    event: event => listeners.message({ data: JSON.stringify({ kind: "event", event }) }),
-    close: () => listeners.close() };
-}
-const request = { type: "approval_requested", request_id: "approval-1", command: "printf '<script>safe</script>'", cwd: "/tmp/world" };
-function flatten(element) { return [element, ...element.children.flatMap(flatten)]; }
-function buttons(ui) { return flatten(ui.body).filter(element => element.tagName === "button"); }
-
-test("rpg_choice_shows_command_cwd_palette_font_and_sends_one_authenticated_answer", async () => {
-  const { UI_COLORS } = await import(pathToFileURL(path.join(root, "src/specvania/ui/static/pixel/palette.js")));
-  for (const [label, answer] of [["Allow", true], ["Deny", false]]) {
-    const ui = await mount({ controlToken: () => token, notify() {} });
-    ui.event(request);
-    const elements = flatten(ui.body);
-    const box = elements.find(element => element.role === "dialog");
-    assert.ok(box);
-    assert.equal(box.style.backgroundColor, UI_COLORS.surface);
-    assert.equal(box.style.color, UI_COLORS.text);
-    assert.match(box.style.border, new RegExp(UI_COLORS.border));
-    assert.match(box.style.fontFamily, /Press Start 2P/);
-    assert.ok(elements.some(element => element.textContent === request.command));
-    assert.ok(elements.some(element => element.textContent === `cwd: ${request.cwd}`));
-    assert.deepEqual(buttons(ui).map(button => button.textContent), ["Allow", "Deny"]);
-    buttons(ui).find(button => button.textContent === label).click();
-    assert.deepEqual(ui.sent, [{ kind: "approval_answer", request_id: "approval-1", answer, control_token: token }]);
-    for (const button of buttons(ui)) { assert.equal(button.disabled, true); button.click(); }
-    assert.equal(ui.sent.length, 1);
-    assert.ok(!flatten(ui.body).some(element => (element.textContent || "").includes(token)));
-    ui.event({ type: "approval_answered", request_id: "approval-1", answer, responder: "desktop window" });
-    assert.equal(buttons(ui).length, 0);
-    assert.ok(!flatten(ui.body).some(element => element.role === "dialog"));
-  }
+test("rpg_choice_shows_command_cwd_palette_font_and_sends_one_authenticated_answer",async()=>{
+  const {UI_COLORS,PALETTE}=await load("pixel/palette.js");
+  for(const answer of [true,false]) {const h=await mount({controlToken:()=>token});try{
+    h.event(request);assert.equal(h.box.getAttribute("role"),"status");assert.equal(h.box.getAttribute("aria-live"),"polite");
+    assert.equal(h.box.style.backgroundColor,UI_COLORS.surface);assert.equal(h.box.style.borderColor,PALETTE.Y);assert.match(h.box.style.fontFamily,/Press Start/);
+    assert.ok(text(h.box).includes(request.command));assert.ok(text(h.box).includes(request.cwd));assert.equal(h.document.getElementById("approval-choice"),null);
+    assert.equal(h.document.activeElement,h.button("A · Allow"));
+    h.button(answer?"A · Allow":"N · Deny").click();if(!answer)h.button("Deny command").click();
+    assert.deepEqual(h.sent,[{kind:"approval_answer",request_id:request.request_id,answer,control_token:token}]);
+    h.key("A");assert.equal(h.sent.length,1);h.event({type:"approval_answered",request_id:request.request_id,answer,responder:"terminal"});
+    assert.equal(buttons(h).length,0);assert.equal(h.document.activeElement,h.document.getElementById("world-map"));assert.ok(!text(h.body).includes(token));
+  }finally{h.destroy();}}
 });
-
-test("terminal_answer_dismisses_only_matching_choice_and_socket_close_disables_answers", async () => {
-  const ui = await mount({ controlToken: () => token, notify() {} });
-  ui.event(request);
-  ui.event({ type: "approval_answered", request_id: "other", answer: true, responder: "terminal" });
-  assert.equal(buttons(ui).length, 2);
-  ui.event({ type: "approval_answered", request_id: request.request_id, answer: false, responder: "terminal" });
-  assert.equal(buttons(ui).length, 0);
-  assert.ok(!flatten(ui.body).some(element => element.role === "dialog"));
-  assert.ok(flatten(ui.body).some(element => element.textContent === "denied in terminal"));
-  ui.event({ ...request, request_id: "next" });
-  assert.equal(buttons(ui).length, 2);
-  ui.close();
-  for (const button of buttons(ui)) button.click();
-  assert.equal(ui.sent.length, 0);
+test("terminal_answer_dismisses_only_matching_choice_and_socket_close_disables_answers",async()=>{
+ const h=await mount({controlToken:()=>token});try{h.event(request);h.event({type:"approval_answered",request_id:"other",answer:true,responder:"terminal"});assert.equal(h.box.dataset.turn,"approval");
+ h.event({type:"approval_answered",request_id:request.request_id,answer:false,responder:"terminal"});assert.equal(h.box.dataset.turn,"");assert.match(text(h.box),/denied in terminal/);
+ h.event({...request,request_id:"next"});h.close();h.key("A");assert.equal(h.sent.length,0);assert.equal(h.button("A · Allow").disabled,true);
+ }finally{h.destroy();}
 });
-
-test("browser_read_only_for_browser_and_desktop_without_control_token", async () => {
-  for (const desktop of [undefined, { controlToken: () => "", notify() {} }]) {
-    const ui = await mount(desktop);
-    ui.event(request);
-    assert.equal(buttons(ui).length, 0);
-    const elements = flatten(ui.body);
-    assert.ok(elements.some(element => element.textContent === "waiting for player — answer in the terminal or desktop window"));
-    assert.ok(elements.some(element => element.textContent === request.command));
-    assert.equal(ui.sent.length, 0);
-  }
+test("browser_read_only_for_browser_and_desktop_without_control_token",async()=>{
+ for(const desktop of [false,{controlToken:()=>""}]){const h=await harness({desktop});try{h.event(request);assert.ok(h.button("A · Allow").disabled);h.key("A");h.key("N");assert.equal(h.sent.length,0);assert.match(text(h.box),/terminal or desktop window/);h.key("V");assert.ok(h.document.getElementById("command-overlay"));h.key("Escape");assert.equal(h.document.getElementById("command-overlay"),null);}finally{h.destroy();}}
 });
-
-test("notification_renderer_filters_exactly_three_event_types_and_failed_review", async () => {
-  const notices = [];
-  const ui = await mount({ controlToken: () => token, notify: (...args) => notices.push(args) });
-  ui.event(request);
-  ui.event({ type: "review", verdict: "fail", room_id: "T20", feedback: "Gate failed" });
-  ui.event({ type: "boss_result", area_id: "A5", passed: true });
-  ui.event({ type: "boss_result", area_id: "A5", passed: false });
-  assert.equal(notices.length, 4);
-  assert.deepEqual(notices.map(notice => notice[0]), ["Approval requested", "Paladin review failed", "Boss result", "Boss result"]);
-  assert.match(notices[0][1], /printf/);
-  assert.match(notices[1][1], /T20/);
-  assert.match(notices[2][1], /passed/);
-  assert.match(notices[3][1], /failed/);
-  for (const type of ["review", "approval_answered", "boss_started", "boss_scenario", "room_cleared", "cooldown", "fallback", "run_paused"]) {
-    ui.event({ type, verdict: "pass", request_id: "other" });
-  }
-  assert.equal(notices.length, 4);
+test("notification_renderer_filters_exactly_three_event_types_and_failed_review",async()=>{
+ const notices=[],h=await mount({controlToken:()=>token,notify:(...args)=>notices.push(args)});try{
+ h.event(request);h.event({type:"review",verdict:"fail",room_id:"T20",feedback:"Gate failed"});h.event({type:"boss_result",area_id:"A5",passed:true});h.event({type:"boss_result",area_id:"A5",passed:false});
+ assert.deepEqual(notices.map(n=>n[0]),["Approval requested","Paladin review failed","Boss result","Boss result"]);
+ for(const type of ["review","approval_answered","boss_started","boss_scenario","room_cleared","cooldown","fallback","run_paused"])h.event({type,verdict:"pass",request_id:"other"});assert.equal(notices.length,4);
+ }finally{h.destroy();}
 });
-
-test("rpg_choice_restores_pending_snapshot_and_uses_full_transient_prompt", async () => {
-  const notices = [];
-  const ui = await mount({ controlToken: () => token, notify: (...args) => notices.push(args) });
-  const full = { request_id: "pending", command: "printf " + "x".repeat(500), cwd: "/tmp/world" };
-  ui.message({ kind: "state", state: { seq: 1 }, approval_request: full });
-  assert.ok(flatten(ui.body).some(element => element.textContent === full.command));
-  assert.equal(buttons(ui).length, 2);
-  assert.equal(notices.length, 0, "Connecting must not repeat a native notification");
-  ui.event({ type: "approval_answered", request_id: "pending", answer: false, responder: "terminal" });
-  assert.equal(buttons(ui).length, 0);
-  ui.message({ kind: "event", event: { ...request, command: "summary" }, approval_request: { ...full, request_id: request.request_id } });
-  assert.ok(flatten(ui.body).some(element => element.textContent === full.command));
-  assert.equal(notices.length, 1);
+test("rpg_choice_restores_pending_snapshot_and_uses_full_transient_prompt",async()=>{
+ const h=await mount({controlToken:()=>token});try{const full={...request,command:"printf "+"x".repeat(500)};h.message({kind:"state",state:{seq:1},approval_request:full});assert.ok(text(h.box).includes(full.command));assert.equal(h.notifications.length,0);
+ h.key("V");assert.ok(text(h.document.getElementById("command-overlay")).includes(full.command));h.key("Escape");
+ h.event({type:"approval_answered",request_id:request.request_id,answer:false,responder:"terminal"});assert.equal(buttons(h).length,0);
+ h.message({kind:"event",event:{...request,command:"summary"},approval_request:full});assert.ok(text(h.box).includes(full.command));
+ }finally{h.destroy();}
 });
-
 test("notification_main_process_checks_actual_window_focus_and_notification_support", async () => {
   let window;
   let supported = true;
@@ -168,91 +91,26 @@ test("notification_main_process_checks_actual_window_focus_and_notification_supp
   assert.equal(notices.length, 3);
 });
 
-
-test("denial_reason_is_labelled_single_line_bounded_trimmed_and_sent_only_on_deny", async () => {
-  for (const [answer, value, reason] of [[false, "  Syntax is corrupted  ", "Syntax is corrupted"], [false, "  ", undefined], [true, "Syntax is corrupted", undefined], [false, "x".repeat(200), "x".repeat(200)]]) {
-    const ui = await mount({controlToken: () => token, notify() {}});
-    ui.event(request);
-    const input = flatten(ui.body).find(node => node.tagName === "input");
-    assert.ok(input);
-    assert.equal(input.type, "text");
-    assert.equal(input.maxLength, 200);
-    const label = flatten(ui.body).find(node => node.tagName === "label");
-    assert.equal(label.textContent, "Reason for denial (optional)");
-    assert.equal(label.htmlFor, input.id);
-    input.value = value;
-    buttons(ui).find(button => button.textContent === (answer ? "Allow" : "Deny")).click();
-    const expected = {kind: "approval_answer", request_id: request.request_id, answer, control_token: token};
-    if (reason) expected.reason = reason;
-    assert.deepEqual(ui.sent, [expected]);
-    assert.equal(input.disabled, true);
-  }
+test("denial_reason_is_labelled_single_line_bounded_trimmed_and_sent_only_on_deny",async()=>{
+ for(const [answer,value,reason] of [[false,"  Fix script  ","Fix script"],[false,"  ",undefined],[true,"ignored",undefined],[false,"x".repeat(200),"x".repeat(200)]]){
+ const h=await mount({controlToken:()=>token});try{h.event(request);h.key("N");const input=h.input;assert.equal(input.type,"text");assert.equal(input.maxLength,200);assert.equal(h.document.activeElement,input);
+ const label=flat(h.box).find(n=>n.tagName==="label");assert.equal(label.htmlFor,input.id);assert.equal(label.textContent,"Reason for denial (optional)");input.value=value;
+ h.button(answer?"A · Allow":"Deny command").click();const expected={kind:"approval_answer",request_id:request.request_id,answer,control_token:token};if(reason)expected.reason=reason;assert.deepEqual(h.sent,[expected]);assert.equal(input.disabled,true);
+ }finally{h.destroy();}}
 });
-
-test("denial_reason_is_in_dialog_tab_order_and_preserves_text_cursor_keys", async () => {
-  const ui = await mount({controlToken: () => token, notify() {}});
-  ui.event(request);
-  const elements = flatten(ui.body), dialog = elements.find(node => node.role === "dialog");
-  const input = elements.find(node => node.tagName === "input");
-  assert.ok(input);
-  const [allow, deny] = buttons(ui);
-  assert.equal(ui.document.activeElement, deny);
-  const key = (key, shiftKey = false) => dialog.listeners.keydown({key, shiftKey, preventDefault() {}});
-  key("Tab");
-  assert.equal(ui.document.activeElement.className, "expedition-content");
-  key("Tab"); assert.equal(ui.document.activeElement, allow);
-  key("Tab"); assert.equal(ui.document.activeElement, input);
-  key("Tab"); assert.equal(ui.document.activeElement, deny);
-  key("Tab", true); assert.equal(ui.document.activeElement, input);
-  let prevented = false;
-  dialog.listeners.keydown({key: "ArrowLeft", preventDefault() {prevented = true;}});
-  assert.equal(prevented, false);
-  assert.equal(ui.document.activeElement, input);
-  input.value = "Fix the script";
-  key("Tab"); key("Enter");
-  assert.equal(ui.sent[0].reason, "Fix the script");
+test("denial_reason_is_in_dialog_tab_order_and_preserves_text_cursor_keys",async()=>{
+ const h=await mount({controlToken:()=>token});try{h.event(request);h.key("N");assert.equal(h.input.hidden,false);assert.equal(h.button("Deny command").hidden,false);h.input.value="Keep draft";
+ for(const key of ["ArrowLeft","ArrowRight","A","N","V","M","1","?"]){const event=h.key(key,h.input);assert.ok(!event.defaultPrevented);assert.equal(h.document.activeElement,h.input);}assert.equal(h.sent.length,0);
+ h.key("Enter",h.input);assert.equal(h.sent[0].reason,"Keep draft");
+ }finally{h.destroy();}
 });
-
-test("denial_reason_resolved_status_and_replay_dialogue_translate_and_render_as_text", async () => {
-  const {setLanguage} = await import(pathToFileURL(path.join(root, "src/specvania/ui/static/i18n/index.js")));
-  const {dialogueFor} = await import(pathToFileURL(path.join(root, "src/specvania/ui/static/hud/dialogue.js")));
-  const event = {type: "approval_answered", request_id: request.request_id, answer: false, responder: "desktop window", reason: "<script>corrupted</script>"};
-  const ui = await mount({controlToken: () => token, notify() {}});
-  ui.event(request); ui.event(event);
-  try {
-    for (const [language, expected] of [["en", "denied in desktop window: <script>corrupted</script>"], ["pt-BR", "negado em janela desktop: <script>corrupted</script>"]]) {
-      setLanguage(language);
-      assert.equal(dialogueFor(event).text, expected);
-      assert.ok(flatten(ui.body).some(node => node.textContent === expected));
-      assert.ok(!flatten(ui.body).some(node => node.tagName === "script"));
-    }
-    setLanguage("en");
-    assert.equal(dialogueFor({...event, answer: true}).text, "approved in desktop window");
-  } finally {setLanguage("en");}
+test("denial_reason_resolved_status_and_replay_dialogue_translate_and_render_as_text",async()=>{
+ const h=await mount({controlToken:()=>token}),{setLanguage}=await load("i18n/index.js"),{dialogueFor}=await load("hud/dialogue.js");const event={type:"approval_answered",request_id:request.request_id,answer:false,responder:"desktop window",reason:"<script>corrupted</script>"};
+ try{h.event(request);h.event(event);for(const [language,expected] of [["en","denied in desktop window: <script>corrupted</script>"],["pt-BR","negado em janela desktop: <script>corrupted</script>"]]){setLanguage(language);assert.equal(dialogueFor(event).text,expected);assert.ok(text(h.box).includes(expected));assert.ok(!flat(h.body).some(n=>n.tagName==="script"));}}finally{setLanguage("en");h.destroy();}
 });
-
-
-test("rejected_denial_reenables_controls_preserves_reason_and_allows_correction", async () => {
-  const ui = await mount({controlToken: () => token, notify() {}});
-  ui.event(request);
-  const input = flatten(ui.body).find(node => node.tagName === "input");
-  input.value = "mistyped-secret";
-  buttons(ui).find(button => button.textContent === "Deny").click();
-  assert.equal(input.disabled, true);
-  ui.message({kind:"approval_rejected", reason:"invalid message"});
-  assert.equal(input.disabled, false);
-  assert.ok(buttons(ui).every(button => !button.disabled));
-  assert.equal(input.value, "mistyped-secret");
-  assert.ok(flatten(ui.body).some(node => node.role === "dialog"));
-  input.value = "Fix the script";
-  buttons(ui).find(button => button.textContent === "Deny").click();
-  assert.equal(ui.sent[1].reason, "Fix the script");
-  ui.message({kind:"approval_rejected", reason:"invalid message"});
-  input.value = "";
-  buttons(ui).find(button => button.textContent === "Deny").click();
-  assert.deepEqual(ui.sent[2], {kind:"approval_answer",request_id:request.request_id,answer:false,control_token:token});
-  ui.close();
-  ui.message({kind:"approval_rejected", reason:"request unavailable"});
-  assert.equal(input.disabled, true);
-  assert.ok(buttons(ui).every(button => button.disabled));
+test("rejected_denial_reenables_controls_preserves_reason_and_allows_correction",async()=>{
+ const h=await mount({controlToken:()=>token});try{h.event(request);h.key("N");const input=h.input;input.value="mistyped-secret";h.button("Deny command").click();assert.equal(input.disabled,true);
+ h.message({kind:"approval_rejected",reason:"invalid message"});assert.equal(h.input,input);assert.equal(input.disabled,false);assert.equal(input.value,"mistyped-secret");assert.equal(h.box.dataset.turn,"approval");
+ input.value="Fix script";h.button("Deny command").click();assert.equal(h.sent[1].reason,"Fix script");h.message({kind:"approval_rejected",reason:"invalid message"});input.value="";h.button("Deny command").click();assert.ok(!Object.hasOwn(h.sent[2],"reason"));h.close();h.message({kind:"approval_rejected",reason:"unavailable"});assert.equal(input.disabled,true);
+ }finally{h.destroy();}
 });

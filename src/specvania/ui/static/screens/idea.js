@@ -1,3 +1,5 @@
+import { narrate } from "../play/narrator.js";
+import { mapKey } from "../play/keys.js";
 import { createRunningIndicator } from "../hud/running.js";
 import { mageDialogue } from "../hud/dialogue.js";
 
@@ -9,7 +11,7 @@ export function ideaScreen(ui, initial = {}, timing = {}) {
   const content = ui.document.createElement("div"); content.className = "dialogue-content"; box.append(content);
   const actions = ui.document.createElement("footer"); actions.className = "dialogue-actions"; box.append(actions);
   let state = initial, slug = initial.world_slug || null, saved = Boolean(initial.world_slug && ui.savedSlug === initial.world_slug), saving = false;
-  let request = null, mode = "", selected = -1, options = [], input = null, start = null;
+  let request = null, mode = "", selected = -1, options = [], input = null, start = null, acceptAnswer = null;
   let labels = [], error = null, dirty = null, pending = false;
   const canStart = () => saved && (!ui.hasMap || ui.revealedSlug === slug);
   const node = tag => { const item = ui.document.createElement(tag); content.append(item); return item; };
@@ -48,13 +50,14 @@ export function ideaScreen(ui, initial = {}, timing = {}) {
   }
   function draw(next) {
     box.dataset.mode = error ? "error" : dirty ? "dirty" : next;
-    box.setAttribute("aria-modal", String(box.dataset.mode !== "world"));
+    box.style.borderColor = next === "clarify" && !error && !dirty ? ui.palette.Y : ui.palette.V;
+    box.style.maxHeight = next === "clarify" && !error && !dirty ? "45vh" : "";
     ui.dialogueLayout(box.dataset.mode);
     const isWorking = next === "working" && !error && !dirty;
     if (isWorking && started === null) started = running.now();
     if (!isWorking) started = null;
     working = null; running.active(isWorking);
-    mode = next; labels = []; options = []; input = null; start = null;
+    mode = next; labels = []; options = []; input = null; start = null; acceptAnswer = null;
     content.replaceChildren(); actions.replaceChildren();
     if (error) {
       text("p", error);
@@ -87,7 +90,10 @@ export function ideaScreen(ui, initial = {}, timing = {}) {
       });
       button("idea.plan", send); idea.focus();
     } else if (next === "clarify") {
+      box.style.borderColor = ui.palette.Y;
+      text("h2", "box.yourTurn");
       text("p", "idea.question", {text: request.text});
+      text("small", "box.pickKeys");
       const list = node("div"); list.setAttribute("role", "listbox");
       list.setAttribute("aria-label", ui.t("idea.options"));
       const values = request.options || [];
@@ -95,16 +101,16 @@ export function ideaScreen(ui, initial = {}, timing = {}) {
       if (selected < 0 && values.length) selected = 0;
       options = values.map((value, index) => {
         const item = ui.document.createElement("button"); item.type = "button";
-        item.textContent = ui.t("idea.option", {option: value});
-        labels.push([item, "idea.option", {option: value}]);
+        item.textContent = ui.t("box.choice", {key:index + 1, label:ui.t("idea.option", {option:value})});
+        labels.push([item, "box.choice", {key:index + 1, label:ui.t("idea.option", {option:value})}]);
         item.setAttribute("role", "option");
         item.addEventListener("click", () => {selected = index; input.value = ""; render(); item.focus();});
         list.append(item); return item;
       });
       field("idea.answer");
       text("p", "idea.default", {answer: request.default});
-      const accept = button("idea.accept", sendAnswer);
-      (options[selected] || input || accept).focus(); render();
+      const accept = button("idea.accept", sendAnswer); acceptAnswer = accept;
+      (options[selected] || accept).focus(); render();
     } else if (next === "world") {
       text("p", "idea.ready", {world: slug});
       button("idea.save", () => {if (!saving && ui.send("save_world", {slug})) {saving = true; draw("world");}}, saving);
@@ -114,16 +120,23 @@ export function ideaScreen(ui, initial = {}, timing = {}) {
     } else working = text("p", "idea.working");
     render();
     if (next !== "idea" || error || dirty) {
-      const first = options[selected] || input || Array.from(actions.children).find(item => item.tagName.toLowerCase() === "button" && !item.disabled);
+      const first = options[selected] || (next === "clarify" ? null : input) || Array.from(actions.children).find(item => item.tagName.toLowerCase() === "button" && !item.disabled);
       (first || box).focus();
     }
   }
   const keydown = event => {
-    if (mode !== "clarify" || error || dirty || pending || event.isComposing) return;
-    if (["ArrowDown", "ArrowUp"].includes(event.key) && event.target !== input && options.length) {
-      event.preventDefault(); selected = (selected + (event.key === "ArrowDown" ? 1 : -1) + options.length) % options.length;
-      input.value = ""; render(); options[selected].focus();
-    } else if (event.key === "Enter" && !event.shiftKey) {event.preventDefault(); sendAnswer();}
+    if (mode !== "clarify" || error || dirty || pending) return;
+    if (event.key === "Enter" && event.target === acceptAnswer) return;
+    const projection = narrate({studio:{clarify_request:request}, controlToken:ui.canControl === false ? "" : "screen", screen:"clarify"});
+    projection.turn.selected = Math.max(0, selected);
+    const result = mapKey(event, projection, {controlToken:ui.canControl === false ? "" : "screen"});
+    if (result?.selection !== undefined) {
+      event.preventDefault(); selected = result.selection; input.value = ""; render(); options[selected]?.focus();
+    } else if (result?.control) {
+      event.preventDefault();
+      const i = (request.options || []).indexOf(result.control.answer); if (i >= 0) {selected = i; input.value = "";}
+      sendAnswer();
+    }
   };
   box.addEventListener("keydown", keydown);
   function update(value) {

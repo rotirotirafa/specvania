@@ -7,19 +7,14 @@ const {EventEmitter} = require("node:events");
 const root = path.resolve(__dirname, "../../src/specvania/ui/static");
 let imports = 0;
 const flat = node => [node, ...node.children.flatMap(flat)];
-class Element {
-  constructor(tagName) {Object.assign(this, {tagName, children: [], style: {}, dataset: {}, attrs: {}});}
-  append(...nodes) {this.children.push(...nodes); for (const node of nodes) node.parent = this;}
-  setAttribute(key, value) {this.attrs[key] = String(value);}
-  addEventListener() {}
-  focus() {}
-  remove() {if (this.parent) this.parent.children = this.parent.children.filter(node => node !== this);}
-}
+const {Element}=require("./play-dom.cjs");
 
 async function main() {
   const connection = {}, runState = {}, sockets = [], states = [], events = [], studio = [], messages = [];
-  const document = {createElement: tag => new Element(tag), body: new Element("body"),
-    getElementById: id => id === "connection" ? connection : id === "run-state" ? runState : null};
+  const document = {createElement: tag => new Element(tag,document)};
+  document.body=document.createElement("body"); document.head=document.createElement("head");
+  const game=document.createElement("div");game.id="world-map";document.body.append(game);
+  document.getElementById=id=>id==="connection"?connection:id==="run-state"?runState:flat(document.body).find(n=>n.id===id)||null;
   const browser = new EventEmitter(); browser.document = document;
   browser.addEventListener = browser.on.bind(browser); browser.removeEventListener = browser.off.bind(browser);
   browser.dispatchEvent = event => browser.emit(event.type, event);
@@ -58,7 +53,7 @@ test("main_stale_live_snapshot_preserves_newer_events_and_studio_approval_payloa
     assert.deepEqual(h.states.map(value => value.seq), [4]);
     assert.deepEqual(h.events.map(value => value.seq), [5]);
     assert.deepEqual(h.studio, [stale]); assert.deepEqual(h.messages.at(-1), stale);
-    assert.ok(flat(h.document.body).some(node => node.tagName === "pre" && node.textContent.includes("echo ready")));
+    assert.ok(flat(h.document.body).some(node => node.tagName === "p" && node.textContent.includes("echo ready") && node.style.textOverflow === "ellipsis"));
     h.message(state("plan", 5)); h.message(state("plan", 6)); h.message(state("plan", 5));
     assert.deepEqual(h.states.map(value => value.seq), [4, 5, 6]);
   } finally {h.destroy();}
@@ -82,7 +77,8 @@ test("main_replay_seek_and_restart_allow_backward_states_and_events", async () =
       h.message(state("recording", 0, extra)); h.message(event("recording", 1));
     }
     h.message(state("live", 1)); h.message(event("live", 2)); h.message(state("live", 1));
-    assert.deepEqual(h.states.map(value => value.seq), [10, 0, 10, 0, 1]);
+    assert.deepEqual(h.states.map(value => value.seq), [10, 0, 10, 0, undefined, 1]);
+    assert.deepEqual(h.states[4], {rooms:[], party:[], bugs:[], bosses:[]}, "Leaving replay clears the displayed castle");
     assert.deepEqual(h.events.map(value => value.seq), [30, 50, 1, 50, 1, 2]);
   } finally {h.destroy();}
 });

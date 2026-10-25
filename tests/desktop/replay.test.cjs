@@ -49,7 +49,7 @@ async function harness(desktop = true, studio = true) {
   const socket = new EventEmitter(), sent = [];
   socket.addEventListener = socket.on.bind(socket); socket.removeEventListener = socket.off.bind(socket);
   socket.readyState = 1; socket.send = value => sent.push(JSON.parse(value));
-  const {mountReplay} = await load("screens/replay.js");
+  const {mountReplayControls:mountReplay} = await load("hud/chips.js");
   let screens;
   const replay = mountReplay(socket, {browser, back: () => screens.showTitle()});
   const {mountScreens} = await load("screens/title.js"); screens = mountScreens({host:ids["screen-host"], browser, socket}); await screens.ready;
@@ -83,45 +83,23 @@ test("watch_demo_enabled_on_title_and_missing_key_error_sends_only_open_replay",
   } finally {h.destroy();}
 });
 
-test("recorded_mage_approval_pause_boss_and_end_use_same_readonly_screens_in_order", async () => {
-  const h = await harness(); try {
-    begin(h); await Promise.resolve(); assert.match(text(h.document.body), /Recorded world: synthetic lantern/);
-    assert.ok(flat(h.document.body).some(node => node.dataset.cast === "mage"));
-    const plan = fixture("plan"), run = fixture("run");
-    const observed = [];
-    for (const event of [...plan, ...run]) {
-      if (event === run[0]) h.message({kind:"state",phase:"replaying",replay:{...status,stream:"run"},state:{rooms:[]}});
-      h.message({kind:"event", event}); observed.push(text(h.document.body));
-      if (event.type === "clarify_question") {
-        assert.match(observed.at(-1), /Which lantern\?/); assert.match(observed.at(-1), /Blue/); assert.match(observed.at(-1), /Green/);
-        assert.equal(flat(h.document.body).filter(node => node.tagName === "textarea").length, 0);
-      }
-      if (event.type === "clarify_answer") assert.match(observed.at(-1), /Recorded answer: Green/);
-      if (event.type === "world_loaded") assert.equal(h.document.getElementById("replay-dialogue"), undefined);
-      if (event.type === "approval_requested") {
-        const panel = h.document.getElementById("approval-choice"); assert.ok(panel); assert.match(text(panel), /echo synthetic-lantern/);
-        assert.match(text(panel), /Recorded dialogue/);
-        assert.ok(flat(panel).find(node => /answer in the terminal/i.test(node.textContent)).hidden);
-        assert.equal(h.button("Allow"), undefined); assert.equal(h.button("Deny"), undefined);
-        panel.dispatch("keydown", {key:"Escape",preventDefault(){}});
-      }
-      if (event.type === "approval_answered") {assert.equal(h.document.getElementById("approval-choice"), undefined); assert.match(observed.at(-1), /approved/);}
-      if (event.type === "run_paused") {
-        assert.ok(h.document.getElementById("pause")); assert.equal(h.button("Retry"), undefined); assert.equal(h.button("Abort"), undefined);
-        h.message({kind:"studio_state",phase:"replaying",replay:{...status,stream:"run",speed:4,paused:true},pause_request:null});
-        assert.ok(h.document.getElementById("pause"), "Playback controls keep the recorded pause open until its recorded choice");
-        h.message({kind:"studio_state",phase:"replaying",replay:{...status,stream:"run",speed:2,paused:false},pause_request:null});
-      }
-      if (event.type === "attempt_started" && event.attempt === 2) {assert.equal(h.document.getElementById("pause"), undefined); assert.match(observed.at(-1), /Recorded choice: Retry/);}
-      if (event.type === "boss_started") {assert.ok(h.document.getElementById("boss")); assert.equal(h.document.getElementById("boss").dataset.transition, "false", "Replay respects the desktop reduced-motion setting");}
-      if (event.type === "boss_scenario") assert.equal(flat(h.document.body).find(node => node.attrs.role === "meter").attrs["aria-valuenow"], "0");
-      if (event.type === "run_finished") {assert.ok(h.document.getElementById("end")); assert.match(text(h.document.getElementById("end")), /1/);}
-    }
-    assert.deepEqual(h.sent.filter(value => value.kind !== "set_language"), []);
-    assert.deepEqual(h.notifications, []);
-    assert.ok(observed[1].includes("Which lantern?")); assert.ok(observed[2].includes("Recorded answer: Green"));
-    assert.ok(observed[8].includes("echo synthetic-lantern")); assert.ok(observed[9].includes("approved"));
-  } finally {h.destroy();}
+test("recorded_mage_approval_pause_boss_and_end_use_same_readonly_screens_in_order",async()=>{
+ const h=await harness();try{begin(h);const observed=[];for(const [stream,events]of [["plan",fixture("plan")],["run",fixture("run")]]){
+   if(stream==="run")h.message({kind:"state",phase:"replaying",replay:{...status,stream},state:{rooms:[]}});
+   for(const event of events){h.message({kind:"event",event});const box=h.document.getElementById("dialogue-box");assert.ok(box);assert.equal(box.dataset.turn,"");assert.equal(box.getAttribute("role"),"status");assert.equal(flat(box).some(n=>n.tagName==="button"||n.tagName==="textarea"),false);observed.push(text(box));
+     if(event.type==="clarify_question"){assert.match(text(box),/Which lantern/);assert.ok(flat(box).some(n=>n.dataset.cast==="mage"));}
+     if(event.type==="clarify_answer")assert.match(text(box),/Recorded answer: Green/);
+     if(event.type==="approval_requested"){assert.match(text(box),/echo synthetic-lantern/);assert.equal(h.document.getElementById("approval-choice"),undefined);}
+     if(event.type==="approval_answered")assert.match(text(box),/approved/);
+     if(event.type==="run_paused"){assert.equal(h.document.getElementById("pause"),undefined);assert.match(text(box),/paused/);}
+     if(event.type==="attempt_started"&&event.attempt===2)assert.match(text(box),/Recorded choice: Retry/);
+     if(event.type==="boss_started"){assert.ok(h.document.getElementById("boss"));await Promise.resolve();assert.equal(h.document.getElementById("boss").dataset.transition,"false");}
+     if(event.type==="boss_scenario")assert.equal(flat(h.document.body).find(n=>n.attrs.role==="meter").attrs["aria-valuenow"],"0");
+     if(event.type==="run_finished")assert.ok(h.document.getElementById("end"));
+   }
+ }assert.deepEqual(h.sent.filter(v=>v.kind!=="set_language"),[]);assert.deepEqual(h.notifications,[]);assert.ok(observed.some(v=>v.includes("Recorded answer: Green")));
+ }finally{h.destroy();}
+
 });
 
 test("speed_and_pause_controls_mouse_keyboard_modal_escape_and_back_to_title", async () => {
@@ -133,7 +111,7 @@ test("speed_and_pause_controls_mouse_keyboard_modal_escape_and_back_to_title", a
     h.button("Resume playback").click(); assert.equal(h.sent.at(-1).paused, false);
     h.key("p"); assert.equal(h.sent.at(-1).paused, false);
     h.message({kind:"event",event:fixture("run")[4]});
-    assert.ok(h.document.getElementById("approval-choice"));
+    assert.ok(h.document.getElementById("dialogue-box"));assert.equal(h.document.getElementById("dialogue-box").dataset.turn,"");
     h.key("2"); assert.equal(h.sent.at(-1).speed, 2);
     h.button("Back to title").click(); assert.equal(h.sent.at(-1).kind, "close_replay");
     h.key("Escape"); assert.equal(h.sent.at(-1).kind, "close_replay");
@@ -223,30 +201,16 @@ test("end_heading_bounds_clear_measured_replay_bar_at_960x540_and_controls_are_k
   assert.equal(h.browser.listenerCount("resize"), 0);
 });
 
-test("recorded_dialogs_reserve_bar_space_after_open_resize_and_language_change", async () => {
-  const h = await harness();
-  try {
-    const bar = h.document.getElementById("replay-bar");
-    let bottom = 120;
-    bar.getBoundingClientRect = () => ({bottom});
-    begin(h);
-    const mage = h.document.getElementById("replay-dialogue");
-    assert.equal(mage.style.maxHeight, "396px");
-    const cases = [
-      ["approval-choice", {type:"approval_requested", request_id:"request", command:"echo demo", cwd:"/demo"}],
-      ["pause", {type:"run_paused", reason:"out of lives"}],
-      ["boss", {type:"boss_started", area_id:"A1", scenarios:["S1"]}],
-    ];
-    for (const [id, event] of cases) {
-      h.message({kind:"event", event});
-      const panel = h.document.getElementById(id); assert.ok(panel);
-      assert.ok(parseFloat(panel.style.top) > bottom);
-      bottom += 20;
-      h.browser.emit("resize"); assert.ok(parseFloat(panel.style.top) > bottom);
-      const {setLanguage} = await load("i18n/index.js");
-      bottom += 20; setLanguage("pt-BR"); assert.ok(parseFloat(panel.style.top) > bottom); setLanguage("en");
-    }
-  } finally {h.destroy();}
+test("recorded_dialogs_reserve_bar_space_after_open_resize_and_language_change",async()=>{
+ const h=await harness();try{const bar=h.document.getElementById("replay-bar");let bottom=120;bar.getBoundingClientRect=()=>({bottom});begin(h);
+   for(const event of [{type:"clarify_question",question_id:"q",question:"Which?",options:["Blue"],default:"Blue"},{type:"approval_requested",request_id:"a",command:"echo demo",cwd:"/demo"},{type:"run_paused",reason:"out of lives"}]){
+    h.message({kind:"event",event});const box=h.document.getElementById("dialogue-box");assert.equal(box.style.bottom,"12px");assert.equal(box.style.height,"auto");assert.ok(Number(box.dataset.height)>=104&&Number(box.dataset.height)<=124);assert.equal(box.dataset.turn,"");assert.ok(!flat(box).some(n=>n.tagName==="button"));
+    assert.equal(h.document.getElementById("approval-choice"),undefined);assert.equal(h.document.getElementById("pause"),undefined);
+   }
+   h.message({kind:"event",event:{type:"boss_started",area_id:"A1",scenarios:["S1"]}});const boss=h.document.getElementById("boss");assert.ok(parseFloat(boss.style.top)>bottom);bottom=160;h.browser.emit("resize");assert.ok(parseFloat(boss.style.top)>bottom);
+   const {setLanguage}=await load("i18n/index.js");bottom=180;setLanguage("pt-BR");assert.ok(parseFloat(boss.style.top)>bottom);setLanguage("en");
+ }finally{h.destroy();}
+
 });
 
 test("browser_cli_replay_renders_recorded_dialogues_without_control_or_notifications", async () => {
@@ -317,5 +281,31 @@ test("recorded_denial_reason_appears_in_receipt_and_reconnect_in_both_languages"
     h.message({kind:"state",phase:"replaying",replay:{...status,dialogue:answer},state:{rooms:[]}});
     assert.match(text(bar), /negado em janela desktop: Syntax is corrupted/);
     assert.equal(h.sent.filter(message => message.kind === "approval_answer").length, 0);
+  } finally {setLanguage("en"); h.destroy();}
+});
+
+test("long_recorded_choice_stays_single_line_with_accessible_full_text_and_nonwrapping_controls_on_end_screen", async () => {
+  const h = await harness(), {setLanguage} = await load("i18n/index.js");
+  try {
+    begin(h);
+    const reason = "Choose retry, skip or abort after examining the chamber. ".repeat(12);
+    h.message({kind:"event", event:{type:"run_paused", reason}});
+    h.message({kind:"event", event:{type:"room_skipped", room_id:"T01"}});
+    h.message({kind:"event", event:fixture("run").at(-1)});
+    assert.ok(h.document.getElementById("end"));
+    const bar = h.document.getElementById("replay-bar"), summary = bar.children[0];
+    for (const [width, height] of [[960, 540], [1280, 800]]) for (const language of ["en", "pt-BR"]) {
+      h.browser.innerWidth = width; h.browser.innerHeight = height; h.browser.emit("resize"); setLanguage(language);
+      assert.match(summary.textContent, language === "en" ? /Recorded choice: Skip/ : /Escolha gravada: Pular/);
+      assert.ok(summary.textContent.includes(reason));
+      assert.equal(summary.title, summary.textContent); assert.equal(summary.getAttribute("aria-label"), summary.textContent);
+      assert.equal(summary.getAttribute("role"), "status");
+      assert.equal(summary.style.whiteSpace, "nowrap"); assert.equal(summary.style.overflow, "hidden");
+      assert.equal(summary.style.textOverflow, "ellipsis"); assert.equal(summary.style.minWidth, "0");
+      assert.equal(bar.style.flexWrap, "nowrap"); assert.equal(bar.style.height, "32px");
+      for (const button of bar.children.filter(node => node.tagName === "button")) {
+        assert.equal(button.style.whiteSpace, "nowrap"); assert.equal(button.style.flexShrink, "0");
+      }
+    }
   } finally {setLanguage("en"); h.destroy();}
 });

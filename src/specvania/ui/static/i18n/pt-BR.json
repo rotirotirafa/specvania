@@ -343,5 +343,16 @@
   "play.respawn": "Respawn em {room} · tentativa {attempt}: {feedback}",
   "play.toolRefused": "Ferramenta {tool} recusada: {reason}",
   "play.cooldown": "Recarga · {seconds} s: {reason}",
-  "play.fallback": "Trocando o modelo para {model}: {reason}"
+  "play.fallback": "Trocando o modelo para {model}: {reason}",
+  "box.yourTurn": "Sua vez",
+  "box.choice": "{key} · {label}",
+  "box.pickKeys": "↑↓ Enter · 1–n",
+  "box.close": "Esc · Fechar",
+  "box.denySubmit": "Negar comando",
+  "box.step": "Etapa {number}/{total} · {step}",
+  "box.room": " · {room}",
+  "box.wait": "!",
+  "box.help": "?",
+  "box.mute": "Som",
+  "box.thinking": "{role} · {text} · {model}"
 }

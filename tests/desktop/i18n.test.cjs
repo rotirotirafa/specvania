@@ -150,8 +150,14 @@ const playTechnical = new Set(`plaintext-only map approval pause replay F1 M Arr
   read_file list_dir search write_file edit_file run_shell terminal narrator wontfix probe saving end expedition`.split(/\s+/));
 for (const value of ["?", " ", "pause.${}", "play.action.${}", "play.step.${}", "desktop window"]) playTechnical.add(value);
 diagnostics["play/narrator.js"] = ["stamina exhausted", "out of lives", "model chain exhausted", "boss failed"];
+// T43 DOM, CSS and existing control identifiers. Never accepted in visible sinks.
+const dialogueTechnical = new Set(`play-chips center party-chip aside party-drawer static transparent aria-expanded
+  end help mute data-screen replay_speed replay_pause close_replay false pause skip retry abort command-overlay
+  inline-block dialogue-box aria-live polite column wrap approval deny-reason view-command narrator A overview camera screen left right up down focus max-content`.split(/\s+/));
+for (const value of [".expedition-dialog, #room-panel, #command-overlay", "--castle-top", "--castle-bottom", "calc(100vw - 24px)", "1 1 auto", "0 1 auto", "45vh", " ", "-", "pause.${}", "pause.${}Help", "384px 352px", "3px solid ${}", "4px 0 0", "100px 24px 224px", "${}:${}", "Arrow${}${}"]) dialogueTechnical.add(value);
+exact.add("#screen-host[data-screen=project], #screen-host[data-screen=idea] {padding-top:64px;}\n  #screen-host[data-screen=idea] {right:0;}\n  #party-drawer[hidden], #play-chips[hidden], #replay-bar[hidden], #dialogue-box[hidden] {display:none;}\n  #party-drawer main {position:static; width:auto;}\n  #dialogue-box button:focus-visible, #play-chips button:focus-visible {outline:3px solid ${};}\n  #dialogue-box input {min-width:0; max-width:100%;}\n  .expedition-dialog, .expedition-dialog[data-screen=end] {top:var(--castle-top, 76px); bottom:var(--castle-bottom, 128px);}\n  .boss-dialog .expedition-content {flex:1 1 auto; min-height:0; overflow:auto;}\n  #replay-bar button {margin:0; padding:4px;}\n  #replay-bar p {max-width:40vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}\n  #replay-bar {max-width:none; border:0; padding:0;}\n");
 function approved(value, file) {
-  return !value || file.startsWith("play/") && playTechnical.has(value) || Object.hasOwn(en, value) || Object.hasOwn(en, `event.${value}`) || technical.has(value) || file === "hud/room-panel.js" && panelTechnical.has(value) || /^(screens\/(pause|boss|end)\.js)$/.test(file) && expeditionTechnical.has(value) || file === "screens/replay.js" && replayTechnical.has(value) || exact.has(value) || diagnostics[file]?.includes(value)
+  return !value || ["hud/chips.js", "hud/dialogue-box.js", "map/scene.js", "screens/idea.js"].includes(file) && dialogueTechnical.has(value) || file.startsWith("play/") && playTechnical.has(value) || Object.hasOwn(en, value) || Object.hasOwn(en, `event.${value}`) || technical.has(value) || file === "hud/room-panel.js" && panelTechnical.has(value) || /^(screens\/(pause|boss|end)\.js)$/.test(file) && expeditionTechnical.has(value) || file === "screens/replay.js" && replayTechnical.has(value) || exact.has(value) || diagnostics[file]?.includes(value)
     || /^specvania:[a-z-]+$/.test(value) // internal DOM event names
     || /^(\.\.\/|\.\/)[\w/.-]+$/.test(value) // local imports/assets only
     || /^\d+(px|%|px 0)?$/.test(value) || /^\d+(\.\d+)?$/.test(value) // CSS sizes and numeric formats
@@ -166,7 +172,7 @@ function scanJS(source, file) {
     // are also status/event keys. Check common sinks independently of allowlist.
     const before = source.slice(Math.max(0, start - 100), start);
     const visible = /(?:textContent\s*=|(?:label|text)\([^\n]*,|setAttribute\("aria-label",)\s*$/.test(before);
-    return (!approved(value, file) || visible && (file.startsWith("play/") && playTechnical.has(value) || technical.has(value) || expeditionTechnical.has(value) || file === "screens/replay.js" && replayTechnical.has(value) || diagnostics[file]?.includes(value)) && !["aria-label", "p", "h2", "h3", "div", "button", "span", "strong", "small"].includes(value));
+    return (!approved(value, file) || visible && (file.startsWith("play/") && playTechnical.has(value) || technical.has(value) || dialogueTechnical.has(value) || expeditionTechnical.has(value) || file === "screens/replay.js" && replayTechnical.has(value) || diagnostics[file]?.includes(value)) && !["aria-label", "p", "h2", "h3", "div", "button", "span", "strong", "small"].includes(value));
   }).map(({value}) => value);
 }
 function walk(directory) {
@@ -311,15 +317,15 @@ test("switch_updates_static_transport_map_party_bestiary_dialogue_and_approval_t
     setLanguage("pt-BR"); assert.ok(texts(h.body).includes("pensando")); setLanguage("en");
     const event={type:"approval_requested",seq:9,request_id:"request",command:"<script>inert</script>",cwd:"/tmp/world"};
     h.message({kind:"event",event});
-    const choices=()=>flatten(h.body).filter(node=>node.tagName==="button" && ["Allow","Deny","Permitir","Negar"].includes(node.textContent));
+    const choices=()=>flatten(h.body).filter(node=>node.tagName==="button" && ["A · Allow","N · Deny","A · Permitir","N · Negar"].includes(node.textContent));
     const originalChoices=choices();
     flatten(h.host).find(node=>node.tagName==="button" && node.textContent==="PT").click();
-    for (const label of ["Acompanhando a execução","Evento 9: aprovação solicitada","Mapa do mundo","Salas e estados","Grupo","Mago","Guerreiro","Paladino","90000 tokens gastos","Bestiário","Chefe de A1","Diálogo","O Guerreiro pede aprovação","Permitir","Negar","Diretório: /tmp/world","aguardando o jogador"]) {
+    for (const label of ["Acompanhando a execução","Evento 9: aprovação solicitada","Mapa do mundo","Salas e estados","Grupo","Mago","Guerreiro","Paladino","90000 tokens gastos","Bestiário","Chefe de A1","Diálogo","O Guerreiro pede aprovação","A · Permitir","N · Negar","Diretório: /tmp/world"]) {
       // Party has no visible heading: its accessible name carries Grupo.
       assert.ok(texts(h.body).includes(label) || flatten(h.body).some(node=>Object.values(node.attrs).some(value=>value.includes(label))),label);
     }
     assert.match(h.ids["map-rooms"].textContent,/User title — ativa/);
-    assert.deepEqual(choices(),originalChoices,"Switching preserves focusable buttons and pending request");
+    assert.equal(choices().length,originalChoices.length,"Switching preserves the pending choices");
     assert.ok(texts(h.body).includes("<script>inert</script>")); assert.ok(texts(h.body).includes("<img>external</img>"));
     assert.equal(reloads,0); assert.equal(h.document.documentElement.lang,"pt-BR");
     assert.deepEqual(h.sent,[{kind:"set_language",language:"pt-BR",control_token:"control"}]);

@@ -305,15 +305,16 @@ if (["boss", "bugs", "motion", "integration"].includes(check)) {
         ["mage", "warrior", "paladin", ...MONSTERS].some(name => image.key.startsWith(`${name}:`)))) {
         assert.ok(fake.displayList.indexOf(image) > lastRoomPaint,"Room redraw hides a persistent sprite");
       }
-      if (event.type === "fallback") assert.match(texts(ui.host), /synthetic\/warrior-backup/);
+      if (event.type === "review") assert.ok(texts(ui.document.body).includes(event.feedback));
+      if (event.type === "fallback") assert.match(texts(ui.document.body), /synthetic\/warrior-backup/);
       if (event.type === "bug_opened") {
-        assert.match(texts(ui.host),/Bell wheel missing/);
+        assert.match(texts(ui.document.body),/Bell wheel missing/);
         assert.ok(fake.images.some(image => !image.destroyed && image.key === `${monsterForBug(events.find(event => event.type === "bug_opened").bug_id)}:idle:0`));
       }
       if (event.type === "bug_closed") assert.ok(fake.images.filter(image => MONSTERS.some(name => image.key.startsWith(`${name}:`))).every(image => image.destroyed));
     }
-    assert.match(texts(ui.host), /The bell needs a replacement wheel/);
-    assert.ok(flatten(ui.host).some(node => node.attrs.role === "meter" && node.attrs["aria-valuenow"] === "0"));
+    assert.match(texts(ui.document.body), /Expedition aborted\./);
+    assert.ok(flatten(ui.document.body).some(node => node.attrs.role === "meter" && node.attrs["aria-valuenow"] === "0"));
     assert.equal(fake.tweens.length,0);
     assert.equal(config.pixelArt,true);
   }
@@ -323,12 +324,15 @@ if (check === "approval") {
   for (const token of ["", "control"]) {
     const ui = browser(); const handlers = new Map();
     if (token) ui.win.specvaniaDesktop = {controlToken:()=>token,notify() {}};
-    mountApproval({addEventListener(name,fn) {handlers.set(name,fn);},readyState:1,send() {}}, {window:ui.win,document:ui.document});
+    mountApproval({addEventListener(name,fn) {const list=handlers.get(name)||[];list.push(fn);handlers.set(name,list);},readyState:1,send() {}}, {window:ui.win,document:ui.document});
     const request = {type:"approval_requested",request_id:"one",command:"pytest -q",cwd:"/repo"};
-    const message = value => handlers.get("message")({data:JSON.stringify(value)});
+    const message = value => {for(const fn of handlers.get("message"))fn({data:JSON.stringify(value)});};
     message({kind:"event",event:request});
     assert.equal(texts(ui.document.body).includes("answer in the terminal or desktop window"), !token);
-    assert.equal(flatten(ui.document.body).filter(node => node.tagName === "button").length,token ? 2 : 0);
+    const choices = flatten(ui.document.body).filter(node => node.tagName === "button" && !node.hidden);
+    assert.equal(choices.length,3);
+    assert.equal(choices.filter(node => !node.disabled).length,token ? 3 : 1);
+    assert.ok(flatten(ui.document.body).some(node => node.id === "dialogue-box" && node.attrs.role === "status"));
     message({kind:"approval_rejected"});
     assert.equal(texts(ui.document.body).includes("answer in the terminal or desktop window"), !token);
   }

@@ -52,80 +52,48 @@ async function harness({desktop=true, studio=true, reduced=false, title=false}={
   const message=value=>socket.emit("message",{data:JSON.stringify(value)});
   if(studio) message({kind:"state",phase:"running",state:{run_id:null,status:"pending",rooms:[],models:[]}});
   const button=label=>flat(doc.body).find(n=>n.tagName==="button"&&n.textContent===label);
-  const key=(key,shiftKey=false)=>{const e={key,shiftKey,preventDefault(){this.prevented=true;}}; (doc.activeElement||doc.body).dispatch("keydown",e); if(!e.prevented&&key==="Enter") doc.activeElement?.click();};
+  const key=(key,shiftKey=false)=>{const e={key,shiftKey,preventDefault(){this.prevented=true;this.defaultPrevented=true;}}; (doc.activeElement||doc.body).dispatch("keydown",e); browser.emit("keydown",e); if(!e.prevented&&key==="Enter") doc.activeElement?.click();};
   return {doc,browser,socket,sent,game,hud,origin,screen,message,key,button,event:event=>message({kind:"event",event}),destroy(){for(const mount of mounts.reverse()) mount.destroy();}};
 }
 const request={type:"approval_requested",request_id:"a1",command:"printf '<script>literal</script>'",cwd:"/repo/<cwd>"};
 function restored(h) {assert.equal(h.game.getAttribute("inert"),null); assert.equal(h.hud.getAttribute("aria-hidden"),null); assert.equal(h.hud.hidden,false); assert.equal(h.doc.activeElement,h.origin);}
 
 test("approval_keyboard_mouse_escape_control_and_focus_restore",async()=>{
-  for(const method of ["mouse allow","mouse deny","keyboard allow","escape"]) {
-    const h=await harness(); try {
-      h.event(request);
-      assert.ok(flat(h.doc.body).some(n=>n.dataset.cast==="warrior"));
-      assert.ok(texts(h.doc.body).includes(request.command)); assert.ok(texts(h.doc.body).includes(request.cwd));
-      assert.equal(h.game.getAttribute("inert"),""); assert.equal(h.doc.activeElement,h.button("Deny"));
-      h.key("Tab"); assert.equal(h.doc.activeElement.className,"expedition-content"); h.key("Tab"); assert.equal(h.doc.activeElement,h.button("Allow")); h.key("Tab"); assert.equal(h.doc.activeElement.tagName,"input"); h.key("Tab"); assert.equal(h.doc.activeElement,h.button("Deny")); h.key("Tab",true); assert.equal(h.doc.activeElement.tagName,"input"); h.key("Tab",true); assert.equal(h.doc.activeElement,h.button("Allow")); h.key("Tab",true); assert.equal(h.doc.activeElement.className,"expedition-content"); h.key("Tab",true); assert.equal(h.doc.activeElement,h.button("Deny"));
-      if(method.startsWith("mouse")) h.button(method.endsWith("allow")?"Allow":"Deny").click();
-      else if(method==="escape") h.key("Escape"); else {h.key("ArrowLeft");h.key("Enter");}
-      assert.deepEqual(h.sent,[{kind:"approval_answer",request_id:"a1",answer:method.endsWith("allow"),control_token:"control"}]);
-      h.key("Escape"); assert.equal(h.sent.length,1);
-      h.event({type:"approval_answered",request_id:"a1",answer:true,responder:"terminal"}); restored(h);
-      assert.match(texts(h.hud),/terminal/);
-    }finally{h.destroy();}
-  }
+  for(const method of ["mouse allow","mouse deny","key allow","key deny"]) {const h=await harness();try{
+    h.event(request);assert.ok(flat(h.doc.body).some(n=>n.dataset.cast==="warrior"));assert.ok(texts(h.doc.body).includes(request.command));assert.equal(h.game.getAttribute("inert"),null);
+    assert.equal(h.doc.activeElement,h.button("A · Allow"));h.key("Escape");assert.equal(h.sent.length,0);
+    const allow=method.endsWith("allow");if(method.startsWith("mouse"))h.button(allow?"A · Allow":"N · Deny").click();else h.key(allow?"A":"N");
+    if(!allow){const input=flat(h.doc.body).find(n=>n.tagName==="input");input.value="Fix command";h.button("Deny command").click();}
+    const expected={kind:"approval_answer",request_id:"a1",answer:allow,control_token:"control"};if(!allow)expected.reason="Fix command";assert.deepEqual(h.sent,[expected]);
+    h.event({type:"approval_answered",request_id:"a1",answer:true,responder:"terminal"});assert.equal(h.doc.activeElement,h.game);assert.match(texts(h.doc.body),/terminal/);
+  }finally{h.destroy();}}
+
 });
 
 test("pause_and_stamina_keyboard_mouse_send_only_studio_choices",async()=>{
-  for(const reason of ["Out of lives in T01: rejected","stamina exhausted"]) for(const method of ["mouse","keyboard"]) for(const choice of reason==="stamina exhausted"?["retry","abort"]:["retry","skip","abort"]) {
-    const h=await harness(); try {
-      h.event({type:"run_paused",reason,room_id:"T01"});
-      const labels=reason==="stamina exhausted"?["Rest","Abort"]:["Retry","Skip","Abort"];
-      assert.match(texts(h.doc.body),/The party fell!/);
-      if(reason==="stamina exhausted") {assert.equal(h.button("Skip"),undefined); assert.match(texts(h.doc.body),/25%.*original/);}
-      const at=choice==="retry"?0:labels.indexOf(choice==="skip"?"Skip":"Abort");
-      if(method==="mouse") h.button(labels[at]).click(); else {for(let i=0;i<at;i++) h.key("ArrowRight");h.key("Enter");}
-      assert.deepEqual(h.sent,[{kind:"pause_decision",choice,control_token:"control"}]); h.key("Enter"); assert.equal(h.sent.length,1);
-      h.event({type:reason==="stamina exhausted"?"stamina_restored":"attempt_started",token_budget:1250,room_id:"T01"}); restored(h);
-    }finally{h.destroy();}
-  }
+  for(const reason of ["Out of lives in T01: rejected","stamina exhausted"])for(const method of ["mouse","keyboard"])for(const [index,choice]of (reason==="stamina exhausted"?["retry","abort"]:["retry","skip","abort"]).entries()){
+    const h=await harness();try{h.event({type:"run_paused",reason,room_id:"T01"});const box=flat(h.doc.body).find(n=>n.id==="dialogue-box");assert.equal(box.dataset.turn,"pause");if(reason==="stamina exhausted")assert.match(texts(box),/25%.*original/);assert.equal(flat(h.doc.body).some(n=>n.id==="pause"),false);
+      const label=reason==="stamina exhausted"?["Rest","Abort"][index]:["Retry","Skip","Abort"][index];
+      if(method==="mouse")h.button(`${index+1} · ${label}`).click();else {for(let i=0;i<index;i++)h.key("ArrowDown");h.key("Enter");}
+      assert.deepEqual(h.sent,[{kind:"pause_decision",choice,control_token:"control"}]);h.key("Enter");assert.equal(h.sent.length,1);
+      h.event({type:reason==="stamina exhausted"?"stamina_restored":"attempt_started",token_budget:1250,room_id:"T01"});assert.equal(h.doc.activeElement,h.game);
+    }finally{h.destroy();}}
+
 });
 
 test("connected_pause_snapshots_preserve_dialog_focus_and_pending_choice_until_reconnect",async()=>{
-  const h=await harness();try{
-    const snapshot={kind:"state",phase:"running",state:{status:"paused",reason:"out of lives"}};
-    const panel=()=>flat(h.doc.body).find(n=>n.id==="pause");
-    h.message(snapshot);const original=panel(), retry=h.button("Retry");retry.focus();
-    h.message(snapshot);assert.ok(panel()===original);assert.ok(h.doc.activeElement===retry);
-    retry.click();assert.equal(h.sent.length,1);
-    h.message(snapshot);assert.ok(panel()===original);assert.ok(h.doc.activeElement===retry);
-    for(const label of ["Retry","Skip","Abort"]) {assert.equal(h.button(label).disabled,true);h.button(label).click();}
-    assert.equal(h.sent.length,1);
-    h.socket.readyState=3;h.socket.emit("close");const disconnected=panel();
-    h.socket.readyState=1;h.message(snapshot);
-    assert.ok(panel()!==original);assert.ok(panel()!==disconnected);
-    for(const label of ["Retry","Skip","Abort"]) assert.equal(h.button(label).disabled,false);
-    h.button("Retry").click();assert.equal(h.sent.length,2);
-    assert.deepEqual(h.sent.at(-1),{kind:"pause_decision",choice:"retry",control_token:"control"});
+  const h=await harness();try{const snapshot={kind:"state",phase:"running",state:{status:"paused",reason:"out of lives"}};
+    h.message(snapshot);const retry=h.button("1 · Retry");retry.focus();h.message(snapshot);assert.equal(h.doc.activeElement,retry);retry.click();h.message(snapshot);assert.equal(h.button("1 · Retry"),retry);assert.equal(retry.disabled,true);
+    h.socket.readyState=3;h.socket.emit("close");h.socket.readyState=1;h.message(snapshot);assert.equal(h.button("1 · Retry").disabled,false);h.button("1 · Retry").click();assert.equal(h.sent.length,2);
   }finally{h.destroy();}
+
 });
 
 test("connected_approval_snapshots_preserve_dialog_focus_and_pending_answer_until_reconnect",async()=>{
-  const h=await harness();try{
-    const snapshot={kind:"state",phase:"running",state:{status:"running"},approval_request:request};
-    const panel=()=>flat(h.doc.body).find(n=>n.id==="approval-choice");
-    h.message(snapshot);const original=panel(), allow=h.button("Allow");allow.focus();
-    h.message(snapshot);assert.ok(panel()===original);assert.ok(h.doc.activeElement===allow);
-    allow.click();assert.equal(h.sent.length,1);
-    h.message(snapshot);assert.ok(panel()===original);assert.ok(h.doc.activeElement===allow);
-    for(const label of ["Allow","Deny"]) {assert.equal(h.button(label).disabled,true);h.button(label).click();}
-    assert.equal(h.sent.length,1);
-    h.socket.readyState=3;h.socket.emit("close");
-    h.socket.readyState=1;h.message(snapshot);assert.ok(panel()!==original);
-    for(const label of ["Allow","Deny"]) assert.equal(h.button(label).disabled,false);
-    h.button("Allow").click();assert.equal(h.sent.length,2);
-    assert.deepEqual(h.sent.at(-1),{kind:"approval_answer",request_id:"a1",answer:true,control_token:"control"});
+  const h=await harness();try{const snapshot={kind:"state",phase:"running",state:{status:"running"},approval_request:request};h.message(snapshot);const allow=h.button("A · Allow");allow.focus();h.message(snapshot);assert.equal(h.doc.activeElement,allow);allow.click();h.message(snapshot);assert.equal(h.button("A · Allow"),allow);assert.equal(allow.disabled,true);
+    h.socket.readyState=3;h.socket.emit("close");h.socket.readyState=1;h.message(snapshot);assert.equal(h.button("A · Allow").disabled,false);h.button("A · Allow").click();assert.equal(h.sent.length,2);
   }finally{h.destroy();}
+
 });
 
 test("known_pause_reasons_translate_live_unknown_reason_is_literal_text",async()=>{
@@ -139,14 +107,11 @@ test("known_pause_reasons_translate_live_unknown_reason_is_literal_text",async()
 });
 
 test("browser_replay_and_cli_watch_pauses_have_no_control_buttons_or_title",async()=>{
-  for(const desktop of [false,true]) {
-    const h=await harness({desktop,studio:false,title:true}); try {
-      h.event(request); if(!desktop) {assert.equal(h.button("Allow"),undefined);assert.match(texts(h.doc.body),/terminal or desktop window/);} else h.event({type:"approval_answered",request_id:"a1",answer:false,responder:"terminal"});
-      h.event({type:"run_paused",reason:"stamina exhausted"}); assert.equal(h.button("Rest"),undefined);assert.equal(h.button("Abort"),undefined);assert.match(texts(h.doc.body),/decided in the terminal/);h.key("Enter");assert.deepEqual(h.sent,[]);assert.equal(h.screen.hidden,true);
-      h.event({type:"stamina_restored",token_budget:1250}); restored(h);
-    }finally{h.destroy();}
-  }
-  const h=await harness({desktop:false});try{h.event({type:"run_paused",reason:"out of lives"});assert.equal(h.button("Retry"),undefined);assert.equal(h.sent.length,0);}finally{h.destroy();}
+  const h=await harness({desktop:false,studio:false,title:true});try{h.event(request);assert.equal(h.button("A · Allow").disabled,true);assert.match(texts(h.doc.body),/terminal or desktop window/);
+    h.event({type:"run_paused",reason:"stamina exhausted"});assert.equal(h.button("1 · Rest").disabled,true);h.key("1");assert.equal(h.sent.length,0);assert.equal(h.screen.hidden,true);
+    h.message({kind:"state",replay:{speed:1},state:{status:"paused",reason:"stamina exhausted"}});assert.equal(h.button("1 · Rest"),undefined);assert.equal(flat(h.doc.body).find(n=>n.id==="dialogue-box").dataset.turn,"");
+  }finally{h.destroy();}
+
 });
 
 test("boss_segments_passed_scenarios_retry_results_and_focus_restore",async()=>{
@@ -226,9 +191,9 @@ test("boss_arena_camera_uses_castle_geometry_and_integer_zoom_with_motion_prefer
     try {
       const world=fixture().events.find(e=>e.type==="world_loaded");
       h.browser.dispatchEvent(new h.browser.CustomEvent("specvania:state",{detail:{...world,active_room:"T01",party_room:"T01"}}));config.scene.create.call(scene);
-      keys.get("keydown-M")({});assert.equal(h.hud.hidden,true);
-      h.event(request);assert.equal(h.hud.hidden,false);
-      keys.get("keydown-M")({target:h.doc.activeElement});assert.equal(h.hud.hidden,false);
+      ((event) => h.browser.dispatchEvent(new h.browser.CustomEvent("specvania:play-action", {detail:{action:"overview"}})))({});assert.equal(h.hud.hidden,true);
+      h.event(request);assert.equal(h.hud.hidden,true);
+      ((event) => h.browser.dispatchEvent(new h.browser.CustomEvent("specvania:play-action", {detail:{action:"overview"}})))({target:h.doc.activeElement});assert.equal(h.hud.hidden,false);
       h.event({type:"approval_answered",request_id:"a1",answer:false,responder:"terminal"});
       h.browser.dispatchEvent(new h.browser.CustomEvent("specvania:event",{detail:{type:"attempt_started",room_id:"T01"}}));assert.equal(h.hud.hidden,false);
       h.event({type:"boss_started",area_id:"A1",scenarios:["S1"]});
@@ -242,13 +207,11 @@ test("boss_arena_camera_uses_castle_geometry_and_integer_zoom_with_motion_prefer
 });
 
 test("reconnect_pause_disconnect_and_dialog_handoffs_do_not_leak_focus_or_messages",async()=>{
-  const h=await harness();try{
-    h.message({kind:"state",phase:"running",state:{status:"paused",reason:"stamina exhausted"}});assert.ok(h.button("Rest"));
-    h.socket.emit("close");assert.equal(h.button("Rest"),undefined);h.key("Enter");assert.deepEqual(h.sent,[]);
-    h.event({type:"boss_started",area_id:"A1",scenarios:["S1"]});assert.equal(h.button("Abort"),undefined);
-    h.event({type:"run_paused",reason:"boss failed"});assert.match(texts(h.doc.body),/boss fight failed/);assert.equal(flat(h.doc.body).filter(n=>n.getAttribute("role")==="dialog").length,1);
-    h.event({type:"run_finished",status:"aborted"});h.key("Tab",true);assert.equal(h.doc.activeElement.className,"expedition-content");h.key("Tab",true);assert.equal(h.doc.activeElement,h.button("Back to the castle"));h.key("Enter");restored(h);
+  const h=await harness();try{h.message({kind:"state",phase:"running",state:{status:"paused",reason:"stamina exhausted"}});assert.ok(h.button("1 · Rest"));h.socket.readyState=3;h.socket.emit("close");assert.equal(h.button("1 · Rest").disabled,true);h.key("1");assert.equal(h.sent.length,0);
+    h.event({type:"boss_started",area_id:"A1",scenarios:["S1"]});h.event({type:"run_paused",reason:"boss failed"});assert.match(texts(h.doc.body),/boss fight failed/);assert.equal(flat(h.doc.body).filter(n=>n.getAttribute("role")==="dialog").length,0);
+    h.socket.readyState=1;h.message({kind:"state",phase:"running",state:{status:"paused",reason:"boss failed"}});h.button("1 · Retry").click();assert.equal(h.sent.length,1);
   }finally{h.destroy();}
+
 });
 
 test("end_hides_unsourced_coins_and_ignores_duplicate_events",async()=>{
@@ -274,12 +237,9 @@ test("end_coins_keep_decimal_precision_including_exponent_rates",async()=>{
 });
 
 test("long_dialog_content_is_keyboard_scrollable_without_leaving_the_trap",async()=>{
-  const h=await harness();try{
-    h.event({...request,command:"long command\n".repeat(200)});
-    h.key("Tab");const content=h.doc.activeElement;
-    assert.equal(content.className,"expedition-content");assert.equal(content.tabIndex,0);
-    const event={key:"ArrowDown",preventDefault(){this.prevented=true;}};content.dispatch("keydown",event);assert.equal(event.prevented,undefined,"Arrows scroll content using the browser default");
-    h.key("Tab");assert.equal(h.doc.activeElement,h.button("Allow"));h.key("Tab");assert.equal(h.doc.activeElement.tagName,"input");h.key("Tab");assert.equal(h.doc.activeElement,h.button("Deny"));
-    h.event({type:"approval_answered",request_id:"a1",answer:false,responder:"terminal"});restored(h);
+  const h=await harness();try{const command="long command\n".repeat(200);h.event({...request,command});const box=flat(h.doc.body).find(n=>n.id==="dialogue-box");
+    const summary=flat(box).find(n=>n.textContent===command);assert.equal(summary.style.textOverflow,"ellipsis");assert.equal(summary.style.whiteSpace,"nowrap");
+    h.key("V");const overlay=flat(h.doc.body).find(n=>n.id==="command-overlay");assert.ok(overlay);assert.ok(texts(overlay).includes(command));assert.equal(overlay.style.overflow,"auto");h.key("Escape");assert.ok(!flat(h.doc.body).includes(overlay));assert.equal(h.sent.length,0);
   }finally{h.destroy();}
+
 });

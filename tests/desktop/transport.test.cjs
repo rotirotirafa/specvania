@@ -121,7 +121,7 @@ async function screens() {
   browser.dispatchEvent = event => browser.emit(event.type, event);
   const notifications = [];
   browser.specvaniaDesktop = {controlToken: () => "control", notify: (...args) => notifications.push(args)};
-  const {mountReplay} = await load("screens/replay.js"), {mountScreens} = await load("screens/title.js");
+  const {mountReplayControls:mountReplay} = await load("hud/chips.js"), {mountScreens} = await load("screens/title.js");
   const replay = mountReplay(h.socket, {browser});
   const title = mountScreens({host: ids["screen-host"], browser, socket: h.socket}); await title.ready;
   const unsubscribe = connectLanguage(h.socket, browser);
@@ -137,11 +137,11 @@ test("reconnect_restores_approval_and_language_without_error_screen_or_duplicate
   const h = await screens();
   try {
     const snapshot = {kind: "state", phase: "running", state: {status: "running"}, approval_request: request};
-    h.message(snapshot); h.button("Allow").click();
+    h.message(snapshot); h.button("A · Allow").click();
     h.sockets[0].emit("error", {}); h.sockets[0].drop();
-    assert.equal(h.ids["screen-host"].hidden, true); assert.equal(h.button("Allow").disabled, true);
+    assert.equal(h.ids["screen-host"].hidden, true); assert.equal(h.button("A · Allow").disabled, true);
     h.tick(); h.sockets[1].open(); h.message(snapshot);
-    assert.equal(h.button("Allow").disabled, false); h.button("Deny").click();
+    assert.equal(h.button("A · Allow").disabled, false); h.button("N · Deny").click();h.button("Deny command").click();
     assert.deepEqual(JSON.parse(h.sockets[1].sent.at(-1)), {kind: "approval_answer", request_id: request.request_id, answer: false, control_token: "control"});
     h.message({kind: "studio_state", phase: "running", language: "pt-BR"});
     h.setLanguage("en", {manual: true});
@@ -157,9 +157,9 @@ test("reconnect_restores_an_unanswered_pause_decision_and_clears_a_resolved_paus
   const h = await screens();
   try {
     const snapshot = {kind: "state", phase: "running", state: {status: "paused", reason: "out of lives"}};
-    h.message(snapshot); h.button("Retry").click(); h.sockets[0].drop();
+    h.message(snapshot); h.button("1 · Retry").click(); h.sockets[0].drop();
     h.tick(); h.sockets[1].open(); h.message(snapshot);
-    assert.equal(h.button("Retry").disabled, false); h.button("Retry").click();
+    assert.equal(h.button("1 · Retry").disabled, false); h.button("1 · Retry").click();
     assert.deepEqual(JSON.parse(h.sockets[1].sent.at(-1)), {kind: "pause_decision", choice: "retry", control_token: "control"});
     h.message({...snapshot, state: {status: "running"}});
     assert.equal(h.document.getElementById("pause"), undefined);
