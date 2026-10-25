@@ -57,6 +57,9 @@
       }
     ]
   },
+  "appImage": {
+    "artifactName": "specvania-${version}-x64.${ext}"
+  },
   "dmg": {
     "format": "UDZO"
   },

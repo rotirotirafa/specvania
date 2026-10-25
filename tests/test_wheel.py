@@ -74,6 +74,7 @@ def test_ci_inspects_built_wheel_and_runs_desktop_check() -> None:
     assert any(
         step.get("uses", "").startswith("actions/setup-node@") for step in desktop
     )
-    assert any(
-        step.get("run") == "npm --prefix apps/desktop run check" for step in desktop
+    commands = [step["run"] for step in desktop if "run" in step]
+    assert commands.index("uv sync --locked") < commands.index(
+        "npm --prefix apps/desktop run check"
     )

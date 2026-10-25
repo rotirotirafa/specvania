@@ -768,6 +768,17 @@ def test_batched_diffs_map_unusual_paths_and_isolate_binary_markers(
         b"x" * 199_999 + b"\n",
         "é".encode() * 100_000,
     ],
+    ids=[
+        "empty",
+        "one-line",
+        "no-final-newline",
+        "crlf",
+        "trailing-blank-line",
+        "binary",
+        "200k-no-newline",
+        "200k-final-newline",
+        "multibyte-200k",
+    ],
 )
 def test_untracked_addition_matches_git_no_index(repo: Path, data: bytes) -> None:
     from specvania.run.gitops import GitOps

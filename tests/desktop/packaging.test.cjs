@@ -118,6 +118,13 @@ test("builder_packages_only_shell_and_generated_icon_for_unsigned_dmg_and_appima
   assert.equal(config.linux.executableName, "specvania-desktop");
   assert.deepEqual(config.linux.target, ["AppImage"]);
   assert.equal(config.artifactName, "specvania-${version}-${arch}.${ext}");
+  assert.equal(config.appImage?.artifactName, "specvania-${version}-x64.${ext}");
+  for (const workflow of ["ci.yml", "release.yml"]) {
+    const matrix = json(path.join(root, ".github/workflows", workflow)).jobs["build-desktop"].strategy.matrix.include;
+    for (const entry of matrix.filter(entry => entry.platform === "linux")) {
+      assert.equal(entry.arch, "x64");
+    }
+  }
   const pkg = json(path.join(desktop, "package.json"));
   assert.deepEqual(pkg.devDependencies, { electron: "44.7.0", "electron-builder": "26.15.3" });
   assert.ok(!pkg.dependencies || Object.keys(pkg.dependencies).length === 0);

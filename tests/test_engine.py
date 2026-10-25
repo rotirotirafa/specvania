@@ -41,6 +41,10 @@ from specvania.run.state import RoomState, fold_events
 from specvania.ui.server import UIServer, UIServerError
 
 
+def unstyle(output: str) -> str:
+    return re.sub(r"\x1b\[[0-9;]*m", "", output)
+
+
 def git(root: Path, *arguments: str) -> str:
     return subprocess.run(
         ["git", "-C", str(root), *arguments],
@@ -1210,7 +1214,9 @@ def test_cli_ui_validation_and_separate_mode_argument(
     )
     result = CliRunner().invoke(cli.create_app(), ["run", *ui_args, str(directory)])
     if ui_args == ["--ui=invalid"]:
-        assert result.exit_code == 2 and "Invalid value for '--ui'" in result.output
+        assert result.exit_code == 2 and "Invalid value for '--ui'" in unstyle(
+            result.output
+        )
         assert not provider.calls
     else:
         assert result.exit_code == 0, result.output

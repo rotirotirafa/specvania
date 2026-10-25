@@ -152,6 +152,17 @@
           "name": "actions/setup-node v4.4.0"
         },
         {
+          "uses": "astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e",
+          "with": {
+            "python-version": "3.12"
+          },
+          "name": "astral-sh/setup-uv v6.8.0"
+        },
+        {
+          "name": "Install",
+          "run": "uv sync --locked"
+        },
+        {
           "name": "G10 \u00b7 Desktop check",
           "run": "npm --prefix apps/desktop run check"
         }
